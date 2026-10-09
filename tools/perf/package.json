@@ -1,0 +1,17 @@
+{
+  "name": "@prix/perf",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Performance budgets and measurement scripts.",
+  "type": "module",
+  "scripts": {
+    "budgets": "node budgets.mjs",
+    "bundle": "node bundle.mjs",
+    "capacity": "node capacity.mjs",
+    "siwe-cpu": "node siwe-cpu.mjs"
+  },
+  "devDependencies": {
+    "lighthouse": "^13.5.0",
+    "viem": "^2.57.3"
+  }
+}

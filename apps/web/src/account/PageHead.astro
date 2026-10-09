@@ -1,0 +1,36 @@
+---
+// The head of a signed-in page: where the page sits (a link back), its name and one sentence
+// about it. The default slot holds what stands at the right end of the row, such as a link.
+import './account.css';
+
+interface Props {
+  title: string;
+  intro?: string;
+  /** Where the page sits, as a link back: "Account" over "Token tier". */
+  back?: { href: string; label: string };
+  id?: string;
+}
+
+const { title, intro, back, id } = Astro.props;
+---
+
+<div class="page section acct-head">
+  <div class="acct-head-text">
+    {
+      back && (
+        <p class="small acct-eyebrow">
+          <a href={back.href}>{back.label}</a>
+        </p>
+      )
+    }
+    <h1 class="display" id={id}>{title}</h1>
+    {intro && <p class="acct-intro">{intro}</p>}
+  </div>
+  {
+    Astro.slots.has('default') && (
+      <div class="end">
+        <slot />
+      </div>
+    )
+  }
+</div>

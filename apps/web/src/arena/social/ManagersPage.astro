@@ -1,0 +1,244 @@
+---
+// Paper managers (docs/contracts/phase-6-social.md section 5.5): newest first, never ordered by a
+// figure, because a table of managers ordered by their figures would be a league of funds in all
+// but name. Each row says what it is, its schedule and its season so far.
+import { formatCount, formatDay, formatDrawdownBps, formatPercentBps } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import { toneOf } from '../record.ts';
+import { fetchManagers, pageOf } from './client.ts';
+import Pager from './Pager.astro';
+import SocialFailure from './SocialFailure.astro';
+import SocialNav from './SocialNav.astro';
+import SocialTop from './SocialTop.astro';
+import { listHref, managerDefinition, managerHref, managerStatusText, parts, scheduleText, volText } from './words.ts';
+
+const page = pageOf(Astro.url);
+const [account, result] = await Promise.all([readAccount(Astro), fetchManagers(Astro, page)]);
+const data = result.ok ? result.data : null;
+const title = text('social.managersTitle', 'Paper managers');
+// Under 560 pixels each manager is a block with its figures in one sentence (design review 6, finding 6).
+const figuresLine = parts(
+  text('social.managerFiguresLine', 'Return {return}, max drawdown {drawdown}, {days} valued days'),
+  {},
+);
+const rowLine = (manager: {
+  status: Parameters<typeof managerStatusText>[0];
+  schedule: Parameters<typeof scheduleText>[0];
+  createdAt: string;
+}) =>
+  text('social.managerRowLine', '{status}. {schedule}. Made on {day}.', {
+    status: managerStatusText(manager.status),
+    schedule: scheduleText(manager.schedule),
+    day: formatDay(manager.createdAt),
+  });
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.managersDescription',
+    'Paper managers: simulated allocations across public Prix agents, valued once a day. No money is involved. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.managersEyebrow', 'Allocations across agents')}
+    lead={managerDefinition()}
+  />
+  <SocialNav current="managers" />
+
+  <section class="page section stack-24">
+    {
+      !result.ok ? (
+        <SocialFailure error={result.error} subject={text('social.subjectManagers', 'The list of paper managers')} />
+      ) : data && data.managers.length === 0 ? (
+        <EmptyState
+          title={text('social.managersEmptyTitle', 'No paper manager yet')}
+          body={text(
+            'social.managersEmptyBody',
+            'A signed-in wallet can make one: two to five public agents at weights it picks. Each is valued once a day from the agents’ published end-of-day values.',
+          )}
+        />
+      ) : data ? (
+        <>
+          <p class="small mgr-note">
+            {text(
+              'social.managersOrder',
+              'Newest first. The list is not ordered by any figure, and paper managers are not ranked.',
+            )}
+          </p>
+          <div class="mgr-wide">
+          <Table
+            id="managers"
+            caption={text('social.managersCaption', 'Paper managers, newest first')}
+            scroll
+            minWidth="48rem"
+            columns={[
+              { key: 'name', label: text('social.colPaperManager', 'Paper manager') },
+              { key: 'agents', label: text('social.colAgents', 'Agents'), align: 'end' },
+              { key: 'return', label: text('social.colReturn', 'Return'), align: 'end' },
+              { key: 'drawdown', label: text('social.colDrawdown', 'Max drawdown'), align: 'end' },
+              { key: 'vol', label: text('social.colDailyVol', 'Daily volatility'), align: 'end' },
+              { key: 'days', label: text('social.colValuedDays', 'Valued days'), align: 'end' },
+            ]}
+          >
+            <tbody>
+              {data.managers.map((manager) => (
+                <tr>
+                  <th scope="row" class="c-name">
+                    <a href={managerHref(Astro.url, manager.id)}>{manager.name}</a>
+                    <span class="small mgr-sub">{rowLine(manager)}</span>
+                  </th>
+                  <td class="c-agents num figures">{formatCount(manager.agentCount)}</td>
+                  {manager.season ? (
+                    <>
+                      <td class:list={['c-return num figures', toneOf(manager.season.returnBps)]}>
+                        {formatPercentBps(manager.season.returnBps)}
+                      </td>
+                      <td class="c-drawdown num figures">{formatDrawdownBps(manager.season.maxDrawdownBps)}</td>
+                      <td class="c-vol num figures">{volText(manager.season.volMilliBps)}</td>
+                      <td class="c-days num figures">{formatCount(manager.season.valuedDays)}</td>
+                    </>
+                  ) : (
+                    <td class="c-return mgr-dim" colspan="4">
+                      {text('social.notValuedYet', 'Not valued yet')}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          </div>
+          <ul class="mgr-narrow mgr-blocks">
+            {data.managers.map((manager) => (
+              <li>
+                <a class="mgr-name" href={managerHref(Astro.url, manager.id)}>
+                  {manager.name}
+                </a>
+                <p class="small">{rowLine(manager)}</p>
+                <p class="small mgr-figs">
+                  {manager.season
+                    ? figuresLine.map((piece) =>
+                        piece === '{return}' ? (
+                          <span class:list={['figures', toneOf(manager.season?.returnBps ?? 0)]}>
+                            {formatPercentBps(manager.season?.returnBps ?? 0)}
+                          </span>
+                        ) : piece === '{drawdown}' ? (
+                          <span class="figures">{formatDrawdownBps(manager.season?.maxDrawdownBps ?? 0)}</span>
+                        ) : piece === '{days}' ? (
+                          <span class="figures">{formatCount(manager.season?.valuedDays ?? 0)}</span>
+                        ) : typeof piece === 'string' ? (
+                          piece
+                        ) : (
+                          piece.text
+                        ),
+                      )
+                    : text('social.notValuedYet', 'Not valued yet')}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <Pager
+            page={page}
+            label={text('social.managersPages', 'Pages of paper managers')}
+            previousHref={page > 1 ? listHref(Astro.url, '/managers', page - 1) : null}
+            nextHref={data.hasMore ? listHref(Astro.url, '/managers', page + 1) : null}
+          />
+        </>
+      ) : null
+    }
+  </section>
+</Layout>
+
+<style>
+  .mgr-note {
+    max-width: var(--measure);
+  }
+
+  /* Names keep the face's own figures; tabular figures are for the figure cells. */
+  .c-name,
+  .mgr-wide :global(thead th) {
+    font-variant-numeric: normal;
+  }
+
+  .c-name {
+    text-align: start;
+    font-weight: var(--weight-strong);
+  }
+
+  .c-name a {
+    overflow-wrap: anywhere;
+  }
+
+  .mgr-sub {
+    display: block;
+    font-weight: var(--weight-medium);
+  }
+
+  .mgr-dim {
+    color: var(--grey);
+  }
+
+  .mgr-wide {
+    display: none;
+  }
+
+  .mgr-blocks {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .mgr-blocks > li {
+    display: grid;
+    row-gap: var(--space-2);
+    justify-items: start;
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  /* A name that stands alone: ink at 600, underlined under the pointer, 24 pixels high at least. */
+  .mgr-name {
+    display: inline-block;
+    padding-block: var(--space-2);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .mgr-name:hover {
+    text-decoration: underline;
+  }
+
+  .mgr-figs .figures {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+  }
+
+  .mgr-figs .gain {
+    color: var(--green);
+  }
+
+  .mgr-figs .loss {
+    color: var(--red);
+  }
+
+  @media (min-width: 35em) {
+    .mgr-wide {
+      display: block;
+    }
+
+    .mgr-narrow {
+      display: none;
+    }
+  }
+</style>

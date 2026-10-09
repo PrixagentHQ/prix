@@ -1,0 +1,12 @@
+---
+import { fetchRivalries, pageOf, statusOf } from '../arena/social/client.ts';
+import RivalriesPage from '../arena/social/RivalriesPage.astro';
+
+// The status is the API's: with the switch off the route answers 404, and so does this page.
+const division = Astro.url.searchParams.get('division') === 'pro' ? 'pro' : 'open';
+const result = await fetchRivalries(Astro, division, pageOf(Astro.url));
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = statusOf(result);
+---
+
+<RivalriesPage />

@@ -1,0 +1,104 @@
+// The `prix-api` Worker: the HTTP API under /api and the scheduled work of every phase, run by the Durable Object clock.
+// docs/CONTRACTS.md sections 13 and 15 name the bindings and variables. infra/README.md is the runbook.
+//
+// There is one environment, prixagent.com, and this file describes it. It has no environment
+// blocks. Local development (`pnpm dev:api`) uses the same file: `.dev.vars` overrides the
+// variables that differ on a laptop, and every binding gets a local stand-in.
+//
+// Secrets are never in this file. `wrangler secret put` sets them; `.dev.vars` holds them locally.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "prix-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+
+  // No workers.dev address and no preview addresses: the API is reachable only through the route
+  // on the zone, where the site's origin, the session cookie and the zone's rules apply, and
+  // through the service binding of the site Worker `prix-web`.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "prixagent.com/api/*", "zone_name": "prixagent.com" }],
+
+  // One Cron Trigger, the watchdog (finding 17b). The free plan allows five for a whole account;
+  // Count yours before you add one. The scheduled work
+  // itself is run by a Durable Object alarm: the class Clock in src/index.ts, one object per
+  // schedule, so PRIX_CRONS is deliberately not listed here. The watchdog's scheduled() starts
+  // every clock and runs no step, so the clocks come back after a night without visitors. Never a
+  // CRON_PLAN expression here (tests/watchdog).
+  "triggers": {
+    "crons": ["13,43 * * * *"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CLOCK", "class_name": "Clock" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Clock"] }],
+
+  // Workers Logs. The free plan stores 200,000 log events a day for three days, per account.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  "vars": {
+    // A bare origin. The API compares it with the Origin header and with every sign-in message.
+    "SITE_ORIGIN": "https://prixagent.com",
+    // Comma-separated wallet addresses that may use the admin routes. Addresses are public.
+    "ADMIN_ADDRESSES": "",
+    // Comma-separated wallets whose agents Prix itself runs (docs/CONTRACTS.md section 17). Every
+    // public read marks their agents `house: true`, and the creation guard does not count them.
+    // Empty: no agent is a house agent. `node infra/seed/house-agents.mjs --wallets` prints the
+    // value for the eight house agents; infra/README.md, "House agents", says when it is set.
+    "HOUSE_OWNERS": "0x07466123bdd9b28c88a9ed7ca005cbc24e9a1a8e,0x0d1acb009b31bcfa5aca688b2c6c39f8d3e31070,0xe5d531bec81a9d827de71dd3c704bf2aeb38749b,0xdc2e986d04218eb06609f357331d846caba8abd7,0x37ae2788ef7484a8f61dc65bd154298fa95f0891,0xf174e75ba0550dd5029e94f14dce5cfaedbeb3b7,0x892490d0210ffd7ed8074f49a5ee96bd92adbdf4,0x181abaed4805948b359147df073d3a43f8fa6c14,0xee5209ba323e535d25be4bd9981c58249f1cd73d",
+    // The house model and its price, in neurons per million tokens. The three belong together:
+    // change the model and the two prices in one commit. docs/CONTRACTS.md section 2.
+    "HOUSE_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "HOUSE_MODEL_INPUT_NEURONS": "26668",
+    "HOUSE_MODEL_OUTPUT_NEURONS": "204805",
+    // Phases 2 to 5. Nothing here needs a secret. Each switch that needs the founder is off.
+    // "on" lets contract wallets claim a listing. Off by default.
+    "LISTING_CONTRACT_WALLETS": "off",
+    // Telegram: the bot name (without @). Delivery also needs the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET.
+    "TELEGRAM_BOT_USERNAME": "",
+    // Browser push for follow notes: the public VAPID key (raw point, base64url). Empty turns it off.
+    // It also needs the secret VAPID_PRIVATE_KEY (PKCS8, base64). infra/README.md says how the pair is made.
+    "VAPID_PUBLIC_KEY": "BO0WPvXW7ZRRZGAU5u-E7KIxNutQ2US8koDCyVmPGqOiE5D4GWHzL7tiRJnl1NEKGpQx_EkNLH2yYO2Thz-NxyI",
+    // Phase 5. The data API is off until "true"; paid calls are off until "true" and PAYMENT_ADDRESS is set.
+    "DATA_API_ENABLED": "true",
+    "DATA_PAYMENTS_ENABLED": "false",
+    "PAYMENT_ADDRESS": "",
+    // Phase 6. "true" mounts the public /api/social routes; it turns on with the token launch.
+    // Off, they answer the generic 404; the admin routes and the social jobs run either way.
+    // Model Wars read the optional secret GROQ_API_KEY, which is never a variable here.
+    "SOCIAL_ENABLED": "true"
+  },
+
+  // A deploy is refused while one of these is not set. `RPC_URL` is a third secret and optional.
+  "secrets": {
+    "required": ["KEY_ENCRYPTION_KEY", "NONCE_SECRET"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prix",
+      // The production database, created on 2026-10-06 in region APAC. An id is not a secret.
+      "database_id": "9edfb763-a955-4c83-89e0-3f2cc9f5ffb2",
+      "migrations_dir": "../../infra/migrations"
+    }
+  ],
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  // The three rules of docs/CONTRACTS.md section 15, per subject. `period` can only be 10 or 60
+  // seconds. apps/api/src/rate-limit.ts builds the global counts for `sign_in` and `write` from
+  // the same bindings, so each `limit` here must equal `perMinute` of its rule in that file;
+  // tests/unit/rate-limit.test.ts fails when they differ.
+  // A namespace id is a positive integer. Bindings with the same id share counters across ALL Workers of the account, so these are 4663xx, not the 1001 of the docs examples.
+  "ratelimits": [
+    { "name": "RATE_SIGN_IN", "namespace_id": "466301", "simple": { "limit": 20, "period": 60 } },
+    { "name": "RATE_WRITE", "namespace_id": "466302", "simple": { "limit": 20, "period": 60 } },
+    { "name": "RATE_READ", "namespace_id": "466303", "simple": { "limit": 300, "period": 60 } }
+  ]
+}

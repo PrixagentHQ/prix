@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - tests
+  - tools/*
+# pnpm runs install scripts only for packages named here. These two download the
+# platform binary they need: esbuild for bundling, workerd for running Workers locally.
+allowBuilds:
+  esbuild: true
+  workerd: true

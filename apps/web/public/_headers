@@ -1,0 +1,31 @@
+# Headers for the files that Workers static assets serves: everything under /_astro/ and
+# every file in this folder. Those responses never reach src/middleware.ts, which sets the
+# same headers on every response the Worker itself produces. Keep the two in step.
+#
+# A rule here never applies to a page: this file covers static files only.
+# When two rules set the same header, Cloudflare joins the two values with a comma, so each
+# header is set in one rule only.
+#
+# The policy is for a file opened on its own, such as the SVG icon: no script, no request and
+# no framing. Styles written inside the file still apply, and they cannot load anything.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), geolocation=(), microphone=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox
+
+# A built file carries a hash of its content in its name, so a changed file has a new address.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The service worker of browser push. A browser refuses to register a worker whose response carries
+# the sandbox directive, so the policy of the rule above is detached for this file alone. The file
+# is a script, so it is sent as JavaScript, never cached without a check, and may control the whole site.
+/sw.js
+  ! Content-Security-Policy
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /

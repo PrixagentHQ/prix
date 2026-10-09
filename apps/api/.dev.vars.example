@@ -1,0 +1,31 @@
+# Local values for the prix-api Worker, for development on this machine only.
+# Copy this file to `.dev.vars` in the same folder and fill in the values. `.dev.vars` is gitignored.
+# Never commit a value, never paste one into a chat, a log or an issue.
+# The deployed Worker gets its secrets from `wrangler secret put`: see infra/README.md.
+
+# `pnpm stack` (infra/stack/README.md) needs no file: it generates its own secrets under .artifacts/.
+# This file is for `pnpm dev:api` on its own.
+
+# Required. Seals and opens model keys. 32 random bytes in base64. Make one for local use with:
+#   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+# Never put the secret of the deployed Worker here.
+KEY_ENCRYPTION_KEY=
+
+# Required. Signs sign-in nonces and does nothing else. 32 random bytes in base64, made with the
+# same command, run a second time: it must differ from KEY_ENCRYPTION_KEY or the API does not start.
+NONCE_SECRET=
+
+# Optional. A keyed HTTPS RPC endpoint for Robinhood Chain (chain ID 4663) from a free-tier provider.
+# Leave it empty to use only the public endpoints, which are rate-limited.
+RPC_URL=
+
+# Optional. A key of a free Groq account (D-101). Only the Phase 6 war job uses it: without it a war
+# can enter no Groq model. Leave it empty locally unless you test a war.
+GROQ_API_KEY=
+
+# Not a secret. Locally the site runs here, not at prixagent.com. This line overrides the variable
+# of the same name in wrangler.jsonc, so that sign-in and writes work against the local site.
+SITE_ORIGIN=http://localhost:4321
+
+# Not a secret. Uncomment and set to your own wallet address to use the admin routes locally.
+# ADMIN_ADDRESSES=

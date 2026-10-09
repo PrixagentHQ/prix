@@ -1,0 +1,296 @@
+---
+// /developers: the data API as a product. The head and its tabs; beside them a panel with the
+// three steps to a key; on the left the first call and the calls there are, each a link to the
+// reference. Then the prices, as a table and a list in two panels, and the same API over MCP.
+// Every figure is a constant of the contract, formatted. Nothing is computed here.
+import { TIER_RULES } from '@prix/contracts';
+import Button from '../../design/Button.astro';
+import Code from '../../design/Code.astro';
+import DefinitionList from '../../design/DefinitionList.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import Panel from '../../design/Panel.astro';
+import Steps from '../../design/Steps.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import PageHead from '../PageHead.astro';
+import ShareMeta from '../ShareMeta.astro';
+import { siteShareImage } from '../share.ts';
+import DevTabs from './DevTabs.astro';
+import { buildReference } from './reference-model.ts';
+import { count, developersWords as words } from './words.ts';
+
+const account = await readAccount(Astro);
+const origin = (Astro.site ?? Astro.url).origin;
+const { endpoints } = buildReference();
+
+const firstCall = `curl -H "Authorization: Bearer prix_YOUR_KEY" ${origin}/api/v1/league`;
+const mcpConfig = JSON.stringify(
+  { mcpServers: { prix: { url: `${origin}/api/v1/mcp`, headers: { Authorization: 'Bearer prix_YOUR_KEY' } } } },
+  null,
+  2,
+);
+const mcpList = `curl -X POST ${origin}/api/v1/mcp -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
+const tools = endpoints.map((endpoint) => endpoint.mcpTool).join(', ');
+
+const tierRows = TIER_RULES.map((rule) => ({
+  plan: words.tierPlan.replace('{tier}', String(rule.tier)),
+  holding: rule.thresholdPpm === 0 ? words.tierHoldingNone : `${Number((rule.thresholdPpm / 10_000).toFixed(4))}%`,
+  calls: count(rule.apiDailyQuota),
+}));
+const copy = { copyLabel: words.copy, copiedLabel: words.copied, failedLabel: words.copyFailed };
+---
+
+<Layout title={words.title} description={words.lead} current="developers" account={account}>
+  <ShareMeta slot="head" title={words.title} description={words.lead} image={siteShareImage()} />
+
+  <div class="page site-top with-panel dev-top">
+    <PageHead title={words.title} lead={words.lead}>
+      <DevTabs current="overview" />
+    </PageHead>
+
+    <Panel title={words.keyPanelTitle} id="dev-key">
+      <Steps
+        level={3}
+        items={[
+          { title: words.step1Title, body: words.step1Body },
+          { title: words.step2Title, body: words.step2Body },
+          { title: words.step3Title, body: words.step3Body },
+        ]}
+      />
+      <div class="panel-part stack-8">
+        {
+          account ? (
+            <Button label={words.keysAction} href="/account/api" size="lg" wide />
+          ) : (
+            <>
+              <Button label={words.signInAction} href="/sign-in" size="lg" wide />
+              <Button label={words.keysAction} href="/account/api" variant="secondary" size="lg" wide />
+            </>
+          )
+        }
+        <p class="panel-fine">{words.keyPlaceholderNote}</p>
+      </div>
+      <div class="panel-part">
+        <FigureBand
+          plain
+          label={words.quotaTitle}
+          items={[
+            { label: words.freeNowLabel, value: words.previewCalls },
+            { label: words.creditFigureLabel, value: words.creditFigure },
+          ]}
+        />
+      </div>
+    </Panel>
+
+    <div class="dev-main stack">
+      <section class="stack-8" aria-labelledby="first-call">
+        <h2 class="title" id="first-call">{words.firstCallTitle}</h2>
+        <Code label={words.firstCallCode} code={firstCall} {...copy} />
+      </section>
+
+      <section aria-labelledby="calls">
+        <div class="section-head">
+          <h2 class="title" id="calls">{words.callsTitle}</h2>
+          <a class="end small dev-more" href="/developers/reference">{words.moreReference}</a>
+        </div>
+        <p class="body dev-note">{words.callsLead} {words.oneSeason}</p>
+        <div class="panel dev-calls">
+          <Table
+            id="calls-table"
+            caption={words.callsCaption}
+            columns={[
+              { key: 'call', label: words.colCall },
+              { key: 'gives', label: words.colGives },
+            ]}
+          >
+            <tbody>
+              {
+                endpoints.map((endpoint) => (
+                  <tr>
+                    <th scope="row" class="dev-call">
+                      <a href={`/developers/reference#${endpoint.id}`}>
+                        <span class="dev-verb">GET</span>{' '}
+                        {endpoint.path.split('/').map((part, index) => (
+                          <>
+                            {index > 0 && (
+                              <>
+                                /<wbr />
+                              </>
+                            )}
+                            {part}
+                          </>
+                        ))}
+                      </a>
+                    </th>
+                    <td class="dev-gives">{endpoint.summary}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </Table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="page section" aria-labelledby="quota">
+    <div class="section-head">
+      <h2 class="headline" id="quota">{words.quotaTitle}</h2>
+    </div>
+    <p class="body dev-note">{words.quotaLead} {words.tiersLive}</p>
+    <div class="dev-prices">
+      <div class="panel stack-8">
+        <h3 class="title">{words.freeCallsTitle}</h3>
+        <Table
+          id="quota-table"
+          caption={words.quotaCaption}
+          columns={[
+            { key: 'plan', label: words.colPlan },
+            { key: 'holding', label: words.colHolding, align: 'end' },
+            { key: 'calls', label: words.colFreeCalls, align: 'end' },
+          ]}
+        >
+          <tbody>
+            <tr>
+              <th scope="row">{words.previewPlan}</th>
+              <td class="num">{words.previewHolding}</td>
+              <td class="num">{words.previewCalls}</td>
+            </tr>
+            {
+              tierRows.map((row) => (
+                <tr>
+                  <th scope="row">{row.plan}</th>
+                  <td class="num">{row.holding}</td>
+                  <td class="num">{row.calls}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </Table>
+      </div>
+      <div class="panel stack-8">
+        <h3 class="title" id="credits">{words.creditsTitle}</h3>
+        <p class="body">{words.creditsLead}</p>
+        <DefinitionList
+          labelWidth="8.5rem"
+          items={[
+            { term: words.creditPriceTerm, value: words.creditPriceValue },
+            { term: words.creditMinTerm, value: words.creditMinValue },
+            { term: words.creditConfirmTerm, value: words.creditConfirmValue },
+            { term: words.creditExpiryTerm, value: words.creditExpiryValue },
+            { term: words.ceilingTerm, value: words.ceilingValue },
+          ]}
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="page section dev-end" aria-labelledby="mcp">
+    <div class="section-head">
+      <h2 class="headline" id="mcp">{words.mcpTitle}</h2>
+    </div>
+    <p class="body dev-note">{words.mcpLead}</p>
+    <p class="small dev-note dev-tools">{tools}</p>
+    <div class="dev-samples">
+      <Code label={words.mcpConfigLabel} code={mcpConfig} {...copy} />
+      <Code label={words.mcpListLabel} code={mcpList} {...copy} />
+    </div>
+    <p class="small dev-notice">
+      <strong>{words.noticeTitle}.</strong>{' '}
+      {words.noticeBody}
+    </p>
+  </section>
+</Layout>
+
+<style>
+  /* The panel of .with-panel spans nine rows; this page has two blocks on the left. */
+  @media (min-width: 60em) {
+    .dev-top > :global(.panel) {
+      grid-row: 1 / span 2;
+    }
+
+    /* The head keeps its own height; what the panel adds below it goes to the second row. */
+    .dev-top {
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  .dev-main {
+    min-width: 0;
+  }
+
+  .dev-note {
+    margin-bottom: var(--space-16);
+  }
+
+  .section-head + .dev-note {
+    margin-top: calc(-1 * var(--space-8));
+  }
+
+  .dev-tools {
+    margin-top: calc(-1 * var(--space-8));
+    overflow-wrap: anywhere;
+  }
+
+  /* An endpoint is a name a developer reads letter by letter: Inter, tabular, never cut. */
+  /* A path breaks only after a slash, and from 960 pixels it keeps one line. */
+  @media (min-width: 60em) {
+    .dev-call {
+      white-space: nowrap;
+    }
+  }
+
+  /* A link that stands alone in a cell or a heading row is a target of at least 24 pixels. */
+  .dev-call a,
+  .dev-more {
+    display: inline-block;
+    padding-block: var(--space-4);
+  }
+
+  .dev-verb {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  /* A call and what it answers with start on one line, however many lines either takes. */
+  .dev-calls :global(tbody :is(th, td)) {
+    vertical-align: top;
+  }
+
+  .dev-calls :global(tbody tr:last-child > *) {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .dev-gives {
+    color: var(--grey);
+  }
+
+  .dev-prices,
+  .dev-samples {
+    display: grid;
+    gap: var(--gap-card);
+    align-items: start;
+  }
+
+  @media (min-width: 60em) {
+    .dev-prices,
+    .dev-samples {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .dev-prices :global(tbody tr:last-child > *) {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .dev-end {
+    padding-bottom: var(--space-48);
+  }
+
+  .dev-notice {
+    margin-top: var(--space-24);
+  }
+</style>

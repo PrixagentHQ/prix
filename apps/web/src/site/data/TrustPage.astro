@@ -1,0 +1,148 @@
+---
+// /trust: look up the public facts about a token, a launch address or a wallet.
+// One form in a panel, and beside it the place of the answer: empty until a lookup, then
+// loading, then the answer as one card, or an error in words. The server renders the form and
+// every state; the script only switches between them and fills the card. A lookup shows the
+// method, the facts and the blind spots, never a verdict.
+import Button from '../../design/Button.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Select from '../../design/Select.astro';
+import Skeleton from '../../design/Skeleton.astro';
+import TextInput from '../../design/TextInput.astro';
+import { readAccount } from '../../lib/account.ts';
+import PageHead from '../PageHead.astro';
+import ShareMeta from '../ShareMeta.astro';
+import { siteShareImage } from '../share.ts';
+import { developersWords, trustErrors, trustLabels, trustWords as words } from './words.ts';
+
+const account = await readAccount(Astro);
+const fixtureBuild = typeof __PRIX_FIXTURES__ !== 'undefined' && __PRIX_FIXTURES__;
+
+const clientWords = JSON.stringify({
+  labels: trustLabels,
+  errors: trustErrors,
+  unusable: words.unusable,
+  offline: words.offline,
+  badAddress: words.badAddress,
+  busyLabel: words.busySubmit,
+  headings: {
+    method: words.methodTitle,
+    facts: words.factsTitle,
+    observations: words.observationsTitle,
+    blindSpots: words.blindSpotsTitle,
+  },
+});
+---
+
+<Layout title={words.title} description={words.lead} current="developers" account={account}>
+  <ShareMeta slot="head" title={words.title} description={words.lead} image={siteShareImage()} />
+
+  <div class="page site-top with-panel trust-page" data-trust data-words={clientWords}>
+    <PageHead
+      title={words.title}
+      eyebrow={developersWords.eyebrow}
+      eyebrowHref="/developers"
+      lead={words.lead}
+      note={fixtureBuild ? words.fixtureNote : undefined}
+    />
+
+    <section class="panel trust-form" aria-labelledby="trust-form-title">
+      <h2 class="title" id="trust-form-title">{words.formTitle}</h2>
+      <form method="get" action="/trust" novalidate>
+        <Select
+          label={words.kindLabel}
+          name="kind"
+          options={[
+            { value: 'tokens', label: words.kindTokens, selected: true },
+            { value: 'developers', label: words.kindDevelopers },
+            { value: 'wallets', label: words.kindWallets },
+          ]}
+        />
+        <TextInput
+          label={words.addressLabel}
+          name="address"
+          hint={words.addressHint}
+          required
+          maxlength={42}
+          autocomplete="off"
+        />
+        <Button label={words.submit} type="submit" size="lg" wide />
+      </form>
+      <p class="panel-part small">
+        <strong>{words.noticeTitle}.</strong>{' '}
+        {developersWords.noticeBody}
+      </p>
+    </section>
+
+    <div class="trust-states" aria-live="polite">
+      <noscript>
+        <Notice tone="empty" title={words.noScriptTitle} body={words.noScriptBody} />
+      </noscript>
+      <div data-state="empty">
+        <EmptyState boxed title={words.emptyTitle} body={words.emptyBody} />
+      </div>
+      <div data-state="loading" hidden>
+        <div class="panel stack-16">
+          <p class="title">{words.loadingTitle}</p>
+          <Skeleton form="lines" count={2} label={words.loadingBody} />
+        </div>
+      </div>
+      <div data-state="error" hidden>
+        <Notice tone="error" title={words.errorTitle} body={words.unusable} />
+      </div>
+      <div data-state="result" class="panel trust-result" hidden></div>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .trust-page {
+    padding-bottom: var(--space-48);
+  }
+
+  /* The panel of .with-panel spans nine rows; this page has two blocks on the left. */
+  @media (min-width: 60em) {
+    .trust-page > .trust-form {
+      grid-row: 1 / span 2;
+    }
+
+    /* The head keeps its own height; what the panel adds below it goes to the second row. */
+    .trust-page {
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  .trust-states {
+    min-width: 0;
+  }
+
+  form {
+    display: grid;
+    gap: var(--space-16);
+  }
+
+  /* The card of an answer: its parts under hairlines, as the parts of a panel. */
+  .trust-result :global(.trust-block > * + *) {
+    margin-top: var(--space-8);
+  }
+
+  .trust-result :global(ul) {
+    display: grid;
+    gap: var(--space-8);
+    max-width: var(--measure);
+    padding-left: var(--space-24);
+    list-style: disc;
+  }
+
+  .trust-result :global(.trust-value) {
+    overflow-wrap: anywhere;
+  }
+</style>
+
+<script>
+  import { mountTrust } from './trust-page.ts';
+
+  mountTrust();
+</script>

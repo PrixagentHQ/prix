@@ -1,0 +1,19 @@
+---
+// A chip: one word about an agent. Open is an outline, Pro is solid ink, House carries the mark
+// of Prix, and the neutral one is the wash. Three shapes, so no colour has to tell them apart.
+// A chip is never a control.
+import PrixMark from './PrixMark.astro';
+
+interface Props {
+  label: string;
+  kind?: 'open' | 'pro' | 'house' | 'neutral';
+  class?: string;
+}
+
+const { label, kind = 'neutral', class: extra } = Astro.props;
+---
+
+<span class:list={['chip', kind !== 'neutral' && `chip--${kind}`, extra]}>
+  {kind === 'house' && <PrixMark />}
+  {label}
+</span>

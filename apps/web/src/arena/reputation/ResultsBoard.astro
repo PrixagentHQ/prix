@@ -1,0 +1,101 @@
+---
+// The standings of the listed agents, in the list form of the
+// board: one row per agent with its mark, its rank or medal, its chips and its return, then two
+// figures that fit the scoring method. Rows keep the API's order, and the page ranks nothing: a
+// row without a rank says why, from the row's own counts. Every value carries its own label for
+// assistive technology; the heads of the columns are a picture for the eye.
+import type { ScoringDivision, SeasonMethod, SeasonResultRow } from '@prix/contracts';
+import { formatCount, formatDrawdownBps, formatPercentBps } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentCard from '../../design/AgentCard.astro';
+import BoardList from '../../design/BoardList.astro';
+import { toneOf } from '../record.ts';
+import { confidenceWord, divisionChip, formatMilli, rankView, rowHref, unrankedNote } from './words.ts';
+
+interface Props {
+  rows: SeasonResultRow[];
+  division: ScoringDivision;
+  /** The scoring method: v2 rows show a score and its confidence, v1 rows their drawdown and days. */
+  method: SeasonMethod;
+  /** The name of the board for assistive technology. */
+  label: string;
+  /** True for records estimated from wallet activity: the return says so under it. */
+  estimated?: boolean;
+  id?: string;
+}
+
+const { rows, division, method, label, estimated = false, id = 'results' } = Astro.props;
+const v2 = method === 'v2';
+const words = {
+  score: text('reputation.colScore', 'Score'),
+  confidence: text('reputation.colConfidence', 'Confidence'),
+  drawdown: text('common.maxDrawdown', 'Max drawdown'),
+  days: text('common.tradingDays', 'Trading days'),
+  decisions: text('common.decisions', 'Decisions'),
+  notScored: text('reputation.notScoredShort', 'Not scored'),
+};
+const heads = {
+  rank: text('reputation.colRank', 'Rank'),
+  agent: text('reputation.colAgent', 'Agent'),
+  figure: text('reputation.colReturnShort', 'Return'),
+  line: '',
+  facts: v2 ? [words.score, words.confidence] : [words.drawdown, words.days],
+};
+const figureLabel = estimated
+  ? text('reputation.returnEstimatedLeague', 'Return, estimated')
+  : text('common.return', 'Return');
+
+function facts(row: SeasonResultRow): Array<{ label: string; value: string }> {
+  const drawdown = { label: words.drawdown, value: formatDrawdownBps(row.maxDrawdownBps) };
+  const days = { label: words.days, value: formatCount(row.tradingDays) };
+  const decisions = { label: words.decisions, value: formatCount(row.decidedCount) };
+  if (!v2) return [drawdown, days, decisions];
+  return [
+    { label: words.score, value: row.scoreMilli === null ? words.notScored : formatMilli(row.scoreMilli) },
+    { label: words.confidence, value: confidenceWord(row.confidence) ?? words.notScored },
+    drawdown,
+    days,
+  ];
+}
+---
+
+<div class="results">
+  <BoardList id={id} label={label} heads={heads} series={false}>
+    {
+      rows.map((row) => (
+        <AgentCard
+          href={rowHref(Astro.url, division, row.agentId)}
+          agentId={row.agentId}
+          name={row.name}
+          rank={rankView(row.rank)}
+          chips={[divisionChip(row.division)]}
+          figure={{ value: formatPercentBps(row.returnBps), label: figureLabel, tone: toneOf(row.returnBps) }}
+          facts={facts(row)}
+          note={row.rank === null ? unrankedNote(row) : undefined}
+        />
+      ))
+    }
+  </BoardList>
+</div>
+
+<style>
+  /*
+    These rows have no line and no follow control, so from 900 pixels the two figures take the
+    last two columns and reach the card's edge, and a note spans both, left-aligned, on one line
+    where it fits. "Not ranked" keeps one line in its column.
+  */
+  @media (min-width: 56.25em) {
+    .results :global(.board--list :is(.board-head, .agent-card)) {
+      grid-template-columns: 4.5rem 2.375rem minmax(0, 1fr) 6rem 8rem 8rem;
+    }
+
+    .results :global(.board--list .agent-card-note) {
+      grid-area: 1 / 5 / 3 / 7;
+      text-align: left;
+    }
+
+    .results :global(.board--list .agent-card-rank.is-unranked) {
+      white-space: nowrap;
+    }
+  }
+</style>

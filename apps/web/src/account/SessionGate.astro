@@ -1,0 +1,50 @@
+---
+// What the builder, the account page and the admin page show to somebody who is not signed
+// in: the sign-in control in place, so the person signs in where they were heading and stays
+// there. A session that ended and an account that could not be read each say so first.
+import { text } from '../content/index.ts';
+import { apiErrorText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import Notice from '../design/Notice.astro';
+import SignInPanel from './SignInPanel.astro';
+import type { Session } from './session.ts';
+import { herePath } from './session.ts';
+
+interface Props {
+  session: Exclude<Session, { state: 'signed-in' }>;
+  /** Shows the two steps of signing in, where there is room for them. */
+  steps?: boolean;
+  /** Steps after signing in, shown with the two of signing in: the builder's "Describe your agent". */
+  then?: Array<{ title: string; body: string }>;
+}
+
+const { session, steps = false, then = [] } = Astro.props;
+const here = herePath(Astro.url);
+---
+
+{
+  session.state === 'failed' ? (
+    <Notice
+      tone="error"
+      title={text('account.loadFailedTitle', 'Account not loaded')}
+      body={
+        session.code === 'daily_limit' || session.code === 'rate_limited'
+          ? apiErrorText(session.code)
+          : text('errors.accountLoadFailed', 'Your account could not be loaded. Reload the page to try again.')
+      }
+    >
+      <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+    </Notice>
+  ) : (
+    <div class="stack-24">
+      {session.state === 'ended' && (
+        <Notice
+          tone="error"
+          title={text('account.sessionEndedTitle', 'You are signed out')}
+          body={text('errors.sessionEnded', 'Your session has ended. Sign in again to continue.')}
+        />
+      )}
+      <SignInPanel next={here} steps={steps} then={then} level={3} />
+    </div>
+  )
+}

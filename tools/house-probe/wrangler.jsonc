@@ -1,0 +1,8 @@
+{
+  // A Worker for this machine only. It is never deployed: it exists so that `wrangler dev`
+  // gives the real decision prompt a real Workers AI binding.
+  "name": "prix-house-probe",
+  "main": "probe.ts",
+  "compatibility_date": "2026-10-01",
+  "ai": { "binding": "AI" }
+}

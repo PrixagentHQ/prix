@@ -1,0 +1,80 @@
+---
+// One decision in a feed: who decided, when, what changed, why, and the tag that says it is
+// the record of a simulation. The tag is required: no decision is shown without it.
+// It renders an `li`; put the rows in `<ol class="feed" role="list">`.
+//
+// With `agent` the row opens with the agent's mark and name, for a feed of many agents.
+// Without it the row opens with the time, for the feed on an agent's own page.
+//
+// `compact` is one or two lines, for a narrow column (the right of the home page): who and
+// when on the first, what changed and the tag on the second. The reason is not shown; the
+// agent's page has it.
+import AgentMark from './AgentMark.astro';
+import Chip from './Chip.astro';
+import { reasonBeyond } from './feed.ts';
+
+interface Props {
+  agent?: {
+    id: string;
+    name: string;
+    href: string;
+    chips?: Array<{ label: string; kind?: 'open' | 'pro' | 'house' | 'neutral' }>;
+  };
+  /** When: the ISO time for machines and the words for people ("7 Oct, 19:00 UTC"). */
+  time: { iso: string; label: string };
+  /** What changed: "Bought MU", "No trade". */
+  what: string;
+  /** How much, after `what` in grey: "1.2% of the portfolio". */
+  detail?: string;
+  /** Why, as the model wrote it. */
+  why?: string;
+  /** The tag: "Simulation record". */
+  tag: string;
+  /** One or two lines, for a narrow column. The reason is left out. */
+  compact?: boolean;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  agent,
+  time,
+  what,
+  detail,
+  why,
+  tag,
+  compact = false,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+// The reason says only what the title does not (feed.ts): "Kept the paper portfolio as it was;
+// no target changed." under that title becomes "No target changed.", and a reason that only
+// repeats the title is left out.
+const reason = why === undefined ? undefined : reasonBeyond(what, why);
+---
+
+<li class:list={['feed-row', agent && 'feed-row--who', compact && 'feed-row--compact']} data-feed-row {...rest}>
+  {agent && <AgentMark agentId={agent.id} name={agent.name} size="sm" />}
+  <p class="feed-row-head">
+    {
+      agent && (
+        <>
+          <a class="feed-row-name" href={agent.href}>
+            {agent.name}
+          </a>
+          {(agent.chips ?? []).map((chip) => (
+            <Chip label={chip.label} kind={chip.kind} />
+          ))}
+        </>
+      )
+    }
+    <time datetime={time.iso}>{time.label}</time>
+  </p>
+  <div class="feed-row-body">
+    <p class="feed-row-what">
+      {what}
+      {detail && <span>{detail}</span>}
+    </p>
+    {reason && !compact && <p class="feed-row-why">{reason}</p>}
+  </div>
+  <Chip label={tag} class="feed-row-tag" />
+</li>

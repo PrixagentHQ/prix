@@ -1,0 +1,106 @@
+---
+// The two agents of a rivalry, each with its animal (docs/DESIGN.md section 6: an agent shows its
+// mark in every row), the one ahead first, in the deck's sentence "{a} and {b}". With `href`, the
+// pair is one link to the rivalry; otherwise each name links to its agent.
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import { agentHref } from '../words.ts';
+import { parts, type RivalrySide } from './words.ts';
+
+interface Props {
+  ahead: RivalrySide;
+  behind: RivalrySide;
+  /** The rivalry's page: the whole pair becomes one link to it. */
+  href?: string;
+}
+
+const { ahead, behind, href } = Astro.props;
+// The template with its slots left as written, so each slot can be a mark and a name.
+const pieces = parts(text('social.rivalryPair', '{a} and {b}'), {});
+const sideOf = (piece: string) => (piece === '{a}' ? ahead : piece === '{b}' ? behind : null);
+const Wrap = href ? 'a' : 'span';
+---
+
+<Wrap class="pair" href={href}>
+  {
+    pieces.map((piece) => {
+      const side = typeof piece === 'string' ? sideOf(piece) : null;
+      if (!side) return <span class="pair-word">{(typeof piece === 'string' ? piece : piece.text).trim()}</span>;
+      return (
+        <span class="pair-agent">
+          <AgentMark agentId={side.id} name={side.name} size="sm" />
+          {href ? (
+            <span class="pair-name">{side.name}</span>
+          ) : (
+            <a class="pair-name" href={agentHref(Astro.url, side.id)}>
+              {side.name}
+            </a>
+          )}
+        </span>
+      );
+    })
+  }
+</Wrap>
+
+<style>
+  .pair {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-6);
+    min-width: 0;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  /*
+    The animal is centred beside the name, and the name gives the pair its baseline, so in a row
+    of a table the name stands on the baseline of the row's first figure.
+  */
+  .pair-agent {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+
+  .pair-agent :global(.agent-mark) {
+    align-self: center;
+  }
+
+  .pair-agent .pair-name {
+    display: inline-flex;
+    align-self: baseline;
+    align-items: center;
+    min-height: var(--space-24);
+  }
+
+  .pair-word {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  /* An agent's name in ink at 600, underlined only under the pointer, as in the league rows. */
+  .pair-name {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  a.pair:hover .pair-name,
+  a.pair-name:hover {
+    text-decoration: underline;
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels: the mark is 24. */
+  a.pair-name {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  a.pair,
+  a.pair-name {
+    min-height: var(--space-24);
+  }
+</style>

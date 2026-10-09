@@ -1,0 +1,313 @@
+---
+// The owner's agent, inside the account's first card: its mark, name and chips as on its own
+// page, its state, model and rank as a record, then its latest turn in words, then the actions
+// that change its state. The sentences written for the owner
+// (what to do about a pause, a failed key, a skipped turn) are shown here and nowhere public.
+import type { AgentOwnerView, AgentPublic, MarketStatus, ModelKeyPublic } from '@prix/contracts';
+import { deckText } from '../content/deck.ts';
+import { formatDay } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import {
+  divisionText,
+  marketClosedLabel,
+  marketClosedText,
+  pausedOwnerText,
+  unrankedLabel,
+  unrankedText,
+} from '../content/states.ts';
+import AsciiAvatar from '../design/ascii/AsciiAvatar.astro';
+import Button from '../design/Button.astro';
+import Chip from '../design/Chip.astro';
+import DefinitionList from '../design/DefinitionList.astro';
+import Notice from '../design/Notice.astro';
+import Select from '../design/Select.astro';
+import Feedback from './Feedback.astro';
+import { turnWords } from './turn.ts';
+import { keyOptionLabel, providerLabel } from './words.ts';
+
+interface Props {
+  agent: AgentOwnerView;
+  keys: ModelKeyPublic[];
+  /** The agent as anyone sees it, for its rank. Null when it is hidden or could not be read. */
+  record: AgentPublic | null;
+  /** Null when the market could not be read: the page then says nothing about it. */
+  market: MarketStatus | null;
+}
+
+const { agent, keys, record, market } = Astro.props;
+const key = keys.find((entry) => entry.id === agent.modelKeyId) ?? null;
+const paused = agent.status === 'paused';
+const turn = agent.lastDecision ? turnWords(agent.lastDecision) : null;
+
+// A paused agent has no rank, whatever the last public read says. The status line already says
+// why, so the rank cell gives only the word the league table uses.
+const rank = paused
+  ? { value: unrankedLabel('inactive') }
+  : !record
+    ? null
+    : record.rank !== null
+      ? {
+          value:
+            record.rankedCount === 1
+              ? text('common.rankOfOne', '{rank} of 1 ranked agent', { rank: record.rank })
+              : text('common.rankOfOther', '{rank} of {count} ranked agents', {
+                  rank: record.rank,
+                  count: record.rankedCount,
+                }),
+        }
+      : record.unrankedReason
+        ? { value: unrankedLabel(record.unrankedReason), detail: unrankedText(record.unrankedReason) }
+        : {
+            value: deckText('states.notRankedYet'),
+            detail: deckText('states.agentNoRoundYet'),
+          };
+
+const model =
+  agent.division === 'open'
+    ? { value: text('common.houseModel', 'House model') }
+    : key
+      ? {
+          value: text('modelKey.nameLine', '{provider}, {model}', {
+            provider: providerLabel(key.provider),
+            model: key.model,
+          }),
+          detail: text('modelKey.endingIn', 'Key ending in {last4}', { last4: key.last4 }),
+        }
+      : { value: text('common.noModel', 'No model key') };
+
+// A pause for a key or for slots has its own notice above, which explains it and holds the
+// action; the status line then only names the cause. Any other pause is explained here once.
+function pauseDetail(): string | undefined {
+  if (!paused || !agent.pausedReason || agent.pausedReason === 'slot_limit') return undefined;
+  if (agent.pausedReason === 'key_failing') return text('account.statusKeyFailing', 'Paused by Prix: key not accepted');
+  if (agent.pausedReason === 'key_removed') return text('account.statusKeyRemoved', 'Paused by Prix: key deleted');
+  return pausedOwnerText(agent.pausedReason);
+}
+
+// The name and the division are in the head of the card, so the record starts with the state.
+const facts = [
+  {
+    term: text('account.statusLabel', 'Status'),
+    value: paused ? deckText('states.paused') : deckText('states.active'),
+    detail: pauseDetail(),
+  },
+  { term: text('common.model', 'Model'), ...model },
+  ...(rank ? [{ term: text('common.rank', 'Rank'), ...rank }] : []),
+  { term: text('account.builtLabel', 'Built'), value: formatDay(agent.createdAt) },
+];
+
+// The owner can resume only a pause of their own. Every other pause ends another way, which
+// the status line above says.
+const keyPause =
+  paused && (agent.pausedReason === 'key_failing' || agent.pausedReason === 'key_removed') ? agent.pausedReason : null;
+// When the notice above explains a key pause, the latest turn that ended for the same cause
+// keeps only its heading: the sentences under it would say the pause a third time.
+const turnLines = turn && !(keyPause && agent.lastDecision?.status !== 'decided') ? turn.lines : [];
+const canResume = paused && agent.pausedReason === 'owner';
+// Resuming sits under the status row; the controls part holds pausing and the model key.
+// With no key to choose, a key pause leaves the controls nothing to say that its notice has not.
+const keyChoice = agent.division === 'pro' && !(keyPause && keys.length === 0);
+const hasControls = !paused || keyChoice;
+const act = (pausedNext: boolean) =>
+  JSON.stringify({
+    call: 'patch',
+    id: agent.id,
+    body: { paused: pausedNext },
+    done: pausedNext ? 'agent-paused' : 'agent-resumed',
+  });
+---
+
+<div class="acct-agent">
+  <AsciiAvatar id={agent.id} size="md" />
+  <div>
+    <p class="headline acct-agent-name">
+      {agent.hidden ? agent.name : <a href={`/agents/${agent.id}`}>{agent.name}</a>}
+    </p>
+    <p class="acct-agent-meta">
+      <Chip label={divisionText(agent.division)} kind={agent.division} />
+      {paused && <Chip label={deckText('states.paused')} />}
+    </p>
+  </div>
+</div>
+
+<div class="stack-24">
+  <div class="stack-24">
+    {
+      agent.hidden && (
+        <Notice
+          tone="status"
+          title={text('account.hiddenTitle', 'Hidden by Prix')}
+          body={deckText('states.hiddenOwner')}
+        />
+      )
+    }
+    {
+      market && !market.open && market.closedReason && (
+        <Notice
+          tone="status"
+          title={marketClosedLabel(market.closedReason)}
+          body={marketClosedText(market.closedReason)}
+        />
+      )
+    }
+    {
+      keyPause && (
+        <Notice
+          tone="error"
+          title={
+            keyPause === 'key_failing'
+              ? text('account.keyFailingTitle', 'Agent paused: model key not accepted')
+              : text('account.keyRemovedTitle', 'Agent paused: model key deleted')
+          }
+          body={
+            keyPause === 'key_failing'
+              ? text(
+                  'account.keyFailingBody',
+                  'Your provider refused the key or the model name in three turns in a row, so the agent makes no decisions. Add a working key below and choose it for the agent. It takes part again from the next round.',
+                )
+              : text(
+                  'account.keyRemovedBody',
+                  'You deleted the key this agent used, so it makes no decisions. Add a working key below and choose it for the agent. It takes part again from the next round.',
+                )
+          }
+        >
+          <Button href="#keys-heading" variant="secondary" label={text('account.addKeyAction', 'Add a model key')} />
+        </Notice>
+      )
+    }
+    {
+      paused && agent.pausedReason === 'slot_limit' && (
+        <Notice
+          tone="status"
+          title={text('account.slotLimitTitle', 'Agent paused: not enough slots')}
+          body={pausedOwnerText('slot_limit')}
+        >
+          <Button href="/account/token" variant="secondary" label={text('account.slotLimitAction', 'See your slots')} />
+        </Notice>
+      )
+    }
+    <DefinitionList items={facts} />
+    {
+      canResume && (
+        <div class="stack-16" data-scope>
+          <p>
+            <Button
+              label={text('account.resume', 'Resume agent')}
+              busyLabel={text('account.resuming', 'Resuming the agent')}
+              data-act={act(false)}
+            />
+          </p>
+          <Feedback failedTitle={text('account.resumeFailedTitle', 'The agent was not resumed')} />
+        </div>
+      )
+    }
+
+  </div>
+
+  <div class="panel-part stack-16">
+    <h3 class="title">{text('account.turnTitle', 'Latest turn')}</h3>
+    {
+      turn ? (
+        <div class="stack-8">
+          <p class="body">
+            <strong>{turn.heading}</strong>
+          </p>
+          {turn.reason && <p class="prose">{turn.reason}</p>}
+          {turnLines.map((line) => (
+            <p class="body">{line}</p>
+          ))}
+          {turn.reason && (
+            <p class="small">
+              {text(
+                'common.modelTextNote',
+                'Reasons and summaries are written by a model. They describe what a simulated portfolio did and are not advice.',
+              )}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div class="stack-8">
+          <p class="body">{deckText('states.noDecisionsYet')}</p>
+          {!paused && !agent.hidden && (
+            <p class="body">
+              {agent.division === 'open'
+                ? deckText('states.firstTurnOpen')
+                : deckText('states.firstTurnPro')}
+            </p>
+          )}
+        </div>
+      )
+    }
+  </div>
+
+  {
+    hasControls && (
+      <div class="panel-part">
+        <h3 class="visually-hidden">{text('account.controlsHeading', 'Change your agent')}</h3>
+        <div class="stack-24">
+        {
+          !paused && (
+            <div class="stack-16" data-scope>
+              <p class="small">
+                {text('account.pauseNote', 'A paused agent makes no decisions and has no rank until you resume it.')}
+              </p>
+              <p>
+                <Button
+                  label={text('account.pause', 'Pause agent')}
+                  busyLabel={text('account.pausing', 'Pausing the agent')}
+                  variant="secondary"
+                  data-act={act(true)}
+                />
+              </p>
+              <Feedback failedTitle={text('account.pauseFailedTitle', 'The agent was not paused')} />
+            </div>
+          )
+        }
+
+        {
+          keyChoice &&
+            (keys.length > 0 ? (
+              <form class="stack-16" method="dialog" novalidate data-agent-key-form data-agent={agent.id}>
+                <Select
+                  label={text('account.agentKeyLabel', 'Model key for this agent')}
+                  name="modelKeyId"
+                  hint={text(
+                    'methodology.changeRule',
+                    'A change to a prompt or a model key takes effect from the next round that starts after it. A round that has already read its prices skips the agent.',
+                  )}
+                  options={keys.map((entry) => ({
+                    value: entry.id,
+                    label: keyOptionLabel(entry),
+                    selected: entry.id === agent.modelKeyId,
+                  }))}
+                />
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  label={text('account.agentKeySave', 'Use this key')}
+                  busyLabel={text('account.agentKeySaving', 'Changing the key')}
+                />
+                <Feedback
+                  failedTitle={text('account.agentKeyFailedTitle', 'The key was not changed')}
+                  errors={{
+                    not_found: text(
+                      'account.agentKeyGone',
+                      'That model key is no longer saved. Reload the page and choose another key.',
+                    ),
+                  }}
+                />
+              </form>
+            ) : (
+              <p class="body">
+                {text(
+                  'account.agentKeyNone',
+                  'This Pro agent has no model key to run on. Add a key under Model keys, then choose it here.',
+                )}
+              </p>
+            ))
+        }
+        </div>
+      </div>
+    )
+  }
+</div>

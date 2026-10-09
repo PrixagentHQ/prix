@@ -1,0 +1,14 @@
+---
+import AdminPage from '../account/AdminPage.astro';
+import { readSession } from '../account/session.ts';
+import { statusForCode } from '../lib/status.ts';
+
+// The status is decided here, because a component cannot set it. A wallet that is signed in
+// and is not an administrator gets 403 with the page that says so. A visitor who is not
+// signed in gets the sign-in, as 200. The API checks the wallet again on every call.
+const session = await readSession(Astro);
+if (session.state === 'signed-in' && !session.me.isAdmin) Astro.response.status = 403;
+else if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+---
+
+<AdminPage />

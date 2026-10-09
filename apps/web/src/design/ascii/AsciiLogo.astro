@@ -1,0 +1,26 @@
+---
+// The logo: the mascot printed in characters beside the word Prix, both in the same monospace.
+// The word is text and names the logo; the mascot beside it is a picture and is hidden from
+// assistive technology. The mascot stands without a tile, in the blue of an action.
+import AsciiPicture from './AsciiPicture.astro';
+import { type Mascot, mascot } from './mascot.ts';
+
+interface Props {
+  /** Which candidate. The operator picks one; the other two leave with the review sheet. */
+  mascot?: Mascot;
+  /** `sm`: a 40 pixel mascot and a 22 pixel word, for the header. `lg`: 128 and 56. */
+  size?: 'sm' | 'lg';
+  /** Without the word: the mascot alone, named "Prix". */
+  bare?: boolean;
+  class?: string;
+}
+
+const { mascot: name = 'bull', size = 'sm', bare = false, class: extra } = Astro.props;
+const grid = mascot(name, size === 'lg' ? 'large' : 'small');
+---
+
+<span class:list={['ascii-logo', `ascii-logo--${size}`, extra]}
+  ><AsciiPicture grid={grid} hue="prix" size={size} label={bare ? 'Prix' : undefined} class="ascii--bare" />{
+    !bare && <span class="ascii-word">Prix</span>
+  }</span
+>

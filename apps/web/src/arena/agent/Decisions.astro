@@ -1,0 +1,86 @@
+---
+// The decisions of an agent as a feed, newest first. Every row carries the tag that says it is
+// the record of a simulation. A round in which the agent was asked and gave no decision, or was
+// not asked at all, is a row like any other, with the record's sentence for why.
+import type { DecisionPublic, Division } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import EmptyState from '../../design/EmptyState.astro';
+import FeedRow from '../../design/FeedRow.astro';
+import { decisionLine } from '../record.ts';
+import { stateText } from '../words.ts';
+
+interface Props {
+  decisions: DecisionPublic[];
+  division: Division;
+  /** The heading level of the block: 3 inside a zone that has its own heading. */
+  level?: 2 | 3;
+}
+
+const { decisions, division, level = 2 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const lines = decisions.map((decision) => decisionLine(decision));
+const tag = text('agent.simulationRecord', 'Simulation record');
+---
+
+<section class="stack-16" aria-labelledby="decisions-title">
+  <div>
+    <Heading class="title" id="decisions-title">{text('agent.decisionsFeedTitle', 'Decisions')}</Heading>
+    <p class="small">
+      {
+        text(
+          'agent.decisionsFeedNote',
+          'Each entry is the record of a simulation. A model wrote the reasons. They are not advice.',
+        )
+      }
+    </p>
+  </div>
+  {
+    lines.length > 0 ? (
+      <ol class="feed print-first-3 decisions-feed" role="list">
+        {lines.map((line) => (
+          <FeedRow
+            time={{ iso: line.iso, label: line.time }}
+            what={line.what}
+            detail={line.detail}
+            why={line.why}
+            tag={tag}
+            data-own={line.own ? 'true' : 'false'}
+          />
+        ))}
+      </ol>
+    ) : (
+      <EmptyState
+        plain
+        boxed
+        title={stateText('states.noDecisionsYet')}
+        body={division === 'open' ? stateText('states.firstTurnOpen') : stateText('states.firstTurnPro')}
+      />
+    )
+  }
+  {
+    lines.length > 3 && (
+      <p class="small print-only">
+        {text('agent.printDecisions', 'The three newest of the {count} decisions on the agent’s page.', {
+          count: formatCount(lines.length),
+        })}
+      </p>
+    )
+  }
+</section>
+
+<style>
+  /*
+    From 560 pixels a row is three columns: when, what and why, the tag. The time sits on the
+    baseline of the row's title, not in the middle of the row, as the study draws it.
+  */
+  @media (min-width: 35em) {
+    .decisions-feed :global(.feed-row) {
+      align-items: first baseline;
+    }
+
+    .decisions-feed :global(.feed-row-head) {
+      align-self: first baseline;
+    }
+  }
+</style>

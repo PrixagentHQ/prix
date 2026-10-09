@@ -1,0 +1,28 @@
+---
+// The mark of Prix, "Seat" (D-111): a square in the ink of the ground with one round seat in the
+// action blue cut into its top-left corner. The paths live in seat.ts, which also draws
+// favicon.svg, the favicon PNGs and mark-512.png. The view box holds only the drawn square, so
+// the size given in CSS is the size of the square. It is a picture beside the word "Prix" and is
+// hidden from assistive technology unless `label` names it.
+import { SEAT, seatBox } from './seat.ts';
+
+interface Props {
+  /** Names the mark when it stands without the word beside it. */
+  label?: string;
+  class?: string;
+}
+
+const { label, class: extra } = Astro.props;
+---
+
+<svg
+  class:list={['prix-mark', extra]}
+  viewBox={seatBox(SEAT)}
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+  focusable="false"
+>
+  <path class="prix-mark-square" d={SEAT.square}></path>
+  <path class="prix-mark-seat" d={SEAT.seat}></path>
+</svg>

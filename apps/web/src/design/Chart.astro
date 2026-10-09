@@ -1,0 +1,230 @@
+---
+// The line of a portfolio over time, with the figure it ends on, range tabs and a crosshair.
+// The server draws every range, so the chart is whole without script: the figure, the line of
+// the widest range, its grid and its dates. With script (motion/crosshair.ts, which this
+// component brings itself) the pointer, a finger or the arrow keys move a crosshair along the
+// line, the figure above follows it, and the range tabs appear.
+//
+// Every word is a prop, already formatted by the page. With `figure="return"` the large figure
+// at each point is the return since `start`, worked out here for display (chart.ts,
+// `returnFigure`), and the value and time stand beside it. Do not render it for fewer than two
+// points: show an EmptyState instead.
+//
+// The dates under the plot sit under their own points: both ends and up to three between them
+// (chart.ts, `axisDates`), so the date of the crosshair always matches the axis. With five points
+// or fewer every date stays at every width; with more, under 560
+// pixels every other date between the ends gives way, as in SeriesChart, so two dates never meet.
+import { areaId, axisDates, givesWayWhenNarrow, LINE, lineArea, linePlot, returnFigure } from './chart.ts';
+
+interface Point {
+  /** The portfolio value, as a number: the geometry, and with `figure="return"` the return. */
+  value: number;
+  /**
+   * The large figure at this point: "+9.84%". With `figure="return"` it may be left out and is
+   * worked out from `value` and `start`; give it on the latest point to show the API's own return.
+   */
+  figure?: string;
+  /** Only when `figure` is signed. Worked out with it when `figure` is. */
+  tone?: 'gain' | 'loss';
+  /** The line beside the figure: "$10,984.00 on 7 Oct, 19:00 UTC". */
+  detail: string;
+  /** The label of the crosshair: "7 Oct, 19:00 UTC". */
+  tip: string;
+  /** The short label under the plot: "7 Oct". */
+  tick: string;
+}
+
+interface Props {
+  /** Unique on the page. */
+  id: string;
+  /** Oldest first. Start with the value the season started with. */
+  points: Point[];
+  /** What the large figure is: "Season return". */
+  label: string;
+  /** The text alternative of the plot, and how to read it: "Portfolio value by round. Use the arrow keys to move through the rounds." */
+  alt: string;
+  /** The value the grey dotted line marks: what every agent starts a season with. */
+  baseline?: number;
+  /** Formats the value of a grid line: 10500 becomes "$10,500". */
+  formatTick: (value: number) => string;
+  /** The ranges, narrowest first. `last` is how many of the latest points a range shows; leave it out for all of them. */
+  ranges?: Array<{ label: string; last?: number; current?: boolean }>;
+  /** The name of the range tabs for assistive technology: "Range". */
+  rangesLabel?: string;
+  /**
+   * What the large figure is at each point. `value` (the default): each point's own `figure`.
+   * `return`: the signed, toned return since `start` at that point, so a person moving along
+   * the line reads one kind of figure everywhere.
+   */
+  figure?: 'value' | 'return';
+  /** With `figure="return"`: the value the season started with. Defaults to `baseline`. */
+  start?: number;
+  /** Marks the large figure for motion/count.ts. */
+  animate?: boolean;
+}
+
+const {
+  id,
+  points: given,
+  label,
+  alt,
+  baseline,
+  formatTick,
+  ranges = [],
+  rangesLabel,
+  figure: kind = 'value',
+  start = baseline,
+  animate = false,
+} = Astro.props;
+const lastIndex = given.length - 1;
+// The figure of every point, as it will be shown. With `return`, a point without its own figure
+// gets the return since `start`; the latest point keeps the API's figure when the page gives it.
+const points = given.map((point, index) => {
+  if (kind !== 'return' || start === undefined) return { ...point, figure: point.figure ?? '' };
+  if (index === lastIndex && point.figure !== undefined) return { ...point, figure: point.figure };
+  const derived = returnFigure(point.value, start);
+  return { ...point, figure: derived.text, tone: derived.tone };
+});
+const latest = points[lastIndex];
+// The gradient under each range's line has an id of its own on the page.
+const areaKey = areaId();
+const allRanges = ranges.length > 0 ? ranges : [{ label: '', current: true }];
+const chosen = Math.max(
+  0,
+  allRanges.findIndex((range) => range.current),
+);
+
+const panels = allRanges.map((range, index) => {
+  const first = range.last === undefined ? 0 : Math.max(0, lastIndex - Math.max(1, range.last - 1));
+  const part = points.slice(first);
+  // The whole season always shows the value it started with. A narrower range is scaled to itself.
+  const plot = linePlot(
+    part.map((point) => point.value),
+    range.last === undefined ? baseline : undefined,
+  );
+  return {
+    label: range.label,
+    current: index === chosen,
+    first,
+    plot,
+    endY: plot.y(latest?.value ?? 0),
+    ticks: plot.ticks.map((tick) => ({ y: plot.y(tick), label: formatTick(tick), base: tick === baseline })),
+    days: axisDates(part.length).map((date, at, all) => ({
+      ...date,
+      label: part[date.index]?.tick ?? '',
+      between: givesWayWhenNarrow(part.length, at, all.length),
+    })),
+  };
+});
+
+// What the crosshair needs of each point, in the order motion/crosshair.ts reads it.
+const data = JSON.stringify(
+  points.map((point) => [
+    point.value,
+    point.figure,
+    point.tone === 'gain' ? 1 : point.tone === 'loss' ? -1 : 0,
+    point.detail,
+    point.tip,
+  ]),
+);
+---
+
+{
+  latest && (
+    <figure class="linechart" id={id} data-chart data-points={data}>
+      <div class="linechart-head">
+        <p class:list={['figure-40', latest.tone]} data-chart-figure data-count={animate ? '' : undefined}>
+          {latest.figure}
+        </p>
+        <p class="linechart-about">
+          <b>{label}</b>
+          <span data-chart-detail>{latest.detail}</span>
+        </p>
+      </div>
+      {panels.map((panel, index) => (
+        <div
+          data-range={index}
+          data-first={panel.first}
+          data-lo={panel.plot.lo}
+          data-hi={panel.plot.hi}
+          hidden={!panel.current}
+        >
+          <div
+            class:list={['linechart-plot', latest.tone]}
+            tabindex="0"
+            role="slider"
+            aria-label={alt}
+            aria-valuemin={panel.first}
+            aria-valuemax={lastIndex}
+            aria-valuenow={lastIndex}
+            aria-valuetext={`${latest.detail}, ${latest.figure}`}
+            data-chart-plot
+          >
+            <svg class="linechart-grid" aria-hidden="true" focusable="false">
+              {panel.ticks.map((tick) => (
+                <>
+                  <line class:list={[tick.base && 'is-base']} x1="0" x2="100%" y1={`${tick.y}%`} y2={`${tick.y}%`} />
+                  <text x="100%" dx="10" y={`${tick.y}%`}>
+                    {tick.label}
+                  </text>
+                </>
+              ))}
+            </svg>
+            <div class="linechart-clip">
+              <svg
+                viewBox={`0 0 ${LINE.width} ${LINE.height}`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <defs>
+                  <linearGradient id={`${areaKey}-${index}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop class="area-from" offset="0" />
+                    <stop class="area-to" offset="1" />
+                  </linearGradient>
+                </defs>
+                <path class="linechart-area" d={lineArea(panel.plot.d)} fill={`url(#${areaKey}-${index})`} />
+                <path class="linechart-line" d={panel.plot.d} />
+              </svg>
+            </div>
+            <svg class="linechart-over" aria-hidden="true" focusable="false">
+              <line class="linechart-cross" x1="100%" x2="100%" y1="0" y2="100%" />
+              <circle cx="100%" cy={`${panel.endY}%`} r="5" />
+            </svg>
+            <span class="linechart-tip" aria-hidden="true" />
+          </div>
+          <svg class="linechart-x" aria-hidden="true" focusable="false">
+            {panel.days.map((day) => (
+              <text
+                class:list={[day.between && 'is-between']}
+                x={`${day.x}%`}
+                y="0"
+                dy="0.75em"
+                text-anchor={day.anchor}
+                data-index={day.index}
+              >
+                {day.label}
+              </text>
+            ))}
+          </svg>
+        </div>
+      ))}
+      <div class="linechart-meta">
+        <slot />
+        {ranges.length > 1 && (
+          <div class="pill-tabs pill-tabs--plain" role="group" aria-label={rangesLabel} hidden data-chart-ranges>
+            {panels.map((panel, index) => (
+              <button type="button" aria-pressed={panel.current ? 'true' : 'false'} data-range-button={index}>
+                {panel.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </figure>
+  )
+}
+
+<script>
+  import './motion/crosshair.ts';
+</script>

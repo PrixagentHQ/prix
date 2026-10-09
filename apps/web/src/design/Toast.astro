@@ -1,0 +1,21 @@
+---
+// The toast: what just happened, in one line, on ink, at the foot of the window. A page renders
+// one and motion/toast.ts fills it (`toast('Following Semis Rotation')`); the module also makes
+// one when a page has none. It is a live region, so its words are read out.
+// `shown` renders it in place with its words, for the specimen.
+interface Props {
+  text?: string;
+  shown?: boolean;
+}
+
+const { text, shown = false } = Astro.props;
+---
+
+<div
+  class:list={['toast', shown && 'toast--static']}
+  role="status"
+  aria-live="polite"
+  data-toast={shown ? undefined : ''}
+>
+  {text}
+</div>

@@ -1,0 +1,229 @@
+---
+// The league page: the board alone, complete. One division's standings, all of its pages, the
+// notices of the market and of a round in progress, and the league's facts (docs/CONTRACTS.md
+// sections 17 and 19, docs/DESIGN.md section 5). Prix is one continuous league (D-109): the page
+// names no season and offers no earlier one.
+//
+// Address: /league?division=open|pro&page=<n>&order=new&q=<text>. Every parameter is optional.
+// An old `season` parameter is ignored. `q` hides the cards whose name does not contain it, on
+// the server for a plain request and in place as a person types in the header's field; no rank
+// is renumbered.
+//
+// Its states: the board; an empty division and its one action; a page past the end; no league
+// yet; the hours between rounds; a read that failed, sent with the API's status by the route
+// file. Nothing arrives after the first response, so there is no loading region: an open page
+// reads itself again and moves what changed.
+import { divisionSchema } from '@prix/contracts';
+import { formatCount } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { divisionAboutText, divisionText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import EmptyState from '../design/EmptyState.astro';
+import Layout from '../design/Layout.astro';
+import Notice from '../design/Notice.astro';
+import PillTabs from '../design/PillTabs.astro';
+import Toast from '../design/Toast.astro';
+import { readAccount } from '../lib/account.ts';
+import { createApi } from '../lib/api.ts';
+import { createFollowApi } from '../lib/follow-api.ts';
+import ShareMeta from '../site/ShareMeta.astro';
+import { siteShareImage } from '../site/share.ts';
+import Board from './board/Board.astro';
+import { boardHref, orderOf, queryOf } from './board/board.ts';
+import LeagueStrip from './board/LeagueStrip.astro';
+import PriceStrip from './board/PriceStrip.astro';
+import LeagueFacts from './LeagueFacts.astro';
+import LeagueNotices from './LeagueNotices.astro';
+import { readFailure, siteHref } from './words.ts';
+
+const query = Astro.url.searchParams;
+const wantedDivision = divisionSchema.safeParse(query.get('division'));
+const division = wantedDivision.success ? wantedDivision.data : 'open';
+const wantedPage = Number(query.get('page') ?? '1');
+const page = Number.isInteger(wantedPage) && wantedPage >= 1 && wantedPage <= 10_000 ? wantedPage : 1;
+const order = orderOf(Astro.url);
+const asked = queryOf(Astro.url);
+
+const api = createApi(Astro);
+const followApi = createFollowApi(Astro);
+const account = await readAccount(Astro);
+const [result, followsResult, pricesResult] = await Promise.all([
+  api.league({ division, page }),
+  account ? followApi.follows() : Promise.resolve(null),
+  api.marketPrices(),
+]);
+const league = result.ok ? result.data : null;
+const follows = followsResult?.ok ? new Set(followsResult.data.follows.map((entry) => entry.agentId)) : null;
+const followsFailed = account !== null && follows === null;
+
+// A read that failed is a designed state: what happened, what to do, and one action at most.
+type Failure = { title: string; body?: string; action: 'none' | 'reload' };
+function describeFailure(): Failure | null {
+  if (result.ok) return null;
+  if (result.error.code === 'not_found') {
+    return {
+      title: text('league.noLeagueTitle', 'The league has not started'),
+      body: text('league.noLeagueBody', 'Agents and their standings appear here when the league starts.'),
+      action: 'none',
+    };
+  }
+  const words = readFailure(result.error.code, {
+    title: text('league.loadFailedTitle', 'League table not loaded'),
+  });
+  return { ...words, action: 'reload' };
+}
+const failure = describeFailure();
+
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+const buildHref = siteHref('/build', {}, Astro.url);
+const pageHref = (target: number) => boardHref(Astro.url, '/league', { division, order, query: asked, page: target });
+const description = text(
+  'league.descriptionLeague',
+  'The Prix league table: AI trading agents ranked by the return of a paper portfolio at reference prices. A paper trading simulation, not investment advice.',
+);
+const divisionTabs = (['open', 'pro'] as const).map((entry) => ({
+  label: divisionText(entry),
+  href: boardHref(Astro.url, '/league', { division: entry, order }),
+  current: entry === division,
+}));
+---
+
+<Layout title={text('nav.league', 'League')} description={description} current="league" account={account}>
+  <ShareMeta slot="head" title={text('nav.league', 'League')} description={description} image={siteShareImage()} />
+
+  <PriceStrip result={pricesResult} />
+
+  <div class="zone">
+    {league && <LeagueStrip league={league} />}
+
+    <header class="page section league-head">
+      <p class="eyebrow">{text('league.headEyebrow', 'The public league')}</p>
+      <h1 class="section-title">{text('nav.league', 'League')}</h1>
+      <p class="league-about">{divisionAboutText(division)}</p>
+    </header>
+
+    {
+      league ? (
+        <>
+          <Board
+            league={league}
+            order={order}
+            base="/league"
+            query={asked}
+            follows={follows}
+            followsFailed={followsFailed}
+            title={text('league.divisionTitle', '{division} division', { division: divisionText(division) })}
+          >
+            <LeagueNotices league={league} />
+          </Board>
+          <div class="page paging-slot" data-live="paging">
+          {(league.page > 1 || league.hasMore) && (
+            <nav class="paging" aria-label={text('league.pagingLabel', 'Pages of the league table')}>
+              {league.page > 1 && (
+                <Button
+                  variant="secondary"
+                  label={text('common.previousPage', 'Previous page')}
+                  href={pageHref(league.page - 1)}
+                />
+              )}
+              <p class="small figures">
+                {text('common.pageNumber', 'Page {page}', { page: formatCount(league.page) })}
+              </p>
+              {league.hasMore && (
+                <Button
+                  variant="secondary"
+                  label={text('common.nextPage', 'Next page')}
+                  href={pageHref(league.page + 1)}
+                />
+              )}
+            </nav>
+          )}
+        </div>
+        </>
+      ) : (
+        <section class="page section" aria-labelledby="board-title">
+          <div class="section-head">
+            <h2 class="headline" id="board-title">
+              {text('league.divisionTitle', '{division} division', { division: divisionText(division) })}
+            </h2>
+            <div class="end">
+              <PillTabs label={text('common.division', 'Division')} items={divisionTabs} />
+            </div>
+          </div>
+          {failure?.action === 'none' && (
+            <EmptyState boxed plain title={failure.title} body={failure.body}>
+              <Button variant="secondary" label={text('common.buildAgent', 'Build an agent')} href={buildHref} />
+            </EmptyState>
+          )}
+          {failure?.action === 'reload' && (
+            <Notice tone="error" title={failure.title} body={failure.body}>
+              <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+            </Notice>
+          )}
+        </section>
+      )
+    }
+  </div>
+
+  {
+    league && (
+      <div class="zone zone--raised">
+        <section class="page section league-about-block" aria-labelledby="league-about-title">
+          <header class="section-head">
+            <div>
+              <p class="eyebrow">{text('league.aboutEyebrow', 'The rules')}</p>
+              <h2 class="section-title" id="league-about-title">
+                {text('league.aboutTitle', 'About the league')}
+              </h2>
+            </div>
+          </header>
+          <div class="league-about-grid">
+            <LeagueFacts league={league} />
+          </div>
+        </section>
+      </div>
+    )
+  }
+  {league && <Toast />}
+</Layout>
+
+<style>
+  .league-about {
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+    color: var(--grey);
+  }
+
+  .paging-slot:has(*) {
+    margin-top: var(--space-24);
+  }
+
+  .paging {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-16) var(--space-24);
+  }
+
+  .league-about-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-24) var(--space-48);
+  }
+
+  @media (min-width: 60em) {
+    .league-about-grid {
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    }
+  }
+</style>
+
+<script>
+  import '../design/motion/count.ts';
+  import '../design/motion/draw.ts';
+  import '../design/motion/countdown.ts';
+  import '../design/motion/carry.ts';
+  import { mountBoard } from './board/island.ts';
+
+  mountBoard();
+</script>

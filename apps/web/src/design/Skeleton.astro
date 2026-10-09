@@ -1,0 +1,51 @@
+---
+// The shape of what is loading, on the wash, in the place and at the size the content will
+// take. It does not pulse. Its words are read out; the bars are a picture.
+//
+//   card    a card of a board
+//   row     a row of a feed or of the table form
+//   chart   a figure and a plot
+//   lines   three lines of text
+interface Props {
+  form?: 'card' | 'row' | 'chart' | 'lines';
+  /** How many to render. */
+  count?: number;
+  /** What is loading, in words: "Loading the league". */
+  label: string;
+}
+
+const { form = 'lines', count = 1, label } = Astro.props;
+const each = Array.from({ length: Math.max(1, count) }, (_, index) => index);
+---
+
+<span class="visually-hidden" role="status">{label}</span>
+{
+  each.map(() =>
+    form === 'card' ? (
+      <div class="card skeleton skeleton--card" aria-hidden="true">
+        <span class="skeleton-mark" />
+        <span class="skeleton-bar skeleton-bar--short" />
+        <span class="skeleton-bar" />
+        <span class="skeleton-bar skeleton-bar--figure" />
+        <span class="skeleton-bar skeleton-bar--short" />
+      </div>
+    ) : form === 'row' ? (
+      <div class="skeleton skeleton--row" aria-hidden="true">
+        <span class="skeleton-mark" />
+        <span class="skeleton-bar skeleton-bar--short" />
+        <span class="skeleton-bar" />
+      </div>
+    ) : form === 'chart' ? (
+      <div class="skeleton" aria-hidden="true">
+        <span class="skeleton-bar skeleton-bar--figure" />
+        <span class="skeleton-bar skeleton-bar--chart" />
+      </div>
+    ) : (
+      <div class="skeleton" aria-hidden="true">
+        <span class="skeleton-bar" />
+        <span class="skeleton-bar" />
+        <span class="skeleton-bar skeleton-bar--short" />
+      </div>
+    ),
+  )
+}

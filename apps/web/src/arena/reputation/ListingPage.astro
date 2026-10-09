@@ -1,0 +1,564 @@
+---
+// One listed agent: its estimated standing as a band of figures, who claimed it and how anyone
+// can check that, its estimated record day by day, and the newest events the record is built
+// from, each with a link to the explorer. Every figure here is estimated, and the page says so
+// before the first one.
+import { LISTING_EVENTS_PAGE } from '@prix/contracts';
+import {
+  formatAddress,
+  formatCount,
+  formatDateTimeUtc,
+  formatDay,
+  formatDayShort,
+  formatDrawdownBps,
+  formatPercentBps,
+  formatUsdMicro,
+} from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Chip from '../../design/Chip.astro';
+import CopyButton from '../../design/CopyButton.astro';
+import DefinitionList from '../../design/DefinitionList.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import Medal from '../../design/Medal.astro';
+import Panel from '../../design/Panel.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import { toneOf } from '../record.ts';
+import { fetchListing } from './client.ts';
+import EstimatedNote from './EstimatedNote.astro';
+import ReadFailure from './ReadFailure.astro';
+import { formatMilli, listedHref, rankView, recordHref, syncWords, unrankedWords } from './words.ts';
+
+const id = Astro.params.id ?? '';
+const account = await readAccount(Astro);
+const result = await fetchListing(Astro, id);
+const listing = result.ok ? result.data.listing : null;
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+
+const dayColumns = [
+  { key: 'day', label: text('reputation.colDay', 'Day') },
+  { key: 'return', label: text('reputation.colDayReturn', 'Day return'), align: 'end' as const },
+  { key: 'index', label: text('reputation.colIndexShort', 'Record value'), align: 'end' as const },
+  { key: 'events', label: text('reputation.colEvents', 'Events'), align: 'end' as const },
+];
+const eventColumns = [
+  { key: 'day', label: text('reputation.colDay', 'Day') },
+  { key: 'token', label: text('reputation.colToken', 'Token') },
+  { key: 'direction', label: text('reputation.colDirection', 'Direction') },
+  { key: 'amount', label: text('reputation.colAmount', 'Amount'), align: 'end' as const },
+  { key: 'kind', label: text('reputation.colKind', 'Kind') },
+];
+const title = listing ? listing.name : text('reputation.listingTitleBare', 'Listed agent');
+
+const standing = listing?.standing ?? null;
+const rank = rankView(standing?.rank ?? null);
+const standingItems = standing
+  ? [
+      {
+        label: text('reputation.returnEstimatedLeague', 'Return, estimated'),
+        value: formatPercentBps(standing.returnBps),
+        tone: toneOf(standing.returnBps),
+      },
+      { label: text('common.maxDrawdown', 'Max drawdown'), value: formatDrawdownBps(standing.maxDrawdownBps) },
+      { label: text('common.tradingDays', 'Trading days'), value: formatCount(standing.tradingDays) },
+      {
+        label: text('reputation.colScore', 'Score'),
+        value:
+          standing.scoreMilli === null
+            ? text('reputation.notScoredShort', 'Not scored')
+            : formatMilli(standing.scoreMilli),
+      },
+    ]
+  : [];
+
+// The signature is long: the page shows its two ends, and the button copies all of it.
+const signature = listing?.claimSignature ?? '';
+const shortSignature = signature.length > 24 ? `${signature.slice(0, 12)}…${signature.slice(-8)}` : signature;
+const claimLines = (listing?.claimMessage ?? '').split('\n').filter((line) => line.trim() !== '');
+---
+
+<Layout
+  title={title}
+  description={text(
+    'reputation.listingDescription',
+    'A listed on-chain agent: its signed claim, an estimated record built from public wallet activity, and the events behind it. Not investment advice.',
+  )}
+  current="listed"
+  account={account}
+>
+  {
+    !listing ? (
+      <section class="page section stack-24">
+        <h1 class="display">{title}</h1>
+        <ReadFailure
+          error={result.ok ? { code: 'internal', message: '', field: null } : result.error}
+          subject={text('reputation.subjectListing', 'This listed agent')}
+          here={here}
+        />
+      </section>
+    ) : (
+      <>
+        <div class="zone">
+        <header class="page section rep-head">
+          <AgentMark agentId={listing.id} name={listing.name} size="xl" carry />
+          <div class="rep-who">
+            <p class="small rep-trail">
+              <a href={listedHref(Astro.url)}>{text('reputation.backToListed', 'All listed agents')}</a>
+            </p>
+            <h1 class="display rep-name" data-carry="name">
+              {title}
+            </h1>
+            <p class="rep-meta">
+              <span class:list={['rep-rank', 'figures', rank.unranked && 'is-unranked']}>
+                {rank.place ? <Medal rank={rank.place} label={rank.label ?? rank.text} /> : rank.text}
+              </span>
+              <Chip label={text('reputation.listedChip', 'Listed')} />
+              {listing.verified && <Chip label={text('reputation.verifiedChip', 'Verified')} />}
+            </p>
+          </div>
+        </header>
+
+        <div class="page section">
+          <EstimatedNote long={false} href={`${listedHref(Astro.url)}#estimate`} />
+        </div>
+
+        <section class="page section" aria-labelledby="listing-standing">
+          <div class="section-head">
+            <h2 class="headline" id="listing-standing">
+              {text('reputation.listingStandingLeague', 'Standing')}
+            </h2>
+          </div>
+          {standing ? (
+            <div class="stack-12">
+              <FigureBand
+                label={text('reputation.standingCaption', 'Estimated standing of this listed agent')}
+                items={standingItems}
+              />
+              {standing.rank === null && (
+                <p class="small rep-lead">{unrankedWords(standing.unrankedReason, standing.method)}</p>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              plain
+              boxed
+              title={text('reputation.noStandingTitle', 'Not ranked yet')}
+              body={text(
+                'reputation.noStandingBodyLeague',
+                'No day has been scored for this wallet yet, so there is no standing and no figure to show.',
+              )}
+            />
+          )}
+          {listing.track && (
+            <p class="small rep-links">
+              <a href={recordHref(Astro.url, listing.track.agentId)}>
+                {text('reputation.fullRecord', 'See the full track record')}
+              </a>
+            </p>
+          )}
+        </section>
+        </div>
+
+        <div class="zone zone--raised">
+        <div class="page section rep-two">
+          <section aria-labelledby="listing-facts">
+            <h2 class="title" id="listing-facts">
+              {text('reputation.listingFacts', 'The listing')}
+            </h2>
+            <DefinitionList
+              labelWidth="8.5rem"
+              items={[
+                { term: text('reputation.factWallet', 'Wallet'), value: formatAddress(listing.wallet), href: listing.explorerUrl },
+                { term: text('reputation.factListed', 'Listed'), value: formatDateTimeUtc(listing.claimedAt) },
+                {
+                  term: text('reputation.factVerified', 'Verified'),
+                  value: listing.verified ? text('common.yes', 'Yes') : text('common.no', 'No'),
+                  detail: listing.verified
+                    ? text(
+                        'reputation.verifiedYesDetail',
+                        'The account that claimed this wallet holds the Prix token. It says nothing about the wallet’s record.',
+                      )
+                    : text('reputation.verifiedNoDetail', 'The signed claim below is the only proof that the owner controls this wallet.'),
+                },
+                {
+                  term: text('reputation.factSync', 'Chain reads'),
+                  value: syncWords(listing.syncState),
+                  detail: listing.syncedAt
+                    ? text('reputation.lastRead', 'Last read {time}', { time: formatDateTimeUtc(listing.syncedAt) })
+                    : undefined,
+                },
+                { term: text('reputation.factEvents', 'Events read'), value: formatCount(listing.eventCount) },
+                {
+                  term: text('reputation.factFrom', 'Record starts'),
+                  value: listing.recordFrom ? formatDay(listing.recordFrom) : text('reputation.recordNotStarted', 'Not yet'),
+                },
+              ]}
+            />
+          </section>
+
+          <section aria-labelledby="listing-claim">
+            <h2 class="title" id="listing-claim">
+              {text('reputation.claimTitle', 'Signed claim')}
+            </h2>
+            {/* The signed message itself says that signing costs no gas, so the intro does not. */}
+            <p class="small rep-lead">
+              {text(
+                'reputation.claimIntro',
+                'The owner signed this exact message with the wallet. Anyone can check the signature against the wallet address.',
+              )}
+            </p>
+            <div class="rep-claim">
+              <p class="small">
+                <strong>{text('reputation.claimMessageLabel', 'Message')}</strong>
+              </p>
+              {claimLines.map((line) => (
+                <p class="rep-claim-line">{line}</p>
+              ))}
+              <p class="small rep-claim-label">
+                <strong>{text('reputation.claimSignatureLabel', 'Signature')}</strong>
+              </p>
+              <p class="figures rep-claim-line rep-signature">{shortSignature}</p>
+              <p class="small">
+                {listing.signatureKind === 'eoa'
+                  ? text('reputation.kindEoa', 'Ordinary wallet')
+                  : text('reputation.kindContract', 'Contract wallet')}
+              </p>
+              <CopyButton
+                label={text('reputation.copySignature', 'Copy signature')}
+                copiedLabel={text('reputation.signatureCopied', 'Signature copied')}
+                failedLabel={text('reputation.signatureNotCopied', 'The signature was not copied.')}
+                text={signature}
+              />
+            </div>
+          </section>
+        </div>
+        </div>
+
+        <div class="zone">
+        <section class="page section" aria-labelledby="listing-days">
+          <div class="section-head">
+            <h2 class="headline" id="listing-days">
+              {text('reputation.daysTitle', 'Priced days')}
+            </h2>
+          </div>
+          {listing.days.length === 0 ? (
+            <EmptyState
+              plain
+              boxed
+              title={text('reputation.daysEmptyTitle', 'No priced days')}
+              body={text('reputation.daysEmptyBody', 'The record has no day with a reference price yet.')}
+            />
+          ) : (
+            <Panel as="div" class="rep-table">
+              <Table
+                id="days"
+                scroll
+                minWidth="28rem"
+                caption={text('reputation.daysCaption', 'Estimated record in virtual USD, one row for each priced day')}
+                columns={dayColumns}
+              >
+                <tbody>
+                  {listing.days.map((day) => (
+                    <tr role="row">
+                      <th scope="row" role="rowheader" class="c-day">
+                        {formatDayShort(day.day)}
+                        {!day.exposed && (
+                          <span class="cell-detail">
+                            {text('reputation.noteNotExposed', 'No Stock Token held at the start of the day.')}
+                          </span>
+                        )}
+                        {day.unpricedEventCount > 0 && (
+                          <span class="cell-detail">
+                            {day.unpricedEventCount === 1
+                              ? text('reputation.noteUnpricedSingle', '1 event left out: no reference price.')
+                              : text('reputation.noteUnpriced', '{count} events left out: no reference price.', {
+                                  count: formatCount(day.unpricedEventCount),
+                                })}
+                          </span>
+                        )}
+                      </th>
+                      <td
+                        role="cell"
+                        class:list={[
+                          'c-return',
+                          'num',
+                          day.exposed && day.returnBps > 0 && 'gain',
+                          day.exposed && day.returnBps < 0 && 'loss',
+                        ]}
+                      >
+                        <span class="cell-label" aria-hidden="true">{dayColumns[1]?.label}</span>
+                        {day.exposed ? formatPercentBps(day.returnBps) : text('reputation.notExposed', 'Not scored')}
+                      </td>
+                      <td role="cell" class="c-index num">
+                        <span class="cell-label" aria-hidden="true">{dayColumns[2]?.label}</span>
+                        {formatUsdMicro(day.indexMicro)}
+                      </td>
+                      <td role="cell" class="c-events num">
+                        <span class="cell-label" aria-hidden="true">{dayColumns[3]?.label}</span>
+                        {formatCount(day.eventCount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Panel>
+          )}
+        </section>
+
+        <section class="page section" aria-labelledby="listing-events">
+          <div class="section-head">
+            <h2 class="headline" id="listing-events">
+              {text('reputation.eventsTitle', 'Newest events')}
+            </h2>
+            <p class="small">
+              {text('reputation.eventsBody', 'Up to {count} token movements the record is built from, newest first.', {
+                count: LISTING_EVENTS_PAGE,
+              })}
+            </p>
+          </div>
+          {listing.events.length === 0 ? (
+            <EmptyState
+              plain
+              boxed
+              title={text('reputation.eventsEmptyTitle', 'No events')}
+              body={text('reputation.eventsEmptyBody', 'No movement of a Stock Token has been read for this wallet.')}
+            />
+          ) : (
+            <Panel as="div" class="rep-table">
+              <Table
+                id="events"
+                scroll
+                minWidth="32rem"
+                caption={text('reputation.eventsCaption', 'Newest token events of this wallet')}
+                columns={eventColumns}
+              >
+                <tbody>
+                  {listing.events.map((event) => (
+                    <tr role="row">
+                      <th scope="row" role="rowheader" class="c-day">
+                        {formatDayShort(event.day)}
+                        <span class="cell-detail">
+                          <a href={event.explorerUrl} rel="noopener noreferrer">
+                            {text('reputation.viewOnExplorer', 'View on explorer')}
+                          </a>
+                        </span>
+                      </th>
+                      <td role="cell" class="c-token">
+                        <span class="cell-label" aria-hidden="true">{eventColumns[1]?.label}</span>
+                        {event.symbol}
+                      </td>
+                      <td role="cell" class="c-direction">
+                        <span class="cell-label" aria-hidden="true">{eventColumns[2]?.label}</span>
+                        {event.direction === 'in' ? text('reputation.dirIn', 'Received') : text('reputation.dirOut', 'Sent')}
+                      </td>
+                      <td role="cell" class="c-amount num">
+                        <span class="cell-label" aria-hidden="true">{eventColumns[3]?.label}</span>
+                        {event.amount}
+                      </td>
+                      <td role="cell" class="c-kind">
+                        <span class="cell-label" aria-hidden="true">{eventColumns[4]?.label}</span>
+                        {event.kind === 'swap' ? text('reputation.kindSwap', 'Swap') : text('reputation.kindTransfer', 'Transfer')}
+                        {!event.priced && (
+                          <span class="cell-detail">{text('reputation.unpricedEvent', 'Left out: no reference price')}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Panel>
+          )}
+        </section>
+        </div>
+      </>
+    )
+  }
+</Layout>
+
+<style>
+  .rep-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-16);
+    align-items: start;
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels. */
+  .rep-trail a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+
+  .rep-trail a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  .rep-name {
+    overflow-wrap: anywhere;
+  }
+
+  .rep-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+
+  .rep-rank {
+    display: inline-flex;
+    align-items: center;
+    margin-right: var(--space-2);
+    font-weight: var(--weight-strong);
+  }
+
+  .rep-rank.is-unranked {
+    color: var(--grey);
+    font-size: var(--text-13);
+    font-weight: var(--weight-medium);
+  }
+
+  .rep-lead {
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+    color: var(--grey);
+  }
+
+  .stack-12 > * + * {
+    margin-top: var(--space-12);
+  }
+
+  /* The listing and its claim side by side from 960 pixels. */
+  .rep-two {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap);
+  }
+
+  .rep-two .title + :global(*) {
+    margin-top: var(--space-12);
+  }
+
+  @media (min-width: 60em) {
+    .rep-two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .rep-claim {
+    margin-top: var(--space-16);
+    padding: var(--space-16);
+    border-radius: var(--radius-box);
+    background: var(--wash);
+  }
+
+  .rep-claim > * + * {
+    margin-top: var(--space-4);
+  }
+
+  .rep-claim .rep-claim-label {
+    margin-top: var(--space-12);
+  }
+
+  .rep-claim-line {
+    overflow-wrap: anywhere;
+  }
+
+  .rep-claim :global(.copy) {
+    display: block;
+    margin-top: var(--space-12);
+  }
+
+  .rep-links a {
+    display: inline-block;
+    margin-top: var(--space-12);
+    padding-block: var(--space-4);
+  }
+
+  :global(#days) .c-day,
+  :global(#events) .c-day,
+  :global(#days) .c-return {
+    white-space: nowrap;
+  }
+
+  :global(#days) .c-day .cell-detail {
+    white-space: normal;
+  }
+
+  /* A cell's own label shows only where the header row is folded away. */
+  .cell-label {
+    display: none;
+  }
+
+  /*
+    Under 560 pixels each row becomes two lines, so no figure is cut at the box's edge: the day and
+    its notes, then the figures, each under its own small label. Rows, header cells and cells carry
+    their roles, so the table still reads as a table when its display changes.
+  */
+  @media screen and (max-width: 34.9375em) {
+    :global(:is(#days, #events)) {
+      display: block;
+      min-width: 0;
+    }
+
+    :global(:is(#days, #events) :is(thead, tbody)) {
+      display: block;
+    }
+
+    :global(:is(#days, #events) thead) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    :global(:is(#days, #events)) tbody tr {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-8) var(--space-16);
+      padding-block: var(--space-12);
+      border-bottom: var(--rule-hair) solid var(--line);
+    }
+
+    :global(:is(#days, #events)) tbody :is(th, td) {
+      display: block;
+      min-width: 0;
+      padding: 0;
+      border-bottom: 0;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    :global(#days) .c-day {
+      grid-column: 1 / -1;
+    }
+
+    :global(#events) .c-day {
+      grid-column: 1 / 3;
+    }
+
+    .cell-label {
+      display: block;
+      color: var(--grey);
+      font-size: var(--text-12);
+      font-weight: var(--weight-medium);
+      line-height: var(--leading-12);
+    }
+  }
+
+  /* The link to the explorer is a link, so it looks like one. */
+  :global(#events) .cell-detail a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--blue);
+  }
+</style>

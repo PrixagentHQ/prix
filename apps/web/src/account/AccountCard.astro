@@ -1,0 +1,66 @@
+---
+// One block of a signed-in page in a card: a form, a list of keys, an agent. A heading row with
+// an optional chip that says a step is done, a sentence under it, then the content.
+//
+// `done` is the word on that chip. `doneHidden` renders it hidden inside an element marked
+// `data-step`, for a flow whose script shows its later steps (the listing flow): the chip then
+// appears when the step is done, and goes again when the person starts over.
+import Chip from '../design/Chip.astro';
+import './account.css';
+
+interface Props {
+  title?: string;
+  /** The id of the heading. The card is labelled by it. */
+  headingId?: string;
+  level?: 2 | 3;
+  intro?: string;
+  done?: string;
+  doneHidden?: boolean;
+  id?: string;
+  class?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  title,
+  headingId,
+  level = 2,
+  intro,
+  done,
+  doneHidden = false,
+  id,
+  class: extra,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+const Heading = `h${level}` as 'h2' | 'h3';
+---
+
+<section class:list={['card', 'acct-card', extra]} id={id} aria-labelledby={title ? headingId : undefined} {...rest}>
+  {
+    (title || Astro.slots.has('end')) && (
+      <div class="acct-card-head">
+        {title && (
+          <Heading class="title" id={headingId}>
+            {title}
+          </Heading>
+        )}
+        {done &&
+          (doneHidden ? (
+            <span data-step hidden>
+              <Chip label={done} />
+            </span>
+          ) : (
+            <Chip label={done} />
+          ))}
+        {Astro.slots.has('end') && (
+          <div class="end">
+            <slot name="end" />
+          </div>
+        )}
+      </div>
+    )
+  }
+  {intro && <p class="small acct-card-intro">{intro}</p>}
+  <slot />
+</section>

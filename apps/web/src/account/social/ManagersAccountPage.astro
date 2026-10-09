@@ -1,0 +1,447 @@
+---
+// The paper managers of the signed-in wallet: how many slots it has, each manager with its
+// allocation, its schedule and its status, and one form to create a manager or to change the
+// allocation of one. A paper manager is a simulated allocation across public agents; no money is
+// involved. The page shows what the server read and decides nothing: eligibility, slots, the
+// weights in force and today's one change are all the API's.
+import {
+  AGENT_NAME_MAX,
+  AGENT_NAME_MIN,
+  LEAGUE_PAGE_SIZE,
+  MANAGER_MAX_AGENTS,
+  MANAGER_MAX_WEIGHT_BPS,
+  MANAGER_MIN_AGENTS,
+  MANAGER_MIN_WEIGHT_BPS,
+} from '@prix/contracts';
+import { toneOf } from '../../arena/record.ts';
+import { fetchMyManagers } from '../../arena/social/client.ts';
+import { formatCount, formatDrawdownBps, formatPercentBps, formatWeightBps } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { apiErrorText, divisionText } from '../../content/states.ts';
+import Button from '../../design/Button.astro';
+import Chip from '../../design/Chip.astro';
+import Choice from '../../design/Choice.astro';
+import Choices from '../../design/Choices.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Select from '../../design/Select.astro';
+import TextInput from '../../design/TextInput.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import { createApi } from '../../lib/api.ts';
+import AccountCard from '../AccountCard.astro';
+import Done from '../Done.astro';
+import Feedback from '../Feedback.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import type { Session } from '../session.ts';
+import { herePath, signInHref } from '../session.ts';
+import { bpsToPercent } from './weights.ts';
+import { managersDefinition, managerWords, noScript, unreadable } from './words.ts';
+import '../account.css';
+import './social.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+}
+
+const { account, session } = Astro.props;
+const here = herePath(Astro.url);
+const words = managerWords();
+const signedIn = session.state === 'signed-in';
+
+const mine = signedIn ? await fetchMyManagers(Astro) : null;
+
+// The agents a manager can hold: the public agents of both divisions, as the league lists them.
+const api = createApi(Astro);
+const [open, pro] = mine?.ok
+  ? await Promise.all([api.league({ division: 'open' }), api.league({ division: 'pro' })])
+  : [null, null];
+const agents = [
+  ...(open?.ok ? open.data.rows.map((row) => ({ id: row.agentId, name: row.name, division: 'open' as const })) : []),
+  ...(pro?.ok ? pro.data.rows.map((row) => ({ id: row.agentId, name: row.name, division: 'pro' as const })) : []),
+];
+const nameOf = new Map(agents.map((agent) => [agent.id, agent.name]));
+const choices = agents.map((agent) => ({
+  id: agent.id,
+  label: text('social.myManagersChoiceLabel', '{name}, {division}', {
+    name: agent.name,
+    division: divisionText(agent.division),
+  }),
+}));
+
+const limits = {
+  minAgents: MANAGER_MIN_AGENTS,
+  maxAgents: MANAGER_MAX_AGENTS,
+  minWeightBps: MANAGER_MIN_WEIGHT_BPS,
+  maxWeightBps: MANAGER_MAX_WEIGHT_BPS,
+  nameMin: AGENT_NAME_MIN,
+  nameMax: AGENT_NAME_MAX,
+};
+const percent = (bps: number): string => `${bpsToPercent(bps)}%`;
+const limitSlots = { min: percent(MANAGER_MIN_WEIGHT_BPS), max: percent(MANAGER_MAX_WEIGHT_BPS) };
+
+const slots = mine?.ok ? mine.data.slots : null;
+const slotsFull = slots !== null && slots.used >= slots.max;
+const managers = mine?.ok ? mine.data.managers : [];
+
+const title = words.title;
+const rowNumbers = Array.from({ length: MANAGER_MAX_AGENTS }, (_, index) => index + 1);
+
+// What the script shows: filled with numbers it knows, never with a word of its own.
+const scriptWords = {
+  ...words,
+  countWrong: text('social.myManagersCountWrong', 'Choose from {min} to {max} agents.', {
+    min: MANAGER_MIN_AGENTS,
+    max: MANAGER_MAX_AGENTS,
+  }),
+  weightMissing: text('social.myManagersWeightMissing', 'Enter a weight from {min} to {max}.', limitSlots),
+  weightRange: text('social.myManagersWeightRange', 'A weight is from {min} to {max}.', limitSlots),
+};
+// The empty list says where to start: the form beside it, or below it on a phone, where it is a link.
+const emptyMake = text('social.myManagersEmptyMake', 'Make one with the form');
+const statusLabel = { active: words.statusActive, paused: words.statusPaused, closed: words.statusClosed };
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.myManagersDescription',
+    'Your paper managers: simulated allocations across public agents. No money is involved.',
+  )}
+  account={account}
+  signInHref={signInHref(here)}
+  noindex
+>
+  <PageHead title={title} back={{ href: '/account', label: words.back }} intro={managersDefinition()} />
+
+  <div class="page section">
+    {
+      !signedIn ? (
+        <div class="acct-column">
+          <AccountCard title={words.signInTitle} headingId="managers-sign-in-heading">
+            <p class="body">{words.signInBody}</p>
+            {session.state === 'signed-out' ? (
+              <p>
+                <Button href={signInHref(here)} label={text('nav.signIn', 'Sign in')} />
+              </p>
+            ) : (
+              <SessionGate session={session} steps />
+            )}
+          </AccountCard>
+        </div>
+      ) : !mine?.ok ? (
+        <div class="acct-column">
+          <Notice
+            tone="error"
+            title={unreadable(title).title}
+            body={`${apiErrorText(mine?.error.code ?? 'internal')} ${unreadable(title).body}`}
+          >
+            <Button href={here} label={unreadable(title).action} variant="secondary" />
+          </Notice>
+        </div>
+      ) : (
+        <div class="mgr-page stack-24">
+          <Done
+            items={[
+              {
+                name: 'manager-created',
+                title: words.created,
+                body: words.createdBody,
+              },
+              {
+                name: 'manager-saved',
+                title: text('social.myManagersSavedTitle', 'Allocation saved'),
+                body: text('social.myManagersSavedBody', 'It takes effect on the first valued day after today.'),
+              },
+              {
+                name: 'manager-paused',
+                title: text('social.myManagersPausedTitle', 'Paper manager paused'),
+                body: words.pauseNote,
+              },
+              {
+                name: 'manager-resumed',
+                title: text('social.myManagersResumedTitle', 'Paper manager resumed'),
+                body: text('social.myManagersResumedBody', 'It is valued again from the next valued day.'),
+              },
+              {
+                name: 'manager-closed',
+                title: text('social.myManagersClosedTitle', 'Paper manager closed'),
+                body: words.closedNote,
+              },
+            ]}
+          />
+
+          <div class="acct-grid mgr-grid">
+            <div class="acct-cards">
+              <AccountCard title={words.yoursTitle} headingId="managers-heading">
+                {slots && (
+                  <p class="body" data-slots data-full={slotsFull ? 'true' : 'false'}>
+                    {slots.max === 1
+                      ? text('social.myManagersSlotsOne', '{used} of {max} slot in use.', {
+                          used: formatCount(slots.used),
+                          max: formatCount(slots.max),
+                        })
+                      : text('social.myManagersSlotsOther', '{used} of {max} slots in use.', {
+                          used: formatCount(slots.used),
+                          max: formatCount(slots.max),
+                        })}
+                  </p>
+                )}
+                {slotsFull && (
+                  <p class="small">
+                    {words.slotsFull} <a href="/account/token">{words.slotsTokenLink}</a>
+                  </p>
+                )}
+
+                {
+                  managers.length === 0 ? (
+                    <p class="body mgr-empty" data-empty>
+                      {words.emptyTitle}.{' '}
+                      <span class="mgr-empty-wide">{emptyMake}.</span>
+                      <span class="mgr-empty-narrow">
+                        <a href="#manager-form">{emptyMake}</a>.
+                      </span>
+                    </p>
+                  ) : (
+                    <ul class="acct-list mgr-list">
+                      {managers.map((manager, index) => {
+                        const lines = Object.entries(manager.targetsBps).sort((a, b) => b[1] - a[1]);
+                        const total = lines.reduce((sum, line) => sum + line[1], 0);
+                        const editable = manager.status !== 'closed' && !manager.changedToday;
+                        return (
+                          <li class="mgr-item" data-scope data-manager={manager.id}>
+                            <div class="mgr-head">
+                              <h3 class="headline" id={`manager-${index}`}>
+                                <a href={`/managers/${manager.id}`}>{manager.name}</a>
+                              </h3>
+                              <p class="cluster">
+                                <Chip label={statusLabel[manager.status]} kind={manager.status === 'active' ? 'open' : 'neutral'} />
+                                <Chip label={manager.schedule === 'weekly' ? words.scheduleWeekly : words.scheduleHold} />
+                              </p>
+                            </div>
+                            {manager.hidden && <p class="small">{words.hiddenNote}</p>}
+
+                            {manager.season ? (
+                              <dl class="facts facts--label-8-5">
+                                <dt>{words.figureReturn}</dt>
+                                <dd class:list={['figures', toneOf(manager.season.returnBps)]}>
+                                  {formatPercentBps(manager.season.returnBps)}
+                                </dd>
+                                <dt>{words.figureDrawdown}</dt>
+                                <dd class="figures">{formatDrawdownBps(manager.season.maxDrawdownBps)}</dd>
+                                <dt>{words.figureDays}</dt>
+                                <dd class="figures">{formatCount(manager.season.valuedDays)}</dd>
+                              </dl>
+                            ) : (
+                              <p class="small">{words.figuresNone}</p>
+                            )}
+
+                            <div class="stack-8">
+                              <h4 class="mgr-subhead">{words.allocationTitle}</h4>
+                              <ul class="mgr-allocation">
+                                {lines.map(([agentId, bps]) => (
+                                  <li>
+                                    <span>
+                                      {nameOf.has(agentId) ? (
+                                        <a class="mgr-agent" href={`/agents/${agentId}`}>{nameOf.get(agentId)}</a>
+                                      ) : (
+                                        text('social.myManagersUnknownAgent', 'Agent {id}', { id: agentId })
+                                      )}
+                                    </span>
+                                    <span class="num">{formatWeightBps(bps)}</span>
+                                  </li>
+                                ))}
+                                <li>
+                                  <span>{words.cashRow}</span>
+                                  <span class="num">{formatWeightBps(Math.max(0, 10_000 - total))}</span>
+                                </li>
+                              </ul>
+                            </div>
+
+                            <p class="small" data-change-note>
+                              {manager.status === 'closed'
+                                ? words.closedNote
+                                : manager.changedToday
+                                  ? words.changedToday
+                                  : words.changeLeft}
+                            </p>
+
+                            {manager.status !== 'closed' && (
+                              <div class="acct-actions">
+                                <Button
+                                  label={words.edit}
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={!editable}
+                                  data-edit={JSON.stringify({
+                                    id: manager.id,
+                                    name: manager.name,
+                                    schedule: manager.schedule,
+                                    targetsBps: manager.targetsBps,
+                                  })}
+                                />
+                                {manager.status === 'active' ? (
+                                  <Button
+                                    label={words.pause}
+                                    busyLabel={words.pauseBusy}
+                                    variant="secondary"
+                                    size="sm"
+                                    data-status={JSON.stringify({ id: manager.id, status: 'paused', done: 'manager-paused' })}
+                                  />
+                                ) : (
+                                  <Button
+                                    label={words.resume}
+                                    busyLabel={words.resumeBusy}
+                                    variant="secondary"
+                                    size="sm"
+                                    data-status={JSON.stringify({ id: manager.id, status: 'active', done: 'manager-resumed' })}
+                                  />
+                                )}
+                                <div data-confirm>
+                                  <Button label={words.close} variant="quiet" size="sm" data-confirm-ask data-confirm-open />
+                                  <div class="stack-16 mgr-confirm" role="group" aria-labelledby={`close-${index}`} tabindex="-1" hidden data-confirm-panel>
+                                    <div class="stack-4">
+                                      <p class="body" id={`close-${index}`}>
+                                        <strong>{words.closeQuestion.replace('{name}', manager.name)}</strong>
+                                      </p>
+                                      <p class="body">{words.closeConsequence}</p>
+                                    </div>
+                                    <p class="acct-actions">
+                                      <Button
+                                        label={words.close}
+                                        busyLabel={words.closeBusy}
+                                        variant="secondary"
+                                        data-status={JSON.stringify({ id: manager.id, status: 'closed', done: 'manager-closed' })}
+                                      />
+                                      <Button label={text('common.cancel', 'Cancel')} variant="quiet" data-confirm-cancel />
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {manager.status === 'paused' && <p class="small">{words.pauseNote}</p>}
+                            <Feedback
+                              failedTitle={words.statusFailed}
+                              errors={{
+                                forbidden: words.slotLimit,
+                                not_found: text('social.myManagersGone', 'This paper manager could not be found. Reload the page.'),
+                              }}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )
+                }
+              </AccountCard>
+            </div>
+
+            <div data-editor-wrap hidden={slotsFull}>
+              <AccountCard title={words.createTitle} headingId="manager-form-heading" id="manager-form">
+                <form
+                  class="mgr-form stack-24"
+                  method="dialog"
+                  novalidate
+                  aria-labelledby="manager-form-heading"
+                  data-manager-form
+                  data-limits={JSON.stringify(limits)}
+                  data-agents={JSON.stringify(choices)}
+                  data-words={JSON.stringify(scriptWords)}
+                >
+                  <noscript>
+                    <Notice tone="status" title={noScript().title} body={noScript().body} />
+                  </noscript>
+                  <p class="small acct-card-intro" data-create-intro>
+                    {text('social.myManagersCreateIntro', 'Choose from {min} to {max} public agents, each with a weight from {wmin} to {wmax}. Cash is what the weights leave over.', {
+                      min: MANAGER_MIN_AGENTS,
+                      max: MANAGER_MAX_AGENTS,
+                      wmin: limitSlots.min,
+                      wmax: limitSlots.max,
+                    })}
+                  </p>
+
+                  <div data-name-wrap>
+                    <TextInput label={words.nameLabel} name="name" required autocomplete="off" hint={words.nameHint} />
+                  </div>
+
+                  <fieldset class="mgr-allocation-fields" data-field="targetsBps" aria-describedby="targets-note targets-cash targets-error">
+                    <legend class="field-label">{words.allocationLegend}</legend>
+                    <p class="field-hint" id="targets-note">
+                      {choices.length === 0
+                        ? words.pickerNone
+                        : text('social.myManagersPickerNote', 'The list holds the public agents of both divisions, up to the first {count} of each. Open agents are valued at their 15:00 UTC round and Pro agents at their last round, so two agents are valued at different times.', { count: LEAGUE_PAGE_SIZE })}
+                    </p>
+                    <div class="stack-16">
+                      {rowNumbers.map((n) => (
+                        <div class="mgr-row" data-row hidden={n > MANAGER_MIN_AGENTS}>
+                          <Select
+                            label={text('social.myManagersRowLabel', 'Agent {n}', { n })}
+                            name={`agent${n}`}
+                            options={[{ value: '', label: words.agentPlaceholder }]}
+                          />
+                          <TextInput label={words.weightLabel} name={`weight${n}`} autocomplete="off" />
+                          <Button
+                            label={text('social.myManagersRemoveRow', 'Remove agent {n}', { n })}
+                            variant="quiet"
+                            size="sm"
+                            data-remove-row
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p class="mgr-add">
+                      <Button label={words.addRow} variant="secondary" size="sm" data-add-row />
+                    </p>
+                    <p class="mgr-cash" id="targets-cash" role="status" data-cash></p>
+                    <p class="field-error" id="targets-error" role="alert" data-field-error hidden></p>
+                  </fieldset>
+
+                  <Choices id="schedule" legend={words.scheduleLegend}>
+                    <Choice type="radio" name="schedule" value="weekly" checked label={words.scheduleWeekly} hint={words.scheduleWeeklyHint} />
+                    <Choice type="radio" name="schedule" value="hold" label={words.scheduleHold} hint={words.scheduleHoldHint} />
+                  </Choices>
+
+                  <div class="stack-16">
+                    <p class="small">{words.effectNote} {words.serverDecides}</p>
+                    <p class="acct-actions">
+                      <Button
+                        type="submit"
+                        label={words.createSubmit}
+                        busyLabel={words.createBusy}
+                        data-submit
+                        data-create-label={words.createSubmit}
+                        data-create-busy={words.createBusy}
+                        data-edit-label={words.editSubmit}
+                        data-edit-busy={words.editBusy}
+                      />
+                      <span data-cancel-wrap hidden>
+                        <Button label={words.editCancel} variant="quiet" data-cancel-edit />
+                      </span>
+                    </p>
+                    <Feedback
+                      failedTitle={words.createFailed}
+                      errors={{
+                        forbidden: words.slotLimit,
+                        league_full: words.totalFull,
+                        name_taken: words.nameTaken,
+                        name_not_allowed: words.nameNotAllowed,
+                        rate_limited: words.createdTodayLimit,
+                      }}
+                    />
+                  </div>
+                </form>
+              </AccountCard>
+            </div>
+          </div>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<script>
+  import { mountManagers } from './managers.ts';
+
+  mountManagers();
+</script>

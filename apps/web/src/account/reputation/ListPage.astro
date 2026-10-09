@@ -1,0 +1,298 @@
+---
+// "List my on-chain agent": four steps on the sign-in session, each in a card that says when it is done. Enter the agent's wallet and a
+// name, read the message the server wrote, sign it with that wallet (or paste a signature made
+// elsewhere), and see the listing with its owner controls. The page asks a wallet for a signature
+// and nothing else. Everything it shows comes from the API; the API checks every action again.
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Code from '../../design/Code.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Textarea from '../../design/Textarea.astro';
+import TextInput from '../../design/TextInput.astro';
+import { readAccount } from '../../lib/account.ts';
+import AccountCard from '../AccountCard.astro';
+import Feedback from '../Feedback.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import { herePath, readSession, signInHref } from '../session.ts';
+import { noScriptWords } from '../words.ts';
+import { listWords } from './words.ts';
+import '../account.css';
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+const noScript = noScriptWords();
+const words = listWords();
+const title = text('reputation.listPageName', 'List your agent');
+---
+
+<Layout
+  title={title}
+  description={text(
+    'reputation.listDescription',
+    'List a wallet that trades on Robinhood Chain as an on-chain agent, with an estimated record read from its public activity.',
+  )}
+  current="account"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  <PageHead
+    title={title}
+    back={{ href: '/account', label: text('nav.account', 'Account') }}
+    intro={text(
+      'reputation.listIntro',
+      'If your agent already trades from its own wallet, you can list that wallet. Prix reads the wallet’s public activity and publishes an estimated record for it.',
+    )}
+  />
+  <div class="page section">
+  <div class="acct-column">
+    <div class="acct-notes small list-notes">
+      <p>
+        {
+          text(
+            'reputation.listPublishes',
+            'Listing publishes the wallet’s address, the name you give it and an estimated record: its transfers of the 20 Stock Tokens, valued at Prix’s reference prices. Estimated means worked out from public transfers, not measured. It leaves out everything Prix cannot see or price: trades outside these tokens, days with no reference price, and anything the wallet does off this chain.',
+          )
+        }
+      </p>
+      <p>
+        {
+          text(
+            'reputation.listNotAdvice',
+            'A record is history, not advice. Nothing on Prix tells anyone to buy, sell or hold anything.',
+          )
+        }
+      </p>
+    </div>
+
+    {
+      session.state === 'failed' ? (
+        <SessionGate session={session} />
+      ) : session.state !== 'signed-in' ? (
+        <AccountCard title={text('nav.signIn', 'Sign in')} headingId="sign-in-heading">
+          {session.state === 'signed-out' && (
+            <p class="body">
+              {text('reputation.listSignInFirst', 'Listing is tied to your Prix account. Sign in with your wallet to list an agent.')}
+            </p>
+          )}
+          <SessionGate session={session} steps />
+        </AccountCard>
+      ) : (
+        <div class="acct-cards list-page" data-list-page data-words={JSON.stringify(words)}>
+          <noscript>
+            <Notice tone="status" title={noScript.title} body={noScript.body} />
+          </noscript>
+
+          <AccountCard
+            title={text('reputation.listStepOneTitle', 'Step 1. Name the agent and its wallet')}
+            headingId="step-one"
+            done={text('reputation.listStepDone', 'Done')}
+            doneHidden
+          >
+          <form class="stack-24" method="dialog" novalidate aria-labelledby="step-one" data-claim>
+            <TextInput
+              label={text('reputation.listWalletField', 'Agent wallet address')}
+              name="wallet"
+              required
+              autocomplete="off"
+              hint={text(
+                'reputation.listWalletHint',
+                'The wallet the agent trades from. You will sign with this wallet, so you need its key.',
+              )}
+            />
+            <TextInput
+              label={text('reputation.listNameField', 'Agent name')}
+              name="name"
+              required
+              autocomplete="off"
+              hint={text(
+                'reputation.listNameHint',
+                'Public. It shares one list of names with the paper agents, so it must be unused.',
+              )}
+            />
+            <div>
+              <Button
+                label={text('reputation.listGetMessage', 'Get the message to sign')}
+                busyLabel={text('reputation.listGettingMessage', 'Getting the message')}
+                type="submit"
+                data-label={text('reputation.listGetMessage', 'Get the message to sign')}
+                data-busy-label={text('reputation.listGettingMessage', 'Getting the message')}
+              />
+            </div>
+            <p data-step hidden>
+              <Button
+                label={text('reputation.listChange', 'Change the wallet or the name')}
+                variant="quiet"
+                data-reset
+              />
+            </p>
+            <Feedback failedTitle={text('reputation.listClaimFailedTitle', 'The message was not prepared')} />
+          </form>
+          </AccountCard>
+
+          <form class="acct-cards" method="dialog" novalidate data-create>
+            <div class="card acct-card" data-step hidden>
+              <h2 class="title">{text('reputation.listStepTwoTitle', 'Step 2. Check the message')}</h2>
+              <p class="prose">
+                {
+                  text(
+                    'reputation.listMessageIntro',
+                    'This is the exact text you will sign. Prix wrote it; it stays as it is. Signing it sends no transaction, costs no gas and gives Prix no access to your funds. It is valid for ten minutes.',
+                  )
+                }
+              </p>
+              <pre class="claim-message" data-message-text tabindex="0"></pre>
+              <p>
+                <Button
+                  label={text('reputation.listCopy', 'Copy the message')}
+                  variant="secondary"
+                  data-copy
+                />
+              </p>
+              <p class="small" role="status" data-copy-status></p>
+            </div>
+
+            <div class="card acct-card" data-step hidden>
+              <h2 class="title">{text('reputation.listStepThreeTitle', 'Step 3. Sign the message')}</h2>
+              <p class="prose">
+                {
+                  text(
+                    'reputation.listSignIntro',
+                    'The connected account in your wallet must be the agent’s wallet. Your wallet will ask for a signature on the message above and nothing else.',
+                  )
+                }
+              </p>
+              <p>
+                <Button
+                  label={text('reputation.listSignWithWallet', 'Sign with the connected wallet')}
+                  busyLabel={text('reputation.listSigning', 'Waiting for your wallet')}
+                  data-sign
+                  data-label={text('reputation.listSignWithWallet', 'Sign with the connected wallet')}
+                  data-busy-label={text('reputation.listSigning', 'Waiting for your wallet')}
+                />
+              </p>
+              <p class="prose">
+                {
+                  text(
+                    'reputation.listPasteIntro',
+                    'Most agent wallets are keys on a server. Sign the message there and paste the signature here. For example, with Foundry, after saving the message to message.txt:',
+                  )
+                }
+              </p>
+              <Code
+                label={text('reputation.listCastLabel', 'Sign with Foundry')}
+                code={text('reputation.listCastExample', 'cast wallet sign --private-key "$KEY" "$(cat message.txt)"')}
+                copyLabel={text('reputation.listCopyCommand', 'Copy the command')}
+                copiedLabel={text('reputation.listCommandCopied', 'Command copied')}
+                failedLabel={text('reputation.listCommandCopyFailed', 'The command was not copied. Select it and copy it by hand.')}
+              />
+              <Textarea
+                label={text('reputation.listSignatureField', 'Signature')}
+                name="signature"
+                rows={3}
+                hint={text('reputation.listSignatureHint', 'Starts with 0x. Paste it as it was printed.')}
+              />
+              <div>
+                <Button
+                  label={text('reputation.listSubmit', 'List this agent')}
+                  type="submit"
+                  data-label={text('reputation.listSubmit', 'List this agent')}
+                  data-busy-label={text('reputation.listSubmitting', 'Listing the agent')}
+                />
+              </div>
+            </div>
+
+            <Feedback failedTitle={text('reputation.listCreateFailedTitle', 'The agent was not listed')} />
+            <template data-message="listed">
+              <Notice
+                tone="status"
+                title={words.listedTitle ?? ''}
+                body={words.listedBody ?? ''}
+              />
+            </template>
+          </form>
+
+          <AccountCard title={text('reputation.listYourTitle', 'Your listed agents')} headingId="listed-heading" data-listings>
+            <p class="small" data-remaining></p>
+            <Feedback failedTitle={words.loadFailedTitle ?? ''} />
+            <template data-message="loading">
+              <Notice tone="loading" title={text('reputation.listLoading', 'Loading your listings')} minHeight="8rem" />
+            </template>
+            <template data-message="empty">
+              <Notice tone="empty" title={words.emptyTitle ?? ''} body={words.emptyBody ?? ''} />
+            </template>
+            <template data-message="status-failed">
+              <Notice tone="error" title={words.statusFailedTitle ?? ''} body="{message}" />
+            </template>
+            <ul class="listing-rows" role="list" data-rows></ul>
+          </AccountCard>
+        </div>
+      )
+    }
+  </div>
+  </div>
+</Layout>
+
+<script>
+  import { mountList } from './list.ts';
+  mountList();
+</script>
+
+<style>
+  .list-notes {
+    margin-bottom: var(--space-24);
+  }
+
+  /* The exact text to sign, on the wash as a sample is. It wraps; nothing is cut off. */
+  .claim-message {
+    margin: 0;
+    padding: var(--space-12) var(--space-16);
+    border-radius: var(--radius-box);
+    background: var(--wash);
+    font-family: inherit;
+    font-size: var(--text-14);
+    line-height: var(--leading-14);
+    font-variant-numeric: tabular-nums lining-nums;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+
+  .claim-message:empty {
+    display: none;
+  }
+
+  .listing-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .listing-rows :global(.listing-row) {
+    padding: var(--space-16) 0;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .listing-rows :global(.listing-facts) {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--space-4) var(--space-16);
+    margin: 0;
+  }
+
+  .listing-rows :global(.listing-name) {
+    font-weight: var(--weight-strong);
+  }
+
+  .listing-rows :global(.addr-half) {
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  .listing-rows :global(.listing-facts dd) {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+</style>

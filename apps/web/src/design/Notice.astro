@@ -1,0 +1,37 @@
+---
+// A state in words: empty, loading, an error, or a status such as "Market closed".
+// It has no box, no icon and no colour of its own. An error carries an ink rule on its left edge.
+// The default slot holds one action, for example a Button.
+interface Props {
+  tone?: 'status' | 'empty' | 'loading' | 'error';
+  /** What happened, in a few words. */
+  title: string;
+  /** What it means or what to do next, in one or two sentences. */
+  body?: string;
+  /** Holds the region at its final height while it loads, for example "24rem". */
+  minHeight?: string;
+  id?: string;
+}
+
+import { noticeHeightClass } from './scale.ts';
+
+const { tone = 'status', title, body, minHeight, id } = Astro.props;
+const role = tone === 'error' ? 'alert' : tone === 'empty' ? undefined : 'status';
+---
+
+<div
+  class:list={['notice', `notice--${tone}`, noticeHeightClass(minHeight)]}
+  id={id}
+  role={role}
+  aria-busy={tone === 'loading' ? 'true' : undefined}
+>
+  <p class="notice-title">{title}</p>
+  {body && <p class="notice-body">{body}</p>}
+  {
+    Astro.slots.has('default') && (
+      <div class="notice-action">
+        <slot />
+      </div>
+    )
+  }
+</div>

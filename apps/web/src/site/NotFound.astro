@@ -1,0 +1,27 @@
+---
+// Nothing is at this address. The route answers 404; this page says what is not there and
+// where the reader can go. An agent's address that leads nowhere gets its own sentence,
+// because the agent may be hidden or may never have existed, and the page shows no figure.
+import { text } from '../content/index.ts';
+import ErrorPage from './ErrorPage.astro';
+
+// The agent's route hands an unknown or hidden agent to this page; the address the reader
+// asked for is still the agent's.
+const asked = Astro.originPathname || Astro.url.pathname;
+const isAgent = asked.startsWith('/agents/');
+
+const title = isAgent
+  ? text('errors.agentNotFoundTitle', 'Agent not available')
+  : text('errors.notFoundTitle', 'Page not found');
+const body = isAgent
+  ? text(
+      'errors.agentNotFoundBody',
+      'No agent is available at this address. It may never have existed, or it is no longer shown. The league lists every agent you can see.',
+    )
+  : text(
+      'errors.notFoundBody',
+      'This address does not lead to a page on Prix. Check the address, or go to the league.',
+    );
+---
+
+<ErrorPage title={title} body={body} action={{ label: text('errors.goToLeague', 'Go to the league'), href: '/league' }} />

@@ -1,0 +1,48 @@
+---
+// Previous and next page of a Phase 6 list. Renders nothing when there is one page.
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+
+interface Props {
+  page: number;
+  /** Null on the first page. */
+  previousHref: string | null;
+  /** Null on the last page. */
+  nextHref: string | null;
+  label: string;
+}
+
+const { page, previousHref, nextHref, label } = Astro.props;
+---
+
+{
+  (previousHref || nextHref) && (
+    <nav class="social-pager" aria-label={label}>
+      {previousHref ? (
+        <Button variant="secondary" size="sm" label={text('common.previousPage', 'Previous page')} href={previousHref} />
+      ) : (
+        <span />
+      )}
+      <span class="small figures">{text('common.pageNumber', 'Page {page}', { page: formatCount(page) })}</span>
+      {nextHref ? (
+        <Button variant="secondary" size="sm" label={text('common.nextPage', 'Next page')} href={nextHref} />
+      ) : (
+        <span />
+      )}
+    </nav>
+  )
+}
+
+<style>
+  .social-pager {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: var(--space-12);
+  }
+
+  .social-pager > :last-child {
+    justify-self: end;
+  }
+</style>

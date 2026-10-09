@@ -1,0 +1,78 @@
+---
+// The list of contents of a long page, in a panel that stays in view beside the text from 960
+// pixels. The section being read is marked as the header marks the current tab: ink, with a
+// 2 pixel ink line, here on its left. Without script the list is plain links and nothing is marked.
+import Panel from '../design/Panel.astro';
+
+interface Props {
+  title: string;
+  items: Array<{ id: string; label: string }>;
+  id?: string;
+}
+
+const { title, items, id = 'contents' } = Astro.props;
+const titleId = `${id}-title`;
+---
+
+<Panel sticky label={title} class="contents-panel">
+  <nav aria-labelledby={titleId} data-contents>
+    <h2 class="caption" id={titleId}>{title}</h2>
+    <ol class="contents-list" role="list">
+      {
+        items.map((item) => (
+          <li>
+            <a href={`#${item.id}`} data-contents-link={item.id}>
+              {item.label}
+            </a>
+          </li>
+        ))
+      }
+    </ol>
+  </nav>
+</Panel>
+
+<style>
+  /* The name of the list stands on the same edge as its entries. */
+  [data-contents] > .caption {
+    padding-left: var(--space-12);
+  }
+
+  .contents-list {
+    margin-top: var(--space-8);
+  }
+
+  /* Each entry is a 32 pixel target: a line of 20 and 6 above and below it. */
+  .contents-list a {
+    display: block;
+    padding: var(--space-6) var(--space-8) var(--space-6) var(--space-12);
+    border-radius: var(--radius-inner);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .contents-list a:hover {
+    background: var(--wash);
+    color: var(--ink);
+  }
+
+  .contents-list a[aria-current] {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    box-shadow: inset var(--rule) 0 var(--ink);
+    /* The line on the left is straight, as the line under a current tab is. */
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  .contents-list a:focus-visible {
+    outline-offset: calc(-1 * var(--focus-offset));
+  }
+</style>
+
+<script>
+  import { markContents } from './contents.ts';
+
+  markContents();
+</script>

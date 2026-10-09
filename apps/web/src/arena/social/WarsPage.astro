@@ -1,0 +1,148 @@
+---
+// The archive of paper experiments (Model Wars, docs/contracts/phase-6-social.md section 5.3):
+// newest first, each with its strategy's title, its state, its days and its models. Curated by
+// Prix; nobody enters one. Each is one run under its conditions, and never a verdict on a model.
+import { formatCount, formatDay } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Chip from '../../design/Chip.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import { readAccount } from '../../lib/account.ts';
+import { fetchWars, pageOf } from './client.ts';
+import Pager from './Pager.astro';
+import SocialFailure from './SocialFailure.astro';
+import SocialNav from './SocialNav.astro';
+import SocialTop from './SocialTop.astro';
+import { listHref, warHref, warStatusText } from './words.ts';
+
+const page = pageOf(Astro.url);
+const [account, result] = await Promise.all([readAccount(Astro), fetchWars(Astro, page)]);
+const data = result.ok ? result.data : null;
+const title = text('social.warsTitle', 'Model wars');
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.warsDescription',
+    'Model wars run one public strategy on several AI models under the same conditions. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.warsEyebrow', 'One strategy, several models')}
+    lead={text(
+      'social.warsLead',
+      'Prix runs one public strategy on two to four AI models, with the same prices, rules and instructions, for five to twenty trading days. Each war is one run under its conditions. It says what happened in that run, and nothing about which model to use.',
+    )}
+  />
+  <SocialNav current="wars" />
+
+  <section class="page section stack-24">
+    {
+      !result.ok ? (
+        <SocialFailure error={result.error} subject={text('social.subjectWars', 'The list of model wars')} />
+      ) : data && data.wars.length === 0 ? (
+        <EmptyState
+          title={text('social.warsEmptyTitle', 'No model war yet')}
+          body={text(
+            'social.warsEmptyBody',
+            'Prix has not run one yet. Each one is listed here from the day it is scheduled, with its conditions and every day it ran.',
+          )}
+        />
+      ) : data ? (
+        <>
+          <ol class="wars">
+            {data.wars.map((war) => (
+              <li class="card wars-item">
+                <p class="small figures">
+                  {text('social.warNumber', 'War {number}', { number: formatCount(war.number) })}
+                </p>
+                <h2 class="headline wars-title">
+                  <a href={warHref(Astro.url, war.id)}>{war.title}</a>
+                </h2>
+                <p class="wars-meta">
+                  <Chip label={warStatusText(war.status)} />
+                  <span class="small figures">
+                    {text('social.warDays', 'From {start}, {done} of {total} trading days', {
+                      start: formatDay(war.startsOn),
+                      done: formatCount(war.daysDone),
+                      total: formatCount(war.tradingDays),
+                    })}
+                  </span>
+                </p>
+                <ul class="small wars-models" aria-label={text('social.warModelsLabel', 'Models')}>
+                  {war.entrants.map((entrant) => (
+                    <li>
+                      {text('social.warEntrant', '{slot}: {label}, by {maker}', {
+                        slot: entrant.slot,
+                        label: entrant.label,
+                        maker: entrant.maker,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+          <Pager
+            page={page}
+            label={text('social.warsPages', 'Pages of model wars')}
+            previousHref={page > 1 ? listHref(Astro.url, '/wars', page - 1) : null}
+            nextHref={data.hasMore ? listHref(Astro.url, '/wars', page + 1) : null}
+          />
+        </>
+      ) : null
+    }
+  </section>
+</Layout>
+
+<style>
+  .wars {
+    display: grid;
+    gap: var(--gap-card);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 60em) {
+    .wars {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .wars-item {
+    display: grid;
+    row-gap: var(--space-8);
+    align-content: start;
+    padding: var(--space-16);
+  }
+
+  .wars-title a {
+    color: var(--ink);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .wars-title a:hover {
+    text-decoration: underline;
+  }
+
+  .wars-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-8);
+  }
+
+  .wars-models {
+    display: grid;
+    row-gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>

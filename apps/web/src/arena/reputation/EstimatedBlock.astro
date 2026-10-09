@@ -1,0 +1,48 @@
+---
+// What "estimated" means for a listed on-chain agent: the method and every exclusion, in words.
+// It sits at the foot of the listed page, where the short note beside the table links to it.
+import type { ExclusionCode } from '@prix/contracts';
+import { CHAIN_EXCLUSIONS, CHAIN_METHOD } from '@prix/contracts';
+import { text } from '../../content/index.ts';
+import { exclusionWords } from './words.ts';
+
+interface Props {
+  /** The exclusions the API listed. Left out, the contract's full list is shown. */
+  exclusions?: readonly ExclusionCode[];
+  /** True when the block heads a zone of its own: an eyebrow over a section title. */
+  zone?: boolean;
+}
+
+const { exclusions = CHAIN_EXCLUSIONS, zone = false } = Astro.props;
+const heading = text('reputation.exclusionsTitle', 'What the estimate leaves out');
+---
+
+<section class="stack-16" aria-labelledby="estimate-title" id="estimate" data-estimated>
+  {
+    zone ? (
+      <header>
+        <p class="eyebrow">{text('reputation.exclusionsEyebrow', 'The method')}</p>
+        <h2 class="section-title" id="estimate-title">{heading}</h2>
+      </header>
+    ) : (
+      <h2 class="title" id="estimate-title">{heading}</h2>
+    )
+  }
+  <p class="small">
+    {
+      text('reputation.estimatedMethod', 'Method: {method}. Holdings are valued once a day at the reference price.', {
+        method: CHAIN_METHOD,
+      })
+    }
+  </p>
+  <ul class="small stack-8 exclusions">
+    {exclusions.map((code) => <li>{exclusionWords(code)}</li>)}
+  </ul>
+</section>
+
+<style>
+  .exclusions {
+    padding-left: var(--space-16);
+    list-style: disc;
+  }
+</style>

@@ -1,0 +1,42 @@
+---
+// /developers/terms: the terms of use of the API, rendered by the same page as the other long documents.
+import type { Doc } from '../../content/doc.ts';
+import DocPage from '../DocPage.astro';
+import DevTabs from './DevTabs.astro';
+import { developersWords, termsWords as words } from './words.ts';
+
+const doc: Doc = {
+  title: words.title,
+  lead: words.lead,
+  updated: words.updated,
+  sections: [
+    {
+      id: 'scope',
+      heading: words.scopeHeading,
+      blocks: [
+        { kind: 'paragraph', text: words.scopeBody },
+        { kind: 'link', text: words.siteTermsLink, href: '/terms' },
+      ],
+    },
+    { id: 'keys', heading: words.keysHeading, blocks: [{ kind: 'paragraph', text: words.keysBody }] },
+    { id: 'resale', heading: words.resaleHeading, blocks: [{ kind: 'paragraph', text: words.resaleBody }] },
+    { id: 'quota', heading: words.quotaHeading, blocks: [{ kind: 'paragraph', text: words.quotaBody }] },
+    { id: 'credits', heading: words.creditsHeading, blocks: [{ kind: 'paragraph', text: words.creditsBody }] },
+    {
+      id: 'data',
+      heading: words.dataHeading,
+      blocks: [
+        { kind: 'paragraph', text: words.dataBody },
+        { kind: 'paragraph', text: words.lookupBody },
+      ],
+    },
+    { id: 'uptime', heading: words.uptimeHeading, blocks: [{ kind: 'paragraph', text: words.uptimeBody }] },
+    { id: 'misuse', heading: words.misuseHeading, blocks: [{ kind: 'paragraph', text: words.misuseBody }] },
+    { id: 'contact', heading: words.contactHeading, blocks: [{ kind: 'paragraph', text: words.contactBody }] },
+  ],
+};
+---
+
+<DocPage doc={doc} current="developers" eyebrow={developersWords.eyebrow} eyebrowHref="/developers">
+  <DevTabs slot="tabs" current="terms" />
+</DocPage>

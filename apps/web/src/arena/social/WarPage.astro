@@ -1,0 +1,831 @@
+---
+// One paper experiment (Model Wars, docs/contracts/phase-6-social.md section 5.3). What a reader
+// needs to replay its accounting: the conditions (strategy, rules, universe, instructions and their
+// hash, every model with its settings, prices and probe), the results in the order of scoring v1
+// once it is complete, each model's value by war-day against the 10,000 USD every portfolio
+// started with, what each model did on each day, and the prices of every war-day.
+//
+// Every figure is the API's (`warStandings` runs on the server). Words never say best, winner or
+// beat: it is one run under these conditions.
+import { MICRO } from '@prix/contracts';
+import {
+  formatCount,
+  formatDateTimeUtc,
+  formatDay,
+  formatDayShort,
+  formatDrawdownBps,
+  formatPercentBps,
+  formatTick,
+  formatUsdMicro,
+  formatWeightBps,
+} from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Chip from '../../design/Chip.astro';
+import { linePlot } from '../../design/chart.ts';
+import DefinitionList from '../../design/DefinitionList.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import SeriesChart from '../../design/SeriesChart.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import { toneOf } from '../record.ts';
+import { fetchWar } from './client.ts';
+import SocialFailure from './SocialFailure.astro';
+import SocialTop from './SocialTop.astro';
+import { fitEnds, lastValues } from './series-fit.ts';
+import {
+  confidenceText,
+  formatMilli,
+  listHref,
+  providerText,
+  stopReasonText,
+  warCellText,
+  warSettingsText,
+  warStatusText,
+} from './words.ts';
+
+const id = Astro.params.id ?? '';
+const [account, result] = await Promise.all([readAccount(Astro), fetchWar(Astro, id)]);
+const detail = result.ok ? result.data : null;
+const war = detail?.war ?? null;
+const complete = war?.status === 'complete';
+const title = war ? war.title : text('social.warTitle', 'Model war');
+// The document's title names the war's number with its strategy's title; the page's h1 is the title alone.
+const pageTitle = war
+  ? text('social.warPageTitle', 'Model war {number}: {title}', { number: formatCount(war.number), title: war.title })
+  : title;
+const daysDone = detail?.days.length ?? 0;
+
+// --- the value chart -----------------------------------------------------------------------------
+
+const start = war ? war.rules.startingCashMicro / MICRO : 10_000;
+const entrants = detail?.entrants ?? [];
+const valueAt = (slot: string, tickId: string): number | null => {
+  const row = detail?.rows.find((candidate) => candidate.slot === slot && candidate.tickId === tickId);
+  return row ? row.equityMicro / MICRO : null;
+};
+// The name at the end of each line is whole, sixteen characters at most, and every line ends the
+// same way: the slot letter and the model's name when every one of them fits ("A Llama 3.3 70B"),
+// else the slot letter and the model's family when every family fits and no two are alike
+// ("C Mistral"), else the slot letter alone. The key above names each model in full.
+const END_NAME_MAX = 16;
+const fits = (names: string[]): boolean =>
+  names.every((name) => name.length <= END_NAME_MAX) && new Set(names).size === names.length;
+const byLabel = entrants.map((entrant) => `${entrant.slot} ${entrant.label}`);
+const byFamily = entrants.map((entrant) => `${entrant.slot} ${entrant.family}`);
+const familiesDiffer = new Set(entrants.map((entrant) => entrant.family)).size === entrants.length;
+const endNames = fits(byLabel)
+  ? byLabel
+  : familiesDiffer && fits(byFamily)
+    ? byFamily
+    : entrants.map((entrant) => entrant.slot);
+const chartSeries = entrants.map((entrant, index) => ({
+  label: text('social.warSeriesLabel', '{slot}: {label}', { slot: entrant.slot, label: entrant.label }),
+  short: endNames[index] ?? entrant.slot,
+  values: [start, ...(detail?.days ?? []).map((day) => valueAt(entrant.slot, day.tickId))],
+}));
+const allValues = chartSeries.flatMap((series) => series.values).filter((value): value is number => value !== null);
+const plot = linePlot(allValues, start);
+// The range drawn: the plot's own, widened where a name at the end of a line would touch an edge.
+const range = fitEnds(lastValues(chartSeries), plot.hi, plot.lo);
+const chartTicks = plot.ticks
+  .filter((tick) => tick <= range.top && tick >= range.bottom)
+  .map((tick) => ({ value: tick, label: formatCount(Math.round(tick)) }));
+const xLabels = [text('social.chartStart', 'Start'), ...(detail?.days ?? []).map((day) => formatDayShort(day.tickId))];
+
+// --- the conditions ------------------------------------------------------------------------------
+
+const conditions = war
+  ? [
+      {
+        term: text('social.condDates', 'Dates'),
+        // A war that has ended shows its end date (the detail) and never the latest day it could end.
+        value:
+          war.endedAt !== null
+            ? text('social.warDays', 'From {start}, {done} of {total} trading days', {
+                start: formatDay(war.startsOn),
+                done: formatCount(daysDone),
+                total: formatCount(war.tradingDays),
+              })
+            : text('social.condDatesValue', 'From {start}, {days} trading days, finished by {deadline} at the latest', {
+                start: formatDay(war.startsOn),
+                days: formatCount(war.tradingDays),
+                deadline: formatDay(war.deadlineDay),
+              }),
+        detail:
+          war.endedAt !== null
+            ? text('social.condEnded', 'Ended {time}', { time: formatDateTimeUtc(war.endedAt) })
+            : undefined,
+      },
+      {
+        term: text('social.condStart', 'Each portfolio'),
+        value: text('social.condStartValue', 'Started with {amount} virtual USD in cash', {
+          amount: formatUsdMicro(war.rules.startingCashMicro),
+        }),
+      },
+      {
+        term: text('social.condCosts', 'Costs'),
+        value: text('social.condCostsValue', 'Fee {fee} and slippage {slippage} on every fill', {
+          fee: formatPercentBps(war.rules.feeBps, { sign: false }),
+          slippage: formatPercentBps(war.rules.slippageBps, { sign: false }),
+        }),
+      },
+      {
+        term: text('social.condLimits', 'Limits'),
+        value: text('social.condLimitsValue', 'At most {max} in one symbol; no trade under {min} of the portfolio', {
+          max: formatWeightBps(war.rules.maxWeightBps),
+          min: formatWeightBps(war.rules.minTradeBps),
+        }),
+      },
+      {
+        term: text('social.condSchedule', 'Schedule'),
+        value: text(
+          'social.condScheduleValue',
+          'Once a day, at the league’s daily round, with the same prices for every model',
+        ),
+      },
+      { term: text('social.condUniverse', 'Symbols'), value: war.rules.universe.join(', ') },
+      {
+        term: text('social.condInstructions', 'Instructions'),
+        value: war.promptVersion ?? text('social.condNotFrozen', 'Frozen at the first war-day'),
+        detail: war.systemMessageSha256
+          ? text('social.condSha', 'SHA-256 {hash}', { hash: war.systemMessageSha256 })
+          : undefined,
+      },
+      {
+        term: text('social.condStrategyHash', 'Strategy text'),
+        value: text('social.condSha', 'SHA-256 {hash}', { hash: war.strategySha256 }),
+      },
+      {
+        term: text('social.condOrder', 'Order of the table'),
+        value: text(
+          'social.condOrderValue',
+          'Scoring {method}: return, then the smaller drawdown, then fewer trades. Equal return and drawdown share a place.',
+          { method: war.method },
+        ),
+      },
+    ]
+  : [];
+
+const neuronPrice = (input: number | null, output: number | null): string =>
+  input === null || output === null
+    ? text('social.computeNone', 'None: not run on Workers AI')
+    : text('social.neuronsPerMillion', '{input} in, {output} out, per million tokens', {
+        input: formatCount(input),
+        output: formatCount(output),
+      });
+
+const symbols = war ? war.rules.universe : [];
+const moneyCell = (micro: number): string => formatUsdMicro(micro);
+const modelName = (slot: string, label: string): string =>
+  text('social.warSeriesLabel', '{slot}: {label}', { slot, label });
+const rowOf = (slot: string, tickId: string) =>
+  detail?.rows.find((candidate) => candidate.slot === slot && candidate.tickId === tickId) ?? null;
+// A day's exceptions: a model that gave no decision or was not asked, with the reason, in words.
+const exceptionsOf = (tickId: string) =>
+  entrants.flatMap((entrant) => {
+    const row = rowOf(entrant.slot, tickId);
+    if (!row || row.status === 'decided') return [];
+    const cell = warCellText(row.status, row.code);
+    return [{ slot: entrant.slot, word: cell.word, detail: cell.detail }];
+  });
+const resultsColumns = [
+  ...(complete ? [{ key: 'place', label: text('social.colPlace', 'Place'), align: 'end' as const }] : []),
+  { key: 'model', label: text('social.colModel', 'Model') },
+  { key: 'return', label: text('social.colReturn', 'Return'), align: 'end' as const },
+  { key: 'drawdown', label: text('social.colDrawdown', 'Max drawdown'), align: 'end' as const },
+  { key: 'trades', label: text('social.colTrades', 'Trades'), align: 'end' as const },
+  { key: 'decided', label: text('social.colDecided', 'Valid decisions'), align: 'end' as const },
+  { key: 'costs', label: text('social.colFees', 'Fees, virtual USD'), align: 'end' as const },
+  { key: 'neurons', label: text('social.colCompute', 'Compute used (Workers AI units)'), align: 'end' as const },
+  { key: 'v2', label: text('social.colV2', 'v2 score'), align: 'end' as const },
+];
+// The days a model missed, in words, with only the counts above zero: "1 no decision".
+const missedText = (noDecision: number, skipped: number): string =>
+  [
+    noDecision > 0 ? text('social.noDecisionCount', '{count} no decision', { count: formatCount(noDecision) }) : '',
+    skipped > 0 ? text('social.skippedCount', '{count} not asked', { count: formatCount(skipped) }) : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+// While no model has enough days for a confidence, the table says so once, in its caption, and
+// no row repeats it. The API's confidence is read as it is; the page never works one out.
+const standings = detail?.standings ?? [];
+const noConfidence =
+  standings.length > 0 &&
+  standings.every((standing) => standing.confidence === null || standing.confidence === 'insufficient');
+const allInsufficient = text(
+  'social.rankConfidenceAllInsufficient',
+  'Too few days to rate confidence for any model yet.',
+);
+---
+
+<Layout
+  title={pageTitle}
+  description={text(
+    'social.warDescription',
+    'One model war: one public strategy run on several AI models under the same conditions, with every day and price recorded. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={
+      war
+        ? text('social.warEyebrow', 'Model war {number}', { number: formatCount(war.number) })
+        : text('social.warsTitle', 'Model wars')
+    }
+    eyebrowHref={listHref(Astro.url, '/wars', 1)}
+    lead={
+      war
+        ? text(
+            'social.warLead',
+            'One run of {count} models on one public strategy, under the same conditions. It records what happened in this run; a different stretch of days could give a different order.',
+            { count: formatCount(entrants.length) },
+          )
+        : undefined
+    }
+  >
+    {
+      war && (
+        <div class="war-state">
+          <p class="war-chips">
+            <Chip label={warStatusText(war.status)} />
+            <span class="small figures">
+              {text('social.warDaysDone', '{done} of {total} trading days', {
+                done: formatCount(daysDone),
+                total: formatCount(war.tradingDays),
+              })}
+            </span>
+          </p>
+          {war.status === 'scheduled' && (
+            <p class="small">
+              {text('social.warScheduledStart', "Starts at the league's daily round, 15:00 UTC on {date}.", {
+                date: formatDay(war.startsOn),
+              })}
+            </p>
+          )}
+        </div>
+      )
+    }
+  </SocialTop>
+
+  {
+    !result.ok ? (
+      <section class="page section">
+        <SocialFailure error={result.error} subject={text('social.subjectWar', 'This model war')} />
+      </section>
+    ) : war && detail ? (
+      <>
+        {war.status === 'stopped' && (
+          <section class="page section">
+            <Notice tone="status" title={warStatusText('stopped')} body={stopReasonText(war.stopReason)} />
+          </section>
+        )}
+
+        {/*
+          A scheduled war has no figures yet: no empty table and no empty chart. The head says when it
+          starts, and the conditions follow it directly.
+        */}
+        {detail.standings.length > 0 && (
+        <section class="page section stack-16" aria-labelledby="war-results-title">
+          <div>
+            <h2 class="title" id="war-results-title">
+              {text('social.warResultsTitle', 'Results of this run')}
+            </h2>
+            <p class="small war-note">
+              {complete
+                ? text(
+                    'social.warResultsNote',
+                    'In the order of scoring v1. The v2 score and its confidence are shown for each model and do not change the order. With so few days, confidence is low.',
+                  )
+                : text(
+                    'social.warResultsRunningNote',
+                    'Figures so far. No order until the last day; listed in slot order.',
+                  )}{' '}
+              {text(
+                'social.computeNote',
+                'Compute used counts the Workers AI units each model’s answers took.',
+              )}
+            </p>
+          </div>
+          <div class="war-wide">
+          <Table
+            id="war-results"
+            caption={[
+              text('social.warResultsCaption', 'Results of model war {number}', { number: formatCount(war.number) }),
+              noConfidence ? allInsufficient : '',
+            ]
+              .filter(Boolean)
+              .join('. ')}
+            captionVisible={noConfidence}
+            scroll
+            minWidth="56rem"
+            columns={resultsColumns}
+          >
+            <tbody>
+              {detail.standings.map((standing) => (
+                <tr>
+                  {complete && (
+                    <td class="c-place num figures">
+                      {standing.rank === null ? (
+                        <span class="war-dim">{text('social.noPlace', 'None yet')}</span>
+                      ) : (
+                        `#${formatCount(standing.rank)}`
+                      )}
+                    </td>
+                  )}
+                  <th scope="row" class="c-model">
+                    <span class="war-model">{modelName(standing.slot, standing.label)}</span>
+                    <span class="small">
+                      {text('social.byMakerOn', 'By {maker}, on {provider}', {
+                        maker: standing.maker,
+                        provider: providerText(standing.provider),
+                      })}
+                    </span>
+                  </th>
+                  <td class:list={['c-return num figures', toneOf(standing.returnBps)]}>
+                    {formatPercentBps(standing.returnBps)}
+                  </td>
+                  <td class="c-drawdown num figures">{formatDrawdownBps(standing.maxDrawdownBps)}</td>
+                  <td class="c-trades num figures">{formatCount(standing.tradeCount)}</td>
+                  <td class="c-decided num figures">
+                    {text('social.decidedOf', '{decided} of {days}', {
+                      decided: formatCount(standing.decided),
+                      days: formatCount(standing.days),
+                    })}
+                    {(standing.noDecision > 0 || standing.skipped > 0) && (
+                      <span class="small war-sub">{missedText(standing.noDecision, standing.skipped)}</span>
+                    )}
+                  </td>
+                  <td class="c-costs num figures">{moneyCell(standing.costMicro)}</td>
+                  <td class="c-neurons num figures">{formatCount(standing.neurons)}</td>
+                  <td class="c-v2 num figures">
+                    {formatMilli(standing.v2.scoreMilli, 2)}
+                    {!noConfidence && <span class="small war-sub">{confidenceText(standing.confidence)}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          </div>
+          {noConfidence && <p class="small war-narrow war-note">{allInsufficient}</p>}
+          <ol class="war-narrow war-blocks">
+            {detail.standings.map((standing) => (
+              <li>
+                <p class="war-model">
+                  {complete && standing.rank !== null && (
+                    <span class="figures">{`#${formatCount(standing.rank)} `}</span>
+                  )}
+                  {modelName(standing.slot, standing.label)}
+                </p>
+                <p class="small">
+                  {text('social.byMakerOn', 'By {maker}, on {provider}', {
+                    maker: standing.maker,
+                    provider: providerText(standing.provider),
+                  })}
+                </p>
+                <dl class="war-figs">
+                  <div>
+                    <dt>{text('social.colReturn', 'Return')}</dt>
+                    <dd class:list={['figures', toneOf(standing.returnBps)]}>{formatPercentBps(standing.returnBps)}</dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colDrawdown', 'Max drawdown')}</dt>
+                    <dd class="figures">{formatDrawdownBps(standing.maxDrawdownBps)}</dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colTrades', 'Trades')}</dt>
+                    <dd class="figures">{formatCount(standing.tradeCount)}</dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colDecided', 'Valid decisions')}</dt>
+                    <dd class="figures">
+                      {text('social.decidedOf', '{decided} of {days}', {
+                        decided: formatCount(standing.decided),
+                        days: formatCount(standing.days),
+                      })}
+                      {(standing.noDecision > 0 || standing.skipped > 0) && (
+                        <span class="war-sub war-exception">{missedText(standing.noDecision, standing.skipped)}</span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colFees', 'Fees, virtual USD')}</dt>
+                    <dd class="figures">{moneyCell(standing.costMicro)}</dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colCompute', 'Compute used (Workers AI units)')}</dt>
+                    <dd class="figures">{formatCount(standing.neurons)}</dd>
+                  </div>
+                  <div>
+                    <dt>{text('social.colV2', 'v2 score')}</dt>
+                    <dd class="figures">
+                      {formatMilli(standing.v2.scoreMilli, 2)}
+                      {!noConfidence && (
+                        <span class="war-sub war-exception">{confidenceText(standing.confidence)}</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ol>
+        </section>
+        )}
+
+        {daysDone > 0 && (
+        <section class="page section stack-16" aria-labelledby="war-chart-title">
+          <h2 class="title" id="war-chart-title">
+            {text('social.warChartTitleDaily', 'Value each day')}
+          </h2>
+            <SeriesChart
+              id="war-chart"
+              caption={text(
+                'social.warChartCaption',
+                'Each model’s paper portfolio in virtual USD at the end of each war-day.',
+              )}
+              keyLabel={text('social.warModelsLabel', 'Models')}
+              series={chartSeries}
+              xLabels={xLabels}
+              top={range.top}
+              bottom={range.bottom}
+              ticks={chartTicks}
+              baseline={{
+                value: start,
+                label: text('social.chartBaseline', 'The dashed line is the {amount} USD each one started with.', {
+                  amount: formatUsdMicro(war.rules.startingCashMicro),
+                }),
+              }}
+            />
+        </section>
+        )}
+
+        {daysDone > 0 && (
+          <section class="page section stack-16" aria-labelledby="war-grid-title">
+            <div>
+              <h2 class="title" id="war-grid-title">
+                {text('social.warGridTitle', 'Day by day')}
+              </h2>
+              <p class="small war-note">
+                {text(
+                  'social.warGridNote',
+                  'What each model did on each war-day, and its value at the end of it. A model that gave no valid decision kept its portfolio unchanged.',
+                )}
+              </p>
+            </div>
+            <div class="war-wide war-grid">
+            <Table
+              id="war-grid"
+              caption={text('social.warGridCaption', 'Each model on each war-day')}
+              scroll
+              minWidth="48rem"
+              columns={[
+                { key: 'day', label: text('social.colDay', 'Day') },
+                ...entrants.map((entrant) => ({
+                  key: `slot-${entrant.slot}`,
+                  label: modelName(entrant.slot, entrant.label),
+                  align: 'end' as const,
+                })),
+              ]}
+            >
+              <tbody>
+                {detail.days.map((day) => {
+                  const exceptions = exceptionsOf(day.tickId);
+                  return (
+                    <>
+                      <tr class:list={[exceptions.length > 0 && 'has-note']}>
+                        <th scope="row" class="c-day figures">
+                          {formatTick(day.tickId)}
+                        </th>
+                        {entrants.map((entrant) => {
+                          const row = rowOf(entrant.slot, day.tickId);
+                          if (!row) return <td class="num war-dim">{text('social.cellNone', 'No row')}</td>;
+                          return (
+                            <td class={`num c-slot-${entrant.slot}`}>
+                              {row.status !== 'decided' && (
+                                <span class="war-cell">{warCellText(row.status, row.code).word}</span>
+                              )}
+                              <span class="figures war-dim">{formatUsdMicro(row.equityMicro)}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {exceptions.length > 0 && (
+                        <tr class="war-note-row">
+                          <td colspan={entrants.length + 1} class="small">
+                            {exceptions
+                              .map((item) =>
+                                item.detail
+                                  ? text('social.warCellNote', '{slot}: {word}. {detail}', { slot: item.slot, word: item.word, detail: item.detail })
+                                  : text('social.warCellNoteShort', '{slot}: {word}.', { slot: item.slot, word: item.word }),
+                              )
+                              .join(' ')}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </Table>
+            </div>
+            <ol class="war-narrow war-blocks">
+              {detail.days.map((day) => (
+                <li>
+                  <p class="war-day figures">{formatTick(day.tickId)}</p>
+                  <dl class="war-figs">
+                    {entrants.map((entrant) => {
+                      const row = rowOf(entrant.slot, day.tickId);
+                      const cell = row && row.status !== 'decided' ? warCellText(row.status, row.code) : null;
+                      // The value stays on the model's line; "No decision" stands in grey beside the
+                      // name, and the reason runs under the line at its full width.
+                      return (
+                        <div>
+                          <dt>
+                            {modelName(entrant.slot, entrant.label)}
+                            {cell && <span class="war-flag">{cell.word}</span>}
+                          </dt>
+                          <dd class="figures">
+                            {row ? formatUsdMicro(row.equityMicro) : text('social.cellNone', 'No row')}
+                          </dd>
+                          {cell?.detail && <dd class="war-fig-note">{cell.detail}</dd>}
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        <section class="page section stack-16" aria-labelledby="war-conditions-title">
+          <h2 class="title" id="war-conditions-title">
+            {text('social.warConditionsTitle', 'The conditions')}
+          </h2>
+          <div class="stack-8">
+            <h3 class="small war-label">{text('social.warStrategy', 'The strategy, written by Prix')}</h3>
+            <p class="prose war-strategy">{war.strategy}</p>
+          </div>
+          <DefinitionList items={conditions} labelWidth="10rem" />
+          <Table
+            id="war-models"
+            caption={text('social.warModelsCaption', 'The models and their settings')}
+            captionVisible
+            scroll
+            minWidth="56rem"
+            columns={[
+              { key: 'slot', label: text('social.colSlot', 'Slot') },
+              { key: 'model', label: text('social.colModel', 'Model') },
+              { key: 'settings', label: text('social.colSettings', 'Settings') },
+              { key: 'prices', label: text('social.colComputePrices', 'Compute price (Workers AI units)') },
+              { key: 'probe', label: text('social.colProbe', 'Checked') },
+            ]}
+          >
+            <tbody>
+              {entrants.map((entrant) => (
+                <tr>
+                  <td class="c-slot">{entrant.slot}</td>
+                  <th scope="row" class="c-model">
+                    <span class="war-model">{entrant.label}</span>
+                    <span class="small war-sub">
+                      {text('social.modelIdLine', '{maker}, {provider}, {id}', {
+                        maker: entrant.maker,
+                        provider: providerText(entrant.provider),
+                        id: entrant.modelId,
+                      })}
+                    </span>
+                  </th>
+                  <td class="c-settings small">{warSettingsText(entrant.maxOutputTokens, entrant.extra)}</td>
+                  <td class="c-prices small">
+                    {neuronPrice(entrant.inputNeuronsPerMillion, entrant.outputNeuronsPerMillion)}
+                    {entrant.pricesReadOn && (
+                      <span class="war-sub">
+                        {text('social.pricesReadOn', 'Read on {day}', { day: formatDay(entrant.pricesReadOn) })}
+                      </span>
+                    )}
+                  </td>
+                  <td class="c-probe small">
+                    {text('social.probedOn', 'Checked on {day}', { day: formatDay(entrant.probedOn) })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </section>
+
+        {daysDone > 0 && (
+          <section class="page section stack-16" aria-labelledby="war-replay-title">
+            <div>
+              <h2 class="title" id="war-replay-title">
+                {text('social.warReplayTitle', 'Prices, to replay the accounting')}
+              </h2>
+              <p class="small war-note">
+                {text(
+                  'social.warReplayNote',
+                  'The reference price of each symbol at each war-day’s round, in USD, as every model saw it. With the rules above and each day’s decisions, every value can be worked out again.',
+                )}
+              </p>
+            </div>
+            <Table
+              id="war-prices"
+              caption={text('social.warPricesCaption', 'Reference prices of each war-day')}
+              scroll
+              minWidth="56rem"
+              columns={[
+                { key: 'day', label: text('social.colRound', 'Round') },
+                ...symbols.map((symbol) => ({ key: `sym-${symbol}`, label: symbol, align: 'end' as const })),
+              ]}
+            >
+              <tbody>
+                {detail.days.map((day) => (
+                  <tr>
+                    <th scope="row" class="c-day figures">
+                      {formatTick(day.tickId)}
+                      {day.halted.length > 0 && (
+                        <span class="small war-sub">
+                          {text('social.haltedLine', 'Not trading: {symbols}', { symbols: day.halted.join(', ') })}
+                        </span>
+                      )}
+                    </th>
+                    {symbols.map((symbol) => {
+                      const price = day.pricesMicro[symbol];
+                      return <td class="num figures">{price === undefined ? '–' : formatUsdMicro(price)}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </section>
+        )}
+      </>
+    ) : null
+  }
+</Layout>
+
+<style>
+  .war-state {
+    display: grid;
+    row-gap: var(--space-4);
+  }
+
+  .war-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-8);
+  }
+
+  .war-note {
+    max-width: var(--measure);
+  }
+
+  /*
+    Tabular figures belong to figure cells only (the Table primitive sets them on the whole table):
+    a model's name, the row headers that hold one and every column header keep the face's own.
+  */
+  .war-model {
+    display: block;
+    font-weight: var(--weight-strong);
+    font-variant-numeric: normal;
+  }
+
+  .c-model,
+  section :global(thead th) {
+    font-variant-numeric: normal;
+  }
+
+  .c-model {
+    text-align: start;
+  }
+
+  .war-day {
+    font-weight: var(--weight-strong);
+  }
+
+  /* SeriesChart zeroes its own margin; the chart keeps the 16 pixels under its section's head. */
+  .stack-16 > :global(.series) {
+    margin-top: var(--space-16);
+  }
+
+  .war-sub {
+    display: block;
+  }
+
+  .war-dim {
+    color: var(--grey);
+  }
+
+  .war-cell {
+    display: block;
+    font-weight: var(--weight-medium);
+  }
+
+  /* The tables from 560 pixels; under it, blocks that need no sideways scroll. */
+  .war-wide {
+    display: none;
+  }
+
+  /* No margin above: the section's stack sets the 16 pixels under its head. */
+  .war-blocks {
+    display: grid;
+    margin-inline: 0;
+    margin-bottom: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .war-blocks > li {
+    display: grid;
+    row-gap: var(--space-4);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .war-figs {
+    display: grid;
+    row-gap: var(--space-4);
+    margin: var(--space-4) 0 0;
+  }
+
+  .war-figs > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-12);
+  }
+
+  .war-figs dt {
+    color: var(--grey);
+    font-size: var(--text-13);
+    line-height: var(--leading-13);
+  }
+
+  .war-figs dd {
+    margin: 0;
+    text-align: end;
+  }
+
+  /* "No decision" beside the model's name, in grey; the value keeps its place at the end. */
+  .war-flag {
+    margin-left: var(--space-8);
+    font-weight: var(--weight-medium);
+  }
+
+  /* The reason, left-aligned under the whole line. */
+  .war-figs .war-fig-note {
+    flex-basis: 100%;
+    color: var(--grey);
+    font-size: var(--text-13);
+    line-height: var(--leading-13);
+    text-align: start;
+  }
+
+  .war-exception {
+    color: var(--grey);
+    font-size: var(--text-13);
+    line-height: var(--leading-13);
+  }
+
+  @media (min-width: 35em) {
+    .war-wide {
+      display: block;
+    }
+
+    .war-narrow {
+      display: none;
+    }
+  }
+
+  /* Day by day: four equal model columns, the day in a narrow one of its own. */
+  .war-grid :global(table) {
+    table-layout: fixed;
+  }
+
+  .war-grid :global(.c-day) {
+    width: 9rem;
+  }
+
+  .war-grid :global(tr.has-note > *) {
+    border-bottom: 0;
+  }
+
+  .war-note-row td {
+    padding-top: 0;
+    text-align: start;
+  }
+
+  .war-label {
+    color: var(--grey);
+    font-weight: var(--weight-strong);
+  }
+
+  .war-strategy {
+    max-width: var(--measure);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+</style>

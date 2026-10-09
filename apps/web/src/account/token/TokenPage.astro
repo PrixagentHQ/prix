@@ -1,0 +1,232 @@
+---
+import type { TokenInfoResponse } from '@prix/contracts';
+// The account tier page: the wallet's tier, its holding as a share of the supply, what each tier
+// unlocks, the next tier and the agent slots. Everything shown was read by the server for the
+// signed-in wallet. The page grants nothing: tiers are decided on the server.
+import { tokenInfoResponseSchema } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { apiErrorText } from '../../content/states.ts';
+import Button from '../../design/Button.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Table from '../../design/Table.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import AccountCard from '../AccountCard.astro';
+import Done from '../Done.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import type { Session } from '../session.ts';
+import { herePath, signInHref } from '../session.ts';
+import { formatDelay } from './delay.ts';
+import { formatThreshold } from './format.ts';
+import TierCard from './TierCard.astro';
+import { fetchTokenMe } from './token-client.ts';
+import '../account.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+}
+
+const { account, session } = Astro.props;
+const signedIn = session.state === 'signed-in';
+
+/** GET /api/token, the public description of the tiers. Null when it could not be read. */
+async function readInfo(): Promise<TokenInfoResponse | null> {
+  try {
+    if (typeof __PRIX_FIXTURES__ !== 'undefined' && __PRIX_FIXTURES__) {
+      const { tokenInfoFixture } = await import('./fixtures.ts');
+      return tokenInfoFixture(Astro.url);
+    }
+    const { createServerTransport } = await import('../../lib/api-server.ts');
+    const response = await createServerTransport(Astro)({ method: 'GET', path: '/api/token' });
+    if (!response.ok) return null;
+    const parsed = tokenInfoResponseSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+const [me, info] = signedIn ? await Promise.all([fetchTokenMe(Astro), readInfo()]) : [null, null];
+
+const title = text('token.pageTitle', 'The Prix token');
+const here = herePath(Astro.url);
+const delay = info ? formatDelay(info.feedDelaySeconds) : '';
+const yes = text('common.yes', 'Yes');
+const no = text('common.no', 'No');
+
+const columns = [
+  { key: 'tier', label: text('token.tierColumnTier', 'Tier') },
+  { key: 'needs', label: text('token.tierColumnHolding', 'Holding'), align: 'end' as const },
+  { key: 'agents', label: text('token.tierColumnAgents', 'Agents'), align: 'end' as const },
+  { key: 'feed', label: text('token.tierColumnFeed', 'Feed') },
+  { key: 'badge', label: text('token.tierColumnBadge', 'Badge') },
+  { key: 'api', label: text('token.tierColumnApi', 'API calls a day'), align: 'end' as const },
+];
+const currentTier = me?.ok && me.data.gatingOn ? me.data.tier : null;
+/** The first tier above the open one that gives more agents. Shown only to a wallet on tier 0. */
+const base = info?.tiers[0];
+const nextTierRow =
+  me?.ok && me.data.gatingOn && me.data.tier === 0 && info?.gatingOn && base
+    ? info.tiers.find((tier) => tier.tier > 0 && tier.maxAgents > base.maxAgents)
+    : undefined;
+---
+
+<Layout
+  title={title}
+  description={text('token.pageDescription', 'The token tier of your wallet and what each tier unlocks.')}
+  current="account"
+  account={account}
+  signInHref={signInHref(here)}
+  noindex
+>
+  <PageHead
+    title={title}
+    back={{ href: '/account', label: text('nav.account', 'Account') }}
+    intro={text(
+      'token.pageIntro',
+      'Your tier sets how many agents you can run and how soon you see the follow feed. Prix reads it from the balance of the wallet you signed in with.',
+    )}
+  />
+
+  <div class="page section">
+    {
+      session.state === 'failed' ? (
+        <div class="acct-column">
+          <SessionGate session={session} />
+        </div>
+      ) : !signedIn ? (
+        <div class="acct-column">
+          <AccountCard title={text('nav.signIn', 'Sign in')} headingId="sign-in-heading">
+            <p class="body">{text('token.signInFirst', 'Sign in with your wallet to see your tier.')}</p>
+            {session.state === 'signed-out' ? (
+              <p>
+                <Button href={signInHref(here)} label={text('nav.signIn', 'Sign in')} />
+              </p>
+            ) : (
+              <SessionGate session={session} steps />
+            )}
+          </AccountCard>
+        </div>
+      ) : !me?.ok ? (
+        <div class="acct-column">
+          <Notice
+            tone="error"
+            title={text('token.loadFailedTitle', 'Your tier could not be read')}
+            body={apiErrorText(me?.error.code ?? 'internal')}
+          >
+            <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+          </Notice>
+        </div>
+      ) : (
+        <div class="acct-grid token-grid">
+          <AccountCard
+            title={me.data.gatingOn ? text('token.yourTier', 'Your tier') : text('token.yourAllowance', 'Your allowance')}
+            headingId="tier-heading"
+          >
+            <Done
+              items={[
+                {
+                  name: 'token-checked',
+                  title: text('token.checkedTitle', 'Balance read'),
+                  body: text('token.checkedBody', 'This is what Prix read from the chain just now.'),
+                },
+              ]}
+            />
+            <TierCard me={me.data} info={info} />
+            {nextTierRow && (
+              <p class="small panel-part">
+                {nextTierRow.realtimeFeed
+                  ? text(
+                      'token.tierNextWithFeed',
+                      'Tier {tier} gives {agents} agents and the live feed. Until then the feed arrives {delay} late.',
+                      { tier: nextTierRow.tier, agents: nextTierRow.maxAgents, delay },
+                    )
+                  : text('token.tierNextAgents', 'Tier {tier} gives {agents} agents.', {
+                      tier: nextTierRow.tier,
+                      agents: nextTierRow.maxAgents,
+                    })}
+              </p>
+            )}
+          </AccountCard>
+
+          <AccountCard
+            title={text('token.tiersTitle', 'What each tier unlocks')}
+            headingId="tiers-heading"
+            id="tiers"
+            intro={
+              info?.gatingOn
+                ? text('token.tiersIntro', 'A tier is the share of the token’s supply your wallet holds.')
+                : text(
+                    'token.tiersIntroPreview',
+                    'This is what the tiers will unlock once they are switched on. Until then everyone has the open allowance.',
+                  )
+            }
+          >
+            {info ? (
+              <Table id="tiers-table" caption={text('token.tiersCaption', 'Tiers and what each unlocks')} columns={columns} scroll>
+                <tbody>
+                  {info.tiers.map((tier) => (
+                    <tr aria-current={currentTier === tier.tier ? 'true' : undefined}>
+                      <th scope="row">
+                        {currentTier === tier.tier
+                          ? text('token.tierNameYours', 'Tier {tier}, yours', { tier: tier.tier })
+                          : text('token.tierName', 'Tier {tier}', { tier: tier.tier })}
+                      </th>
+                      <td class="num">{tier.tier === 0 ? text('token.none', 'None') : formatThreshold(tier.thresholdPpm)}</td>
+                      <td class="num">{formatCount(tier.maxAgents)}</td>
+                      <td>
+                        {tier.realtimeFeed
+                          ? text('token.feedLive', 'Live')
+                          : text('token.tierFeedLate', '{delay} late', { delay })}
+                      </td>
+                      <td>{tier.verifiedBadge ? yes : no}</td>
+                      <td class="num">{formatCount(tier.apiDailyQuota)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <Notice
+                tone="error"
+                title={text('token.tiersFailedTitle', 'The tiers could not be loaded')}
+                body={text('token.tiersFailedBody', 'Reload the page to see what each tier unlocks.')}
+              >
+                <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+              </Notice>
+            )}
+          </AccountCard>
+        </div>
+      )
+    }
+    <p class="small acct-notes token-disclaimer">
+      {
+        text(
+          'token.pageDisclaimer',
+          'The token gives no rights to Prix and has no connection to any agent’s decisions. Prix is a simulation, and nothing on it is advice.',
+        )
+      }
+    </p>
+  </div>
+</Layout>
+
+<style>
+  /* The table of tiers has six columns: it takes the wider of the two. */
+  @media (min-width: 60em) {
+    .token-grid {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    }
+  }
+
+  .token-disclaimer {
+    margin-top: var(--space-24);
+  }
+</style>
+
+<script>
+  import { mountToken } from './token-client.ts';
+
+  mountToken();
+</script>

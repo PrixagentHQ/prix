@@ -1,0 +1,84 @@
+---
+// The follow control as a picture: a plus on the wash while the agent is not followed, a tick
+// on the tint while it is. Both states are in the markup and `aria-pressed` picks one, so the
+// page that owns the behaviour flips one attribute. It asks the API for nothing itself.
+//
+//   chip    28 pixels, for a card or a row (the default)
+//   icon    the sign alone, 28 pixels square
+//   action  the large button of a panel
+//
+// With `href` it is a link, for a person who is signed out and must sign in first.
+interface Props {
+  /** The words while the agent is not followed: "Follow". */
+  label: string;
+  /** The words while it is followed: "Following". */
+  pressedLabel: string;
+  /** The name of the control for assistive technology: "Follow Semis Rotation". It does not change with the state. */
+  name: string;
+  pressed?: boolean;
+  form?: 'chip' | 'icon' | 'action';
+  href?: string;
+  disabled?: boolean;
+  id?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  label,
+  pressedLabel,
+  name,
+  pressed = false,
+  form = 'chip',
+  href,
+  disabled = false,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+const classes = [
+  'follow-button',
+  form === 'icon' && 'follow-button--icon',
+  form === 'action' && 'button button--lg button--wide',
+];
+const words = form !== 'icon';
+---
+
+{
+  href !== undefined ? (
+    <a class:list={classes} href={href} aria-label={name} {...rest}>
+      <span class="follow-off" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" focusable="false">
+          <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+        </svg>
+        {words && label}
+      </span>
+    </a>
+  ) : (
+    <button
+      class:list={classes}
+      type="button"
+      aria-label={name}
+      aria-pressed={pressed ? 'true' : 'false'}
+      disabled={disabled}
+      {...rest}
+    >
+      <span class="follow-off" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" focusable="false">
+          <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+        </svg>
+        {words && label}
+      </span>
+      <span class="follow-on" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" focusable="false">
+          <path
+            d="m2.75 7.5 2.75 2.75 5.75-6"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        {words && pressedLabel}
+      </span>
+    </button>
+  )
+}

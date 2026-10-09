@@ -1,0 +1,82 @@
+---
+// Pill tabs: a switch between forms or orders of one thing, such as Cards and Table, or Top
+// and New. An item with `href` is a link and the chosen one is `aria-current`; an item without
+// is a button and the chosen one is `aria-pressed`. The page that owns the behaviour listens
+// for the click and reads `data-value`.
+//
+//   tray   the items stand in a tray of the wash, and the chosen one is the ground (the default)
+//   plain  no tray; the chosen one takes the wash
+interface Item {
+  label: string;
+  /** With `href` the item is a link, and the switch works without script. */
+  href?: string;
+  /** Becomes `data-value` on the item. */
+  value?: string;
+  current?: boolean;
+  /** A small drawn sign before the label. */
+  icon?: 'cards' | 'rows';
+}
+
+interface Props {
+  /** The name of the group for assistive technology, for example "View". */
+  label: string;
+  items: Item[];
+  variant?: 'tray' | 'plain';
+  /** Under 560 pixels the labels of items that have an icon are kept for assistive technology only. */
+  iconsOnly?: boolean;
+  id?: string;
+  class?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  label,
+  items,
+  variant = 'tray',
+  iconsOnly = false,
+  id,
+  class: extra,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+---
+
+<div
+  class:list={['pill-tabs', variant === 'plain' && 'pill-tabs--plain', iconsOnly && 'pill-tabs--icons-only', extra]}
+  role="group"
+  aria-label={label}
+  id={id}
+  {...rest}
+>
+  {
+    items.map((item) => {
+      const inner = (
+        <>
+          {item.icon === 'cards' && (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+              <rect x="1.75" y="1.75" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.5" />
+              <rect x="8.25" y="1.75" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.5" />
+              <rect x="1.75" y="8.25" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.5" />
+              <rect x="8.25" y="8.25" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.5" />
+            </svg>
+          )}
+          {item.icon === 'rows' && (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+              <path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          )}
+          <span class:list={[item.icon && 'pill-tabs-label']}>{item.label}</span>
+        </>
+      );
+      return item.href !== undefined ? (
+        <a href={item.href} aria-current={item.current ? 'true' : undefined} data-value={item.value}>
+          {inner}
+        </a>
+      ) : (
+        <button type="button" aria-pressed={item.current ? 'true' : 'false'} data-value={item.value}>
+          {inner}
+        </button>
+      );
+    })
+  }
+</div>

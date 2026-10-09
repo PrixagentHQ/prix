@@ -1,0 +1,459 @@
+---
+// One paper manager (docs/contracts/phase-6-social.md section 5.5): what it is, its season in
+// figures, its value by valued day against the 10,000 USD it started the season with, its
+// allocation as a table with weight bars (never a pie), and its rebalances, newest first. The
+// owner's address is never shown; an agent that is no longer public is shown without name or link.
+import { MICRO, STARTING_CASH_MICRO } from '@prix/contracts';
+import {
+  formatCount,
+  formatDay,
+  formatDayShort,
+  formatDrawdownBps,
+  formatPercentBps,
+  formatUsdMicro,
+  formatWeightBps,
+} from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Chart from '../../design/Chart.astro';
+import Chip from '../../design/Chip.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import Meter from '../../design/Meter.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import { chartTick, toneOf } from '../record.ts';
+import { agentHref, symbolList } from '../words.ts';
+import { fetchManager } from './client.ts';
+import SocialFailure from './SocialFailure.astro';
+import SocialTop from './SocialTop.astro';
+import {
+  allocationStateText,
+  listHref,
+  managerDefinition,
+  managerStatusText,
+  rebalanceReasonText,
+  scheduleText,
+  volText,
+} from './words.ts';
+
+const id = Astro.params.id ?? '';
+const [account, result] = await Promise.all([readAccount(Astro), fetchManager(Astro, id)]);
+const detail = result.ok ? result.data : null;
+const manager = detail?.manager ?? null;
+const season = manager?.season ?? null;
+const title = manager ? manager.name : text('social.managerTitle', 'Paper manager');
+
+// The names of the agents this paper manager names publicly, for its rebalances.
+const names = new Map<string, string>();
+for (const line of detail?.allocation ?? []) if (line.agent) names.set(line.agent.id, line.agent.name);
+const nameOf = (agentId: string): string =>
+  names.get(agentId) ?? text('social.agentNotPublic', 'an agent that is no longer public');
+
+const figures = season
+  ? [
+      {
+        label: text('social.colReturn', 'Return'),
+        value: formatPercentBps(season.returnBps),
+        tone: toneOf(season.returnBps),
+      },
+      { label: text('social.colDrawdown', 'Max drawdown'), value: formatDrawdownBps(season.maxDrawdownBps) },
+      { label: text('social.colDailyVol', 'Daily volatility'), value: volText(season.volMilliBps) },
+      { label: text('social.colValuedDays', 'Valued days'), value: formatCount(season.valuedDays) },
+    ]
+  : [];
+
+const daily = detail?.daily ?? [];
+const latest = daily.at(-1);
+const points = daily.map((point, index) => {
+  const isLatest = index === daily.length - 1;
+  const detailText = text('social.chartPointDetail', '{value} virtual USD on {day}', {
+    value: formatUsdMicro(point.equityMicro),
+    day: formatDayShort(point.day),
+  });
+  return {
+    value: point.equityMicro / MICRO,
+    ...(isLatest && season ? { figure: formatPercentBps(season.returnBps), tone: toneOf(season.returnBps) } : {}),
+    detail: detailText,
+    tip: formatDayShort(point.day),
+    tick: formatDayShort(point.day),
+  };
+});
+const alt = latest
+  ? text(
+      'social.managerChartAlt',
+      'Value of the paper manager by valued day, in virtual USD, to {latest} on {day}. Use the arrow keys to move through the days.',
+      { latest: formatUsdMicro(latest.equityMicro), day: formatDayShort(latest.day) },
+    )
+  : '';
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.managerDescription',
+    'A paper manager: a simulated allocation across public Prix agents, valued once a day. No money is involved. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.managersTitle', 'Paper managers')}
+    eyebrowHref={listHref(Astro.url, '/managers', 1)}
+    lead={managerDefinition()}
+  >
+    {
+      manager && (
+        <p class="mgr-chips">
+          <Chip label={managerStatusText(manager.status)} />
+          <span class="small">{scheduleText(manager.schedule)}</span>
+        </p>
+      )
+    }
+  </SocialTop>
+
+  {
+    !result.ok ? (
+      <section class="page section">
+        <SocialFailure error={result.error} subject={text('social.subjectManager', 'This paper manager')} />
+      </section>
+    ) : manager && detail ? (
+      <>
+        <section class="page section" aria-labelledby="mgr-value-title">
+          <h2 class="visually-hidden" id="mgr-value-title">
+            {text('social.managerValueTitle', 'Value by day')}
+          </h2>
+          <div class="stack-24">
+          {season && points.length < 2 && (
+            <FigureBand
+              label={text('social.managerFigures', '{name} in figures', { name: manager.name })}
+              items={figures}
+            />
+          )}
+          {points.length >= 2 ? (
+            <Chart
+              id="mgr-value"
+              points={points}
+              label={text('social.colReturn', 'Return')}
+              alt={alt}
+              baseline={STARTING_CASH_MICRO / MICRO}
+              start={STARTING_CASH_MICRO / MICRO}
+              figure="return"
+              formatTick={chartTick}
+            >
+              <span>
+                {text('social.managerStartedWith', 'Started with {amount} virtual USD', {
+                  amount: formatUsdMicro(STARTING_CASH_MICRO),
+                })}
+              </span>
+            </Chart>
+          ) : (
+            <EmptyState
+              title={text('social.notValuedYet', 'Not valued yet')}
+              body={text(
+                'social.managerNoValueBody',
+                'A paper manager is valued once a day, after the day’s last round. Its line starts with its second valued day.',
+              )}
+            />
+          )}
+          {season && points.length >= 2 && (
+            <div class="mgr-band-after">
+              <FigureBand
+                label={text('social.managerFigures', '{name} in figures', { name: manager.name })}
+                items={figures.slice(1)}
+              />
+            </div>
+          )}
+          <p class="small mgr-note">
+            {text(
+              'social.managerValuation',
+              'Each agent is valued at its published end-of-day value: an Open agent at its 15:00 UTC round, a Pro agent at its last round of the day. New weights take effect on the first day after the day they are set.',
+            )}
+          </p>
+          </div>
+        </section>
+
+        <section class="page section stack-16" aria-labelledby="mgr-alloc-title">
+          <div>
+            <h2 class="title" id="mgr-alloc-title">
+              {text('social.allocationTitle', 'Allocation')}
+            </h2>
+            <p class="small">
+              {detail.lastRebalanceDay
+                ? text('social.allocationNote', 'Weights set by its owner, and where they stand now. Last brought back to its weights on {day}.', {
+                    day: formatDay(detail.lastRebalanceDay),
+                  })
+                : text('social.allocationNoteNone', 'Weights set by its owner. It has not traded yet.')}
+            </p>
+          </div>
+          <div class="mgr-alloc">
+          <Table
+            id="mgr-allocation"
+            caption={text('social.allocationCaption', 'Allocation of {name}', { name: manager.name })}
+            scroll
+            minWidth="40rem"
+            columns={[
+              { key: 'agent', label: text('social.colAgent', 'Agent') },
+              { key: 'target', label: text('social.colTarget', 'Target'), align: 'end' },
+              { key: 'current', label: text('social.colCurrent', 'Now') },
+              { key: 'state', label: text('social.colState', 'State') },
+            ]}
+          >
+            <tbody>
+              {detail.allocation.map((line) => (
+                <tr>
+                  <th scope="row" class="c-agent">
+                    {line.agent ? (
+                      <span class="mgr-agent">
+                        <AgentMark agentId={line.agent.id} name={line.agent.name} size="sm" />
+                        <a href={agentHref(Astro.url, line.agent.id)}>{line.agent.name}</a>
+                      </span>
+                    ) : (
+                      <span class="mgr-dim">{text('social.agentNotPublicTitle', 'No longer public')}</span>
+                    )}
+                    {/* Under 560 pixels the state is this grey line, and the State column is gone. */}
+                    <span class="small mgr-state-line">{allocationStateText(line.state)}</span>
+                  </th>
+                  <td class="c-target num figures">{formatWeightBps(line.targetBps)}</td>
+                  <td class="c-current">
+                    <span class="mgr-weight">
+                      <span class="figures">{formatWeightBps(line.currentBps)}</span>
+                      <Meter share={line.currentBps / 10_000} class="mgr-meter" />
+                    </span>
+                  </td>
+                  <td class="c-state small">{allocationStateText(line.state)}</td>
+                </tr>
+              ))}
+              <tr>
+                <th scope="row" class="c-agent">{text('social.cash', 'Cash')}</th>
+                <td class="c-target num mgr-dim">{text('social.cashRest', 'The rest')}</td>
+                <td class="c-current">
+                  <span class="mgr-weight">
+                    <span class="figures">{formatWeightBps(detail.cashBps)}</span>
+                    <Meter share={detail.cashBps / 10_000} class="mgr-meter" />
+                  </span>
+                </td>
+                <td class="c-state small" />
+              </tr>
+            </tbody>
+          </Table>
+          </div>
+        </section>
+
+        <section class="page section stack-16" aria-labelledby="mgr-rebalances-title">
+          <div>
+            <h2 class="title" id="mgr-rebalances-title">
+              {text('social.rebalancesTitle', 'Changes to the allocation')}
+            </h2>
+            <p class="small">{text('social.rebalancesNote', 'Newest first.')}</p>
+          </div>
+          {detail.rebalances.length > 0 ? (
+            <ol class="mgr-events">
+              {detail.rebalances.map((change) => {
+                const added = change.fills.filter((fill) => fill.side === 'buy').map((fill) => nameOf(fill.agentId));
+                const reduced = change.fills
+                  .filter((fill) => fill.side === 'sell')
+                  .map((fill) => nameOf(fill.agentId));
+                return (
+                  <li>
+                    <time class="small figures" datetime={change.day}>
+                      {formatDay(change.day)}
+                    </time>
+                    <div class="stack-4">
+                      <p class="mgr-reason">{rebalanceReasonText(change.reason)}</p>
+                      {(added.length > 0 || reduced.length > 0) && (
+                        <p class="small">
+                          {[
+                            added.length > 0
+                              ? text('social.fillsAdded', 'Added to {names}.', { names: symbolList(added) })
+                              : '',
+                            reduced.length > 0
+                              ? text('social.fillsReduced', 'Reduced {names}.', { names: symbolList(reduced) })
+                              : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        </p>
+                      )}
+                      {change.exited.length > 0 && (
+                        <p class="small">
+                          {text('social.fillsExited', 'Left the allocation: {names}.', {
+                            names: symbolList(change.exited.map(nameOf)),
+                          })}
+                        </p>
+                      )}
+                      <p class="small figures">
+                        {text('social.rebalanceValues', 'Value {before} before and {after} after, costs {cost} virtual USD.', {
+                          before: formatUsdMicro(change.equityBeforeMicro),
+                          after: formatUsdMicro(change.equityAfterMicro),
+                          cost: formatUsdMicro(change.costMicro),
+                        })}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p class="small">{text('social.rebalancesNone', 'No change to the allocation yet.')}</p>
+          )}
+        </section>
+      </>
+    ) : null
+  }
+</Layout>
+
+<style>
+  /*
+    An agent in the allocation: its animal, then its name in ink at 600, underlined under the
+    pointer. The name gives the row its baseline (the animal is centred beside it), so the name
+    and the row's first figure stand on one line.
+  */
+  .mgr-agent {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+
+  .mgr-agent :global(.agent-mark) {
+    align-self: center;
+  }
+
+  .mgr-agent a {
+    display: inline-flex;
+    align-self: baseline;
+    align-items: center;
+    min-height: var(--space-24);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    overflow-wrap: break-word;
+  }
+
+  .mgr-alloc :global(tbody :is(th, td)) {
+    vertical-align: baseline;
+  }
+
+  /* Names keep the face's own figures; tabular figures are for the figure cells. */
+  .mgr-alloc :global(thead th),
+  .c-agent {
+    font-variant-numeric: normal;
+  }
+
+  .mgr-state-line {
+    display: none;
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  /*
+    Under 560 pixels the allocation fits the phone without a sideways scroll: no State column (its
+    words are the grey line under each name) and a shorter weight bar.
+  */
+  @media not (min-width: 35em) {
+    .mgr-alloc :global(.table--scroll) {
+      min-width: 0;
+    }
+
+    .mgr-alloc :global(.c-state) {
+      display: none;
+    }
+
+    .mgr-state-line {
+      display: block;
+    }
+
+    /* Under the name, not under the animal: the mark's 24 pixels and the 8 beside it. */
+    .mgr-agent + .mgr-state-line {
+      padding-left: calc(var(--space-24) + var(--space-8));
+    }
+
+    .mgr-weight {
+      grid-template-columns: 3rem 2.5rem;
+      column-gap: var(--space-8);
+      min-width: 0;
+    }
+  }
+
+  /* One rule under the chart: the chart's own; the band of figures under it draws none above. */
+  .stack-24 > .mgr-band-after {
+    margin-top: 0;
+  }
+
+  .mgr-band-after :global(.band) {
+    border-top: 0;
+  }
+
+  .mgr-agent a:hover {
+    text-decoration: underline;
+  }
+
+  .mgr-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6) var(--space-8);
+  }
+
+  .mgr-note {
+    max-width: var(--measure);
+  }
+
+  .c-agent {
+    text-align: start;
+    font-weight: var(--weight-strong);
+  }
+
+  .c-agent a {
+    overflow-wrap: break-word;
+  }
+
+  .mgr-dim {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  .mgr-weight {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    column-gap: var(--space-12);
+    align-items: center;
+    min-width: 10rem;
+  }
+
+  .mgr-weight :global(.mgr-meter) {
+    width: 100%;
+    height: var(--space-6);
+  }
+
+  /* No margin above: the section's stack sets the 16 pixels under its head. */
+  .mgr-events {
+    display: grid;
+    margin-inline: 0;
+    margin-bottom: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .mgr-events > li {
+    display: grid;
+    gap: var(--space-2) var(--space-24);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  @media (min-width: 45em) {
+    .mgr-events > li {
+      grid-template-columns: 8rem minmax(0, 1fr);
+      align-items: baseline;
+    }
+  }
+
+  .mgr-reason {
+    font-weight: var(--weight-strong);
+  }
+</style>

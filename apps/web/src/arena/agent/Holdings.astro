@@ -1,0 +1,215 @@
+---
+import type { HoldingPublic } from '@prix/contracts';
+// The paper portfolio of an agent after its latest round: each holding with its weight drawn as
+// a bar and written as a figure, then cash, then the total. A real table, so a screen reader
+// reads each figure under its column. Every figure is the API's own; the bar draws the weight
+// the API sent and nothing else. Under 560 pixels the bars are left out and the figures stay.
+import { BPS } from '@prix/contracts';
+import { formatCount, formatTick, formatUsdMicro, formatWeightBps } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Meter from '../../design/Meter.astro';
+import Table from '../../design/Table.astro';
+import { startingCash, stateText } from '../words.ts';
+
+interface Props {
+  holdings: HoldingPublic[];
+  cashMicro: number;
+  cashWeightBps: number;
+  equityMicro: number;
+  asOfTickId: string | null;
+  /** The heading level of the block: 3 inside a zone that has its own heading. */
+  level?: 2 | 3;
+}
+
+const { holdings, cashMicro, cashWeightBps, equityMicro, asOfTickId, level = 2 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const columns = [
+  { key: 'holding', label: text('agent.columnHolding', 'Holding') },
+  { key: 'weight', label: text('common.weight', 'Weight'), align: 'end' as const },
+  { key: 'value', label: text('agent.columnValue', 'Value, virtual USD'), align: 'end' as const },
+];
+const share = (bps: number): number => bps / BPS;
+---
+
+<section class="stack-16" aria-labelledby="holdings-title">
+  <div>
+    <Heading class="title" id="holdings-title">{text('common.holdings', 'Holdings')}</Heading>
+    <p class="small">
+      {
+        asOfTickId
+          ? text('agent.holdingsNote', 'Valued at the reference prices of {time}.', { time: formatTick(asOfTickId) })
+          : text('agent.holdingsNoteStartLeague', 'Every agent starts with {amount} virtual USD in cash.', {
+              amount: startingCash(),
+            })
+      }{' '}
+      {holdings.length === 0 && stateText('states.noHoldings')}
+    </p>
+  </div>
+  <div class="holdings">
+    <Table id="holdings" caption={text('common.holdings', 'Holdings')} columns={columns}>
+      <tbody class="print-first-10">
+        {
+          holdings.map((holding) => (
+            <tr>
+              <th scope="row" class="c-holding">
+                <span class="holding-symbol">{holding.symbol}</span>
+                <span class="holding-price">
+                  {text('agent.holdingPrice', 'Reference price {price}', { price: formatUsdMicro(holding.priceMicro) })}
+                </span>
+              </th>
+              <td class="c-weight num">
+                <span class="holding-weight">
+                  <Meter share={share(holding.weightBps)} class="holding-meter" />
+                  <span class="figures">{formatWeightBps(holding.weightBps)}</span>
+                </span>
+              </td>
+              <td class="c-value num">{formatUsdMicro(holding.valueMicro)}</td>
+            </tr>
+          ))
+        }
+        <tr class="print-keep">
+          <th scope="row" class="c-holding">
+            <span class="holding-symbol">{text('common.cash', 'Cash')}</span>
+            <span class="holding-price">{text('agent.cashNote', 'Virtual USD, not invested')}</span>
+          </th>
+          <td class="c-weight num">
+            <span class="holding-weight">
+              <Meter share={share(cashWeightBps)} class="holding-meter" />
+              <span class="figures">{formatWeightBps(cashWeightBps)}</span>
+            </span>
+          </td>
+          <td class="c-value num">{formatUsdMicro(cashMicro)}</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row" class="c-holding">{text('agent.total', 'Total')}</th>
+          <td class="c-weight num">
+            <span class="holding-weight">
+              <span class="figures">{formatWeightBps(BPS)}</span>
+            </span>
+          </td>
+          <td class="c-value num">{formatUsdMicro(equityMicro)}</td>
+        </tr>
+      </tfoot>
+    </Table>
+  </div>
+  {
+    holdings.length > 10 && (
+      <p class="small print-only">
+        {text(
+          'agent.printHoldings',
+          'The ten largest of {count} holdings, and cash. The full list is on the agent’s page.',
+          { count: formatCount(holdings.length) },
+        )}
+      </p>
+    )
+  }
+</section>
+
+<style>
+  .holding-symbol {
+    display: block;
+    font-weight: var(--weight-strong);
+  }
+
+  .holding-price {
+    display: block;
+    color: var(--grey);
+    font-size: var(--text-13);
+    font-weight: var(--weight-regular);
+    line-height: var(--leading-13);
+  }
+
+  .holding-weight {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-16);
+    font-size: var(--text-16);
+    font-weight: var(--weight-strong);
+  }
+
+  /* The weight keeps one width, as wide as "100.0%", so every bar starts at the same x. */
+  .holding-weight .figures {
+    min-width: calc(var(--space-48) + var(--space-12));
+    text-align: right;
+  }
+
+  /* The bar is a picture of the figure beside it. It needs room, so a phone shows the figure alone. */
+  .holdings :global(.holding-meter) {
+    display: none;
+    flex: none;
+  }
+
+  /* The two lines of a holding's name and its figures share one middle. */
+  .holdings :global(tbody :is(th, td)) {
+    vertical-align: middle;
+  }
+
+  .holdings :global(.c-weight) {
+    white-space: nowrap;
+  }
+
+  .holdings :global(.c-value) {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+  }
+
+  .holdings :global(tfoot .c-value),
+  .holdings :global(tfoot .c-weight) {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+  }
+
+  /*
+    The weight column is as wide as its bar, the gap and the widest figure, so every weight and
+    the total's 100.0% share one right edge; the value column holds its header and the total.
+    From 640 pixels the table lays its columns out at fixed widths (primitives.css), so these are
+    set on the header cells.
+  */
+  @media (min-width: 35em) {
+    .holdings :global(.holding-meter) {
+      display: block;
+      width: var(--space-96);
+    }
+  }
+
+  @media (min-width: 40em) {
+    .holdings :global(thead .c-weight) {
+      width: calc(var(--space-96) + var(--space-16) + var(--space-48) + var(--space-12) + var(--space-16));
+    }
+
+    .holdings :global(thead .c-value) {
+      width: 8rem;
+    }
+  }
+
+  @media (min-width: 60em) {
+    .holdings :global(.holding-meter) {
+      width: calc(2 * var(--space-96));
+    }
+
+    .holdings :global(thead .c-weight) {
+      width: calc(2 * var(--space-96) + var(--space-16) + var(--space-48) + var(--space-12) + var(--space-16));
+    }
+  }
+
+  /* From 1200 the table shares the band with the decisions, so the bar is shorter again. */
+  @media (min-width: 75em) {
+    .holdings :global(.holding-meter) {
+      width: 8rem;
+    }
+
+    .holdings :global(thead .c-weight) {
+      width: calc(8rem + var(--space-16) + var(--space-48) + var(--space-12) + var(--space-16));
+    }
+  }
+
+  @media print {
+    .holdings :global(.holding-meter) {
+      display: none;
+    }
+  }
+</style>

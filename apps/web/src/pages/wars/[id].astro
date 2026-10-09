@@ -1,0 +1,15 @@
+---
+import { idSchema } from '@prix/contracts';
+import { fetchWar, statusOf } from '../../arena/social/client.ts';
+import WarPage from '../../arena/social/WarPage.astro';
+
+// An address that cannot be an experiment costs no API call. The API's 404 (unknown, or the
+// switch off) is this page's 404, and any other failure is sent with its own status.
+const id = Astro.params.id ?? '';
+if (!idSchema.safeParse(id).success) return Astro.rewrite('/404');
+const result = await fetchWar(Astro, id);
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = statusOf(result);
+---
+
+<WarPage />

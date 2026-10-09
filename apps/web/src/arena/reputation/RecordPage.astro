@@ -1,0 +1,345 @@
+---
+// An agent's record: its figures as a band, the six numbers behind the score, and a short account
+// of how scoring works. Every figure is the API's own. Prix is one continuous league (D-109): the
+// API still answers with a list of seasons, which holds the one league, and the page shows its
+// newest entry without naming a season.
+import type { ScoreBreakdown } from '@prix/contracts';
+import {
+  CONFIDENCE_HIGH_DAYS,
+  CONFIDENCE_MEDIUM_DAYS,
+  MIN_DECISIONS_TO_RANK,
+  MIN_DECISIONS_V2,
+  MIN_TRADING_DAYS_TO_RANK,
+  MIN_TRADING_DAYS_V2,
+  SHRINK_DAYS,
+  VOL_FLOOR_BPS,
+} from '@prix/contracts';
+import { formatCount, formatDrawdownBps, formatPercentBps } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Chip from '../../design/Chip.astro';
+import DefinitionList from '../../design/DefinitionList.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import { readAccount } from '../../lib/account.ts';
+import { toneOf } from '../record.ts';
+import { agentHref } from '../words.ts';
+import { fetchRecord } from './client.ts';
+import EstimatedNote from './EstimatedNote.astro';
+import ReadFailure from './ReadFailure.astro';
+import {
+  confidenceLabel,
+  confidenceMeaning,
+  confidenceWord,
+  divisionChip,
+  divisionLabel,
+  formatMilli,
+  formatMilliBps,
+  formatShrink,
+  listedHref,
+  methodLabel,
+  rankView,
+  unrankedWords,
+} from './words.ts';
+
+const id = Astro.params.id ?? '';
+const account = await readAccount(Astro);
+const result = await fetchRecord(Astro, id);
+const record = result.ok ? result.data.record : null;
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+
+const breakdownItems = (breakdown: ScoreBreakdown) => [
+  { term: text('reputation.bdDays', 'Return days'), value: formatCount(breakdown.n) },
+  { term: text('reputation.bdMean', 'Mean daily return'), value: formatMilliBps(breakdown.meanMilliBps) },
+  { term: text('reputation.bdVol', 'Daily volatility'), value: formatMilliBps(breakdown.volMilliBps, { sign: false }) },
+  { term: text('reputation.bdRatio', 'Return per unit of volatility'), value: formatMilli(breakdown.ratioMilli) },
+  {
+    term: text('reputation.bdShrink', 'Weight for the length of the record'),
+    value: formatShrink(breakdown.shrinkMilli),
+  },
+  { term: text('reputation.bdScore', 'Score'), value: formatMilli(breakdown.scoreMilli) },
+];
+
+const name = record?.name ?? text('reputation.recordTitleBare', 'Track record');
+const pageTitle = record ? text('reputation.recordTitle', '{name}: track record', { name: record.name }) : name;
+const isChain = record?.division === 'chain';
+// The newest entry is the league itself; the all-time figures pool the same days.
+const latest = record?.seasons[0] ?? null;
+const allTime = record && latest ? record.allTime : null;
+const latestRank = latest ? rankView(latest.rank) : null;
+const figures =
+  allTime && latest && latestRank
+    ? [
+        {
+          label: text('common.return', 'Return'),
+          value: formatPercentBps(latest.returnBps),
+          tone: toneOf(latest.returnBps),
+        },
+        {
+          label: text('reputation.colRank', 'Rank'),
+          // The label says "Rank", so the value is the API's number alone, or the words of no rank.
+          // The method stands once, in the line under the name.
+          value: latest.rank === null ? latestRank.text : formatCount(latest.rank),
+        },
+        { label: text('common.maxDrawdown', 'Max drawdown'), value: formatDrawdownBps(latest.maxDrawdownBps) },
+        { label: text('reputation.atDays', 'Trading days'), value: formatCount(latest.tradingDays) },
+        { label: text('common.decisions', 'Decisions'), value: formatCount(latest.decidedCount) },
+        {
+          label: text('reputation.atConfidence', 'Confidence'),
+          value: confidenceWord(allTime.confidence) ?? confidenceLabel(allTime.confidence),
+        },
+      ]
+    : [];
+// The minimum record to be ranked, as the method of the newest entry sets it: the league's v1
+// rule, or v2's longer one. The page states the rule its own rank was given under.
+const rankRule =
+  record?.method === 'v1'
+    ? { days: MIN_TRADING_DAYS_TO_RANK, count: MIN_DECISIONS_TO_RANK }
+    : { days: MIN_TRADING_DAYS_V2, count: MIN_DECISIONS_V2 };
+const agentPage = record
+  ? isChain
+    ? listedHref(Astro.url, record.agentId)
+    : agentHref(Astro.url, record.agentId)
+  : '';
+---
+
+<Layout
+  title={pageTitle}
+  description={text(
+    'reputation.recordDescriptionLeague',
+    'An agent’s record in the Prix league, with its score, how sure that score is and how it was worked out. A paper trading simulation, not investment advice.',
+  )}
+  current={isChain ? 'listed' : 'league'}
+  account={account}
+>
+  {
+    !record ? (
+      <section class="page section stack-24">
+        <h1 class="display">{name}</h1>
+        <ReadFailure
+          error={result.ok ? { code: 'internal', message: '', field: null } : result.error}
+          subject={text('reputation.subjectRecord', 'This record')}
+          here={here}
+        />
+      </section>
+    ) : (
+      <>
+        <div class="zone">
+        <header class="page section rep-head">
+          <AgentMark agentId={record.agentId} name={record.name} size="xl" />
+          <div>
+            <p class="small rep-trail">
+              <a href={agentPage}>
+                {text('reputation.backToAgent', 'Back to the agent page')}
+              </a>
+            </p>
+            <h1 class="display rep-name">{record.name}</h1>
+            <p class="rep-meta">
+              <Chip label={divisionChip(record.division).label} kind={divisionChip(record.division).kind} />
+            </p>
+            <p class="rep-lead">
+              {isChain
+                ? text('reputation.recordNoteChain', 'Track record, estimated from wallet activity. {division} division, {method}.', {
+                    division: divisionLabel(record.division),
+                    method: methodLabel(record.method).toLowerCase(),
+                  })
+                : text('reputation.recordNote', 'Track record, paper portfolio. {division} division, {method}.', {
+                    division: divisionLabel(record.division),
+                    method: methodLabel(record.method).toLowerCase(),
+                  })}
+            </p>
+          </div>
+        </header>
+
+        {isChain && (
+          <div class="page section">
+            <EstimatedNote href={`${listedHref(Astro.url)}#estimate`} />
+          </div>
+        )}
+
+        {!latest ? (
+          <section class="page section">
+            <EmptyState
+              plain
+              boxed
+              title={text('reputation.recordEmptyTitleLeague', 'No record yet')}
+              body={text(
+                'reputation.recordEmptyBodyLeague',
+                'No day of this agent has been scored yet. Its record starts with the first scored round.',
+              )}
+            />
+          </section>
+        ) : (
+          <>
+            {allTime && (
+              <section class="page section" aria-labelledby="alltime-title">
+                <h2 class="visually-hidden" id="alltime-title">
+                  {text('reputation.allTimeTitle', 'All-time record')}
+                </h2>
+                <FigureBand label={text('reputation.allTimeTitle', 'All-time record')} items={figures} />
+                {/* One line under the band: why there is no rank, or what the confidence means. */}
+                <p class="small rep-lead">
+                  {latest.rank === null
+                    ? unrankedWords(latest.unrankedReason, latest.method)
+                    : allTime.confidence
+                      ? confidenceMeaning(allTime.confidence)
+                      : confidenceLabel(null)}
+                </p>
+              </section>
+            )}
+
+          </>
+        )}
+        </div>
+
+        <div class="zone zone--raised">
+        <section class="page section" aria-labelledby="scoring-title">
+          <header class="section-head">
+            <div>
+              <p class="eyebrow">{text('reputation.scoringEyebrow', 'The score')}</p>
+              <h2 class="headline" id="scoring-title">
+                {text('reputation.scoringTitle', 'How the score is worked out')}
+              </h2>
+            </div>
+          </header>
+          <div class="rep-scoring">
+            {latest && (
+            <section aria-labelledby="breakdown-title">
+              <div class="section-head">
+                <h3 class="title" id="breakdown-title">
+                  {text('reputation.behindScoreTitle', 'Behind this score')}
+                </h3>
+              </div>
+              {record.allTime.scoredSeasons > 0 ? (
+                <div class="rep-breakdown">
+                  <p class="small rep-lead">
+                    {text('reputation.breakdownIntroLeague', 'The six numbers behind the score.')}
+                  </p>
+                  <DefinitionList labelWidth="12rem" items={breakdownItems(record.allTime.breakdown)} />
+                </div>
+              ) : (
+                <EmptyState
+                  boxed
+                  plain
+                  title={text('reputation.noV2Title', 'No v2 score yet')}
+                  body={text(
+                    'reputation.noV2BodyLeague',
+                    'This record is ranked by return alone, under scoring v1, so it has no score.',
+                  )}
+                />
+              )}
+            </section>
+            )}
+
+        <section aria-labelledby="how-title">
+          <div class="section-head">
+            <h3 class="title" id="how-title">
+              {text('reputation.ruleTitle', 'The rule')}
+            </h3>
+          </div>
+          <div class="rep-how">
+            <p class="prose">
+              {text(
+                'reputation.howBody',
+                'The score is the average daily return divided by the daily volatility, so a steady gain scores higher than a lucky jump. Volatility is never counted below {floor} bps, so a quiet agent cannot score without limit. A short record is pulled toward zero: the score is weighted by days / (days + {shrink}).',
+                { floor: VOL_FLOOR_BPS, shrink: SHRINK_DAYS },
+              )}
+            </p>
+            <p class="prose">
+              {text(
+                'reputation.howRank',
+                'To be ranked an agent needs at least {days} trading days and {count} decisions. An agent below that is shown, with the reason, and not ranked. Confidence is low under {medium} return days, medium from {medium} and high from {high}.',
+                {
+                  days: rankRule.days,
+                  count: rankRule.count,
+                  medium: CONFIDENCE_MEDIUM_DAYS,
+                  high: CONFIDENCE_HIGH_DAYS,
+                },
+              )}
+            </p>
+            <p class="small rep-links">
+              <a href="/methodology">{text('reputation.methodologyLink', 'How the league is scored')}</a>
+            </p>
+          </div>
+        </section>
+          </div>
+        </section>
+        </div>
+      </>
+    )
+  }
+</Layout>
+
+<style>
+  /* The score's two blocks on the raised band: its numbers, and how it is scored, side by side from 960. */
+  .rep-scoring {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap) var(--space-48);
+    align-items: start;
+  }
+
+  @media (min-width: 60em) {
+    .rep-scoring {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+
+  .rep-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-16);
+    align-items: start;
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels. */
+  .rep-trail a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+
+  .rep-trail a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  .rep-name {
+    overflow-wrap: anywhere;
+  }
+
+  .rep-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+
+  .rep-lead {
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+    color: var(--grey);
+  }
+
+  .rep-quiet {
+    color: var(--grey);
+  }
+
+  .rep-breakdown > :global(* + *) {
+    margin-top: var(--space-16);
+  }
+
+  .rep-how > * + * {
+    margin-top: var(--space-12);
+  }
+
+  .rep-links a {
+    display: inline-block;
+    padding-block: var(--space-4);
+  }
+
+</style>

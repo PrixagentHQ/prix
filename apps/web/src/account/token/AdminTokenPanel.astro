@@ -1,0 +1,186 @@
+---
+import { formatDateTimeUtc } from '../../content/format.ts';
+// The token configuration for an administrator: the gating switch, the token, the three
+// thresholds and the buy link, and a probe that reads what tier a wallet would have. The API
+// checks the administrator, the origin and every value again; this form only asks.
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Choice from '../../design/Choice.astro';
+import Choices from '../../design/Choices.astro';
+import Notice from '../../design/Notice.astro';
+import TextInput from '../../design/TextInput.astro';
+import AccountCard from '../AccountCard.astro';
+import Done from '../Done.astro';
+import Feedback from '../Feedback.astro';
+import { herePath } from '../session.ts';
+import { fetchTokenConfig } from './token-client.ts';
+
+const result = await fetchTokenConfig(Astro);
+const config = result.ok ? result.data.config : null;
+const locked = config?.activatedAt != null;
+
+const words = {
+  addressRejected: text(
+    'token.adminAddressRejected',
+    'That is not an address. It starts with 0x and has 40 more characters.',
+  ),
+  addressNeeded: text(
+    'token.adminAddressNeeded',
+    'Gating cannot be on without a token address. Paste the address or leave gating off.',
+  ),
+  thresholdsRejected: text(
+    'token.adminThresholdsRejected',
+    'Use whole numbers from 1 to 1,000,000 that rise from tier 1 to tier 3.',
+  ),
+  buyUrlRejected: text('token.adminBuyUrlRejected', 'The link must start with https:// and be on ponsfamily.com.'),
+  walletRejected: text(
+    'token.adminWalletRejected',
+    'That is not a wallet address. It starts with 0x and has 40 more characters.',
+  ),
+};
+---
+
+<AccountCard
+  title={text('token.adminTitle', 'Token tiers')}
+  headingId="token-heading"
+  id="token"
+  intro={text(
+    'token.adminIntro',
+    'With gating off, every wallet has the open allowance. With it on, a wallet’s tier comes from its balance of the token below. A change shows on the site within a minute.',
+  )}
+>
+  <p class="small">
+    {
+      text(
+        'token.adminLockNote',
+        'Once gating has been on, the token is fixed and a threshold can only be lowered. Thresholds are parts per million of the supply: 10 is 0.001%.',
+      )
+    }
+  </p>
+
+  <div class="stack-24">
+    <Done
+      items={[
+        {
+          name: 'token-config-saved',
+          title: text('token.adminSavedTitle', 'Configuration saved'),
+          body: text('token.adminSavedBody', 'The site follows it within a minute.'),
+        },
+      ]}
+    />
+    {
+      !config ? (
+        <Notice
+          tone="error"
+          title={text('token.adminLoadFailedTitle', 'The configuration could not be loaded')}
+          body={text('token.adminLoadFailedBody', 'Reload the page to try again.')}
+        >
+          <Button href={herePath(Astro.url)} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+        </Notice>
+      ) : (
+        <form class="stack-24" method="dialog" novalidate data-token-config data-words={JSON.stringify(words)}>
+          <Choices id="gating" role="group" legend={text('token.adminGatingLegend', 'Gating')}>
+            <Choice
+              type="checkbox"
+              name="enabled"
+              value="yes"
+              checked={config.enabled}
+              label={text('token.adminGatingLabel', 'Gating is on')}
+              hint={text(
+                'token.adminGatingHint',
+                'Off: everyone has the open allowance. On: tiers decide agent slots, the feed delay and the API allowance.',
+              )}
+            />
+          </Choices>
+          <TextInput
+            label={text('token.adminAddressLabel', 'Token address')}
+            name="tokenAddress"
+            autocomplete="off"
+            value={config.tokenAddress ?? ''}
+            disabled={locked}
+            hint={
+              locked
+                ? text('token.adminAddressLocked', 'The token is fixed once gating has been on.')
+                : text('token.adminAddressHint', 'Prix checks that it is a token on the chain before it saves.')
+            }
+          />
+          <TextInput
+            label={text('token.adminThreshold1', 'Tier 1 from, in parts per million')}
+            name="threshold1"
+            autocomplete="off"
+            value={String(config.thresholdsPpm[0])}
+          />
+          <TextInput
+            label={text('token.adminThreshold2', 'Tier 2 from, in parts per million')}
+            name="threshold2"
+            autocomplete="off"
+            value={String(config.thresholdsPpm[1])}
+          />
+          <TextInput
+            label={text('token.adminThreshold3', 'Tier 3 from, in parts per million')}
+            name="threshold3"
+            autocomplete="off"
+            value={String(config.thresholdsPpm[2])}
+          />
+          <TextInput
+            label={text('token.adminBuyUrlLabel', 'Buy link')}
+            name="buyUrl"
+            autocomplete="off"
+            value={config.buyUrl ?? ''}
+            hint={text('token.adminBuyUrlHint', 'Optional. An https link on ponsfamily.com. Leave it empty to show no link.')}
+          />
+          <p class="small">
+            {
+              text('token.adminUpdated', 'Last changed {time} by {by}.', {
+                time: formatDateTimeUtc(config.updatedAt),
+                by: config.updatedBy,
+              })
+            }
+          </p>
+          <div class="stack-16">
+            <Button
+              type="submit"
+              label={text('token.adminSave', 'Save configuration')}
+              busyLabel={text('token.adminSaving', 'Saving the configuration')}
+            />
+            <Feedback failedTitle={text('token.adminSaveFailedTitle', 'The configuration was not saved')} />
+          </div>
+        </form>
+      )
+    }
+
+    {
+      config && (
+        <form class="panel-part stack-16" method="dialog" novalidate data-token-probe data-words={JSON.stringify(words)}>
+          <h3 class="title">{text('token.probeTitle', 'Probe a wallet')}</h3>
+          <TextInput
+            label={text('token.probeLabel', 'Wallet address')}
+            name="wallet"
+            autocomplete="off"
+            hint={text(
+              'token.probeHint',
+              'Reads the balance on the chain and shows the tier the wallet would have with the token and thresholds above, whether gating is on or off. Nothing is saved.',
+            )}
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            label={text('token.probeAction', 'Probe wallet')}
+            busyLabel={text('token.probing', 'Reading the chain')}
+          />
+          <Feedback failedTitle={text('token.probeFailedTitle', 'The wallet was not probed')} />
+          <template data-message="probed">
+            <Notice
+              tone="status"
+              title={text('token.probedTitle', 'Tier {tier}')}
+              body={text(
+                'token.probedBody',
+                'The wallet holds {share} of the supply, {balance} tokens, as of block {block}.',
+              )}
+            />
+          </template>
+        </form>
+      )
+    }
+  </div>
+</AccountCard>

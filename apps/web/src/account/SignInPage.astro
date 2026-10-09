@@ -1,0 +1,88 @@
+---
+// Sign-in: one card in the middle of the page. It says what the wallet will be asked, shows the
+// two steps and holds the one button. A person who is signed in already sees that step as done,
+// and the way on.
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+import Layout from '../design/Layout.astro';
+import Notice from '../design/Notice.astro';
+import { readAccount } from '../lib/account.ts';
+import AccountCard from './AccountCard.astro';
+import SignInPanel from './SignInPanel.astro';
+import { safeNext, signInHref } from './session.ts';
+import './account.css';
+
+const account = await readAccount(Astro);
+const asked = Astro.url.searchParams.get('next');
+const next = safeNext(asked, '/account');
+const title = text('nav.signIn', 'Sign in');
+// Where a person who is signed in already goes on to: the builder if that is where they were heading.
+const onward = next.startsWith('/build')
+  ? { href: next, label: text('common.buildAgent', 'Build an agent') }
+  : { href: '/account', label: text('account.linkLabel', 'Go to your account') };
+---
+
+<Layout
+  title={title}
+  description={text('signIn.description', 'Sign in to Prix with a wallet signature. It sends no transaction and costs no gas.')}
+  current="signIn"
+  account={account}
+  signInHref={asked ? signInHref(next) : '/sign-in'}
+>
+  <div class="page section">
+    <div class="acct-narrow sign-in">
+      <AccountCard>
+        <div class="stack-8">
+          <h1 class="display">{title}</h1>
+          <p class="acct-intro">
+            {
+              text(
+                'legal.walletScope',
+                'Prix asks your wallet for one thing: a signature that signs you in. It sends no transaction, costs no gas, and never asks for an approval or a transfer.',
+              )
+            }
+          </p>
+        </div>
+        <div class="panel-part">
+          {
+            account ? (
+              <Notice
+                tone="status"
+                title={text('signIn.alreadyTitle', 'You are signed in')}
+                body={text(
+                  'signIn.alreadyBody',
+                  'This browser is signed in as {address}. To use another wallet, sign out first.',
+                  {
+                    address: account.short,
+                  },
+                )}
+              >
+                <Button href={onward.href} label={onward.label} />
+              </Notice>
+            ) : (
+              <SignInPanel next={next} steps wide />
+            )
+          }
+        </div>
+      </AccountCard>
+      {/* The note is for someone about to sign in; a signed-in visitor has the notice above. */}
+      {!account && (
+        <p class="small acct-notes sign-in-note">
+          {text('signIn.newHere', 'New to Prix? Signing in also opens your account. There is nothing else to fill in.')}
+        </p>
+      )}
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* One card in the middle of the page, the way a wallet's own prompt sits. */
+  .sign-in {
+    margin-inline: auto;
+  }
+
+  .sign-in-note {
+    margin-top: var(--space-16);
+    padding-inline: var(--space-16);
+  }
+</style>

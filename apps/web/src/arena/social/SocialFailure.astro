@@ -1,0 +1,26 @@
+---
+// A Phase 6 read that failed, in words, with the one action that helps. A 404 never reaches
+// here: the route file answers it with the site's 404 page.
+import type { ApiError } from '@prix/contracts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import { readFailure } from '../words.ts';
+
+interface Props {
+  error: ApiError['error'];
+  /** What could not be read, as the start of a sentence: "The list of rivalries". */
+  subject: string;
+}
+
+const { error, subject } = Astro.props;
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+const failure = readFailure(error.code, {
+  title: text('social.loadFailedTitle', 'Not loaded'),
+  body: text('social.loadFailedBody', '{subject} could not be loaded. Reload the page to try again.', { subject }),
+});
+---
+
+<Notice tone="error" title={failure.title} body={failure.body}>
+  <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+</Notice>

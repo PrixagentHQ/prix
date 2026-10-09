@@ -1,0 +1,104 @@
+---
+// Keys: the list, the one-time secret block, the revoke control and the create form.
+// The script (mount.ts) fills the rows and switches the views; every sentence is in `words`.
+import { DATA_KEY_LABEL_MAX } from '@prix/contracts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import Table from '../../design/Table.astro';
+import TextInput from '../../design/TextInput.astro';
+import type { DataWords } from './words.ts';
+
+interface Props {
+  words: DataWords;
+}
+const { words } = Astro.props;
+const hint = words.labelHint.replace('{max}', String(DATA_KEY_LABEL_MAX));
+---
+
+<div data-panel="keys" class="stack-24">
+  <div data-view="loading">
+    <Notice tone="loading" title={words.loadingTitle} body={words.loadingBody} minHeight="8rem" />
+  </div>
+  <div data-view="error" hidden>
+    <Notice tone="error" title={words.loadFailedTitle} body="{message}">
+      <Button label={words.retry} variant="secondary" data-retry />
+    </Notice>
+  </div>
+  <div data-view="ready" class="stack-24" hidden>
+    <p class="small" data-keys-max></p>
+
+    <div class="secret stack-16" data-secret tabindex="-1" role="group" aria-labelledby="secret-title" hidden>
+      <p class="body" id="secret-title"><strong>{words.secretTitle}</strong></p>
+      <p class="body">{words.secretLead}</p>
+      <p class="small" id="secret-label">{words.secretLabel}</p>
+      <pre class="secret-code" aria-labelledby="secret-label"><code data-secret-text></code></pre>
+      <p class="secret-actions">
+        <Button label={words.copyKey} variant="secondary" data-copy />
+        <Button label={words.secretDone} variant="quiet" data-secret-done />
+      </p>
+      <p class="small" role="status" data-copy-status></p>
+    </div>
+
+    <div data-keys-outlet role="status"></div>
+
+    <div data-keys-empty hidden>
+      <Notice tone="empty" title={words.keysEmptyTitle} body={words.keysEmptyBody} />
+    </div>
+    <div data-keys-table hidden>
+      <Table
+        id="keys-table"
+        caption={words.keysCaption}
+        columns={[
+          { key: 'prefix', label: words.keyColPrefix },
+          { key: 'label', label: words.keyColLabel },
+          { key: 'created', label: words.keyColCreated },
+          { key: 'used', label: words.keyColLastUsed },
+          { key: 'status', label: words.keyColStatus },
+          { key: 'action', label: words.keyColAction },
+        ]}
+      >
+        <tbody data-keys-rows></tbody>
+      </Table>
+    </div>
+
+    <div data-keys-full hidden>
+      <Notice tone="status" title={words.keysFullTitle} body="{max}" />
+    </div>
+
+    <form class="stack-16" method="dialog" novalidate data-create-form>
+      <TextInput
+        label={words.labelLabel}
+        name="label"
+        required
+        autocomplete="off"
+        maxlength={DATA_KEY_LABEL_MAX}
+        hint={hint}
+      />
+      <Button type="submit" variant="secondary" label={words.createKey} busyLabel={words.creatingKey} />
+    </form>
+  </div>
+</div>
+
+<style>
+  .secret {
+    padding-block: var(--space-16);
+    border-block: var(--rule-hair) solid var(--line);
+  }
+  .secret-code {
+    margin: 0;
+    padding: var(--space-8) 0;
+    font: inherit;
+    font-weight: var(--weight-strong);
+    font-variant-numeric: tabular-nums lining-nums;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    user-select: all;
+  }
+  .secret-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8) var(--space-24);
+    align-items: center;
+    margin: 0;
+  }
+</style>

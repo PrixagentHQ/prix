@@ -1,0 +1,24 @@
+---
+import FollowingPage from '../account/follow/FollowingPage.astro';
+import { readSession } from '../account/session.ts';
+import { createFollowApi } from '../lib/follow-api.ts';
+import { statusForCode } from '../lib/status.ts';
+
+// A page that could not read what it shows is sent with the API's status, never as 200.
+// Each read is made once per request: the page reads the same paths again from the same memo.
+const session = await readSession(Astro);
+if (session.state === 'failed') {
+  Astro.response.status = statusForCode(session.code);
+} else if (session.state === 'signed-in') {
+  const api = createFollowApi(Astro);
+  const reads = await Promise.all([api.follows(), api.feed(), api.notifications()]);
+  for (const read of reads) {
+    if (!read.ok && read.error.code !== 'unauthorized') {
+      Astro.response.status = statusForCode(read.error.code);
+      break;
+    }
+  }
+}
+---
+
+<FollowingPage />

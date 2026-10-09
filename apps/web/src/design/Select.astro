@@ -1,0 +1,42 @@
+---
+// A native select with its label, hint and error. Native, so the keyboard and a phone's
+// own picker work without script. The caret is drawn in CSS.
+interface Props {
+  label: string;
+  name: string;
+  id?: string;
+  options: Array<{ value: string; label: string; selected?: boolean; disabled?: boolean }>;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+}
+
+const { label, name, id = name, options, hint, error, ...rest } = Astro.props;
+const hintId = hint ? `${id}-hint` : undefined;
+const errorId = `${id}-error`;
+---
+
+<div class="field" data-field={name}>
+  <label class="field-label" for={id}>{label}</label>
+  {hint && <p class="field-hint" id={hintId}>{hint}</p>}
+  <span class="select">
+    <select
+      class="input"
+      id={id}
+      name={name}
+      aria-describedby={[hintId, errorId].filter(Boolean).join(' ')}
+      aria-invalid={error ? 'true' : undefined}
+      {...rest}
+    >
+      {
+        options.map((option) => (
+          <option value={option.value} selected={option.selected} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))
+      }
+    </select>
+  </span>
+  <p class="field-error" id={errorId} role="alert" data-field-error hidden={!error}>{error}</p>
+</div>

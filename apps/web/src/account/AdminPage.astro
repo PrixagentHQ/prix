@@ -1,0 +1,273 @@
+---
+// The admin page, in cards, for a wallet the API lists as an administrator: hide or unhide an agent by
+// its id, and the symbols whose prices are held for review, each with its release.
+//
+// Whether a wallet is an administrator is the API's answer, and the API checks it again on
+// every call this page makes. Any other wallet is told the page is not for it.
+import { formatDateTimeUtc, formatTick, formatUsdMicro } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+import DefinitionList from '../design/DefinitionList.astro';
+import Layout from '../design/Layout.astro';
+import Notice from '../design/Notice.astro';
+import TextInput from '../design/TextInput.astro';
+import { readAccount } from '../lib/account.ts';
+import { createApi } from '../lib/api.ts';
+import AccountCard from './AccountCard.astro';
+import Confirm from './Confirm.astro';
+import Done from './Done.astro';
+import Feedback from './Feedback.astro';
+import PageHead from './PageHead.astro';
+import SessionGate from './SessionGate.astro';
+import { herePath, readSession, signInHref } from './session.ts';
+import AdminTokenPanel from './token/AdminTokenPanel.astro';
+import { goToAccountLabel, noScriptWords } from './words.ts';
+import './account.css';
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+const me = session.state === 'signed-in' ? session.me : null;
+const holds = me?.isAdmin ? await createApi(Astro).holds() : null;
+
+const title = text('nav.admin', 'Admin');
+const noScript = noScriptWords();
+const words = {
+  idRejected: text(
+    'admin.idRejected',
+    'That is not an agent id. An id is 12 characters, lower-case letters and the digits 2 to 7. Copy it from the end of the agent’s address.',
+  ),
+};
+---
+
+<Layout
+  title={title}
+  description={text('admin.description', 'Tools for Prix’s administrators.')}
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  {
+    !me?.isAdmin ? (
+      <>
+        <PageHead title={title} intro={text('admin.intro', 'This page is for the people who run Prix.')} />
+        <div class="page section">
+          <div class="acct-column">
+            {session.state === 'failed' ? (
+              <SessionGate session={session} />
+            ) : session.state !== 'signed-in' ? (
+              <AccountCard title={text('nav.signIn', 'Sign in')} headingId="sign-in-heading">
+                <SessionGate session={session} steps />
+              </AccountCard>
+            ) : (
+              <AccountCard>
+                <Notice
+                  tone="status"
+                  title={text('admin.notAdminTitle', 'This wallet is not an administrator')}
+                  body={text(
+                    'admin.notAdminBody',
+                    'Nothing on this page is available to the wallet you signed in with. Your agent and your model keys are on your account page.',
+                  )}
+                >
+                  <Button href="/account" label={goToAccountLabel()} variant="secondary" />
+                </Notice>
+              </AccountCard>
+            )}
+          </div>
+        </div>
+      </>
+    ) : (
+      <>
+        <PageHead title={title} intro={text('admin.intro', 'This page is for the people who run Prix.')} />
+        <div class="page section">
+        <div class="acct-column acct-cards">
+        <AccountCard
+          title={text('admin.hideTitle', 'Hide or unhide an agent')}
+          headingId="hide-heading"
+          intro={text(
+            'admin.hideIntro',
+            'Hiding takes an agent off the league and takes its page down, and the agent stops trading. Its owner still sees it, marked as hidden.',
+          )}
+        >
+          <p class="small">
+            {text('admin.unhideNote', 'Unhiding restores the agent exactly as it was. It is ranked again at the next ranking.')}
+          </p>
+          <form class="stack-24" method="dialog" novalidate aria-labelledby="hide-heading" data-hide-form data-words={JSON.stringify(words)}>
+            <noscript>
+              <Notice tone="status" title={noScript.title} body={text('admin.noScriptBody', 'These tools need JavaScript. Turn it on and reload the page.')} />
+            </noscript>
+            <TextInput
+              label={text('admin.idLabel', 'Agent id')}
+              name="agentId"
+              required
+              autocomplete="off"
+              hint={text(
+                'admin.idHint',
+                'The 12 characters at the end of the agent’s address. You can paste the whole address.',
+              )}
+            />
+            <div class="stack-16">
+              <p class="acct-actions">
+                <Button
+                  type="submit"
+                  name="hidden"
+                  value="true"
+                  label={text('admin.hide', 'Hide agent')}
+                  busyLabel={text('admin.hiding', 'Hiding the agent')}
+                />
+                <Button
+                  type="submit"
+                  name="hidden"
+                  value="false"
+                  variant="secondary"
+                  label={text('admin.unhide', 'Unhide agent')}
+                  busyLabel={text('admin.unhiding', 'Unhiding the agent')}
+                />
+              </p>
+              <Feedback
+                failedTitle={text('admin.hideFailedTitle', 'Nothing was changed')}
+                errors={{
+                  not_found: text('admin.agentNotFound', 'No agent has that id. Check the id and try again.'),
+                  forbidden: text(
+                    'admin.forbidden',
+                    'This wallet is not an administrator any more. Sign in with a wallet that is.',
+                  ),
+                }}
+              />
+              <template data-message="hidden">
+                <Notice
+                  tone="status"
+                  title={text('admin.hiddenTitle', 'Agent hidden')}
+                  body={text(
+                    'admin.hiddenBody',
+                    'Agent {id} is off the league, its page is down and it has stopped trading.',
+                  )}
+                />
+              </template>
+              <template data-message="unhidden">
+                <Notice
+                  tone="status"
+                  title={text('admin.unhiddenTitle', 'Agent unhidden')}
+                  body={text('admin.unhiddenBody', 'Agent {id} is back as it was, and its page is up again.')}
+                />
+              </template>
+            </div>
+          </form>
+        </AccountCard>
+
+        <AccountCard
+          title={text('admin.holdsTitle', 'Symbols on hold')}
+          headingId="holds-heading"
+          id="holds"
+          intro={text(
+            'admin.holdsIntro',
+            'Prix holds a symbol’s price for review when its feed reports a sudden move. Until the hold is released the symbol does not trade and is valued at its last trusted price.',
+          )}
+        >
+          <p class="small">
+            {text(
+              'admin.releaseNote',
+              'Releasing a hold accepts the feed’s price: at the next round Prix takes it for that symbol without comparing it.',
+            )}
+          </p>
+          <Done
+            items={[
+              {
+                name: 'hold-released',
+                title: text('admin.releasedTitle', 'Hold released'),
+                body: text('admin.releasedBody', 'The symbol trades again from the next round, at its feed’s price.'),
+              },
+            ]}
+          />
+          {!holds?.ok ? (
+            <Notice
+              tone="error"
+              title={text('admin.holdsFailedTitle', 'The holds could not be loaded')}
+              body={text(
+                'admin.holdsFailedBody',
+                'Prix could not read the list of symbols on hold. Reload the page to try again.',
+              )}
+            >
+              <Button href={herePath(Astro.url)} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+            </Notice>
+          ) : holds.data.holds.length === 0 ? (
+            <Notice
+              tone="empty"
+              title={text('admin.noHoldsTitle', 'No symbol is on hold')}
+              body={text(
+                'admin.noHoldsBody',
+                'Every symbol with a fresh feed trades at its feed’s price. A hold appears here when a feed reports a sudden move.',
+              )}
+            />
+          ) : (
+            <ul class="acct-list holds" role="list">
+              {holds.data.holds.map((hold) => (
+                <li>
+                  <div class="stack-16" role="group" aria-labelledby={`hold-${hold.symbol}`} data-scope>
+                    <h3 class="body" id={`hold-${hold.symbol}`}>
+                      <strong>{hold.symbol}</strong>
+                    </h3>
+                    <DefinitionList
+                      labelWidth="12rem"
+                      items={[
+                        {
+                          term: text('admin.trustedPrice', 'Last trusted price'),
+                          value: text('admin.priceUsd', '{amount} USD', {
+                            amount: formatUsdMicro(hold.priceMicro),
+                          }),
+                        },
+                        {
+                          term: text('admin.seenPrice', 'Price the feed reported'),
+                          value: text('admin.priceUsd', '{amount} USD', {
+                            amount: formatUsdMicro(hold.seenPriceMicro),
+                          }),
+                        },
+                        { term: text('admin.heldSince', 'On hold since'), value: formatTick(hold.sinceTickId) },
+                      ]}
+                    />
+                    {hold.releasedAt ? (
+                      <p class="body">
+                        {text(
+                          'admin.alreadyReleased',
+                          'Released on {time}. At the next round Prix takes the feed’s price for {symbol}.',
+                          { time: formatDateTimeUtc(hold.releasedAt), symbol: hold.symbol },
+                        )}
+                      </p>
+                    ) : (
+                      <Confirm
+                        id={`release-${hold.symbol}`}
+                        label={text('admin.release', 'Release {symbol}', { symbol: hold.symbol })}
+                        busyLabel={text('admin.releasing', 'Releasing {symbol}', { symbol: hold.symbol })}
+                        question={text('admin.releaseQuestion', 'Release the hold on {symbol}?', {
+                          symbol: hold.symbol,
+                        })}
+                        consequence={text(
+                          'admin.releaseConsequence',
+                          'At the next round Prix takes the feed’s price for {symbol} without comparing it to the last trusted price. Release it only if the price the feed reported is real.',
+                          { symbol: hold.symbol },
+                        )}
+                        act={{ call: 'release', id: hold.symbol, done: 'hold-released' }}
+                      />
+                    )}
+                    <Feedback failedTitle={text('admin.releaseFailedTitle', 'The hold was not released')} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AccountCard>
+
+        <AdminTokenPanel />
+        </div>
+        </div>
+      </>
+    )
+  }
+</Layout>
+
+<script>
+  import { mountAdmin } from './admin.ts';
+  import { mountTokenAdmin } from './token/token-client.ts';
+
+  mountAdmin();
+  mountTokenAdmin();
+</script>

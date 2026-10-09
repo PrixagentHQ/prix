@@ -1,0 +1,72 @@
+---
+// The head of a site page, as the head of an agent's page in the study: where the page sits
+// (a grey line, a link when it has a parent), the page's name at 24, and one opening sentence.
+// The default slot holds what belongs to the head and nothing else: the tabs of a group of
+// pages, a chip that says the state of what the page is about.
+interface Props {
+  title: string;
+  /** Where the page sits, for example "Developers". */
+  eyebrow?: string;
+  /** The page the eyebrow names, when the eyebrow is a way back. */
+  eyebrowHref?: string;
+  lead?: string;
+  /** A grey note under the name, for example the day a document took effect. */
+  note?: string;
+  id?: string;
+}
+
+const { title, eyebrow, eyebrowHref, lead, note, id } = Astro.props;
+// A slot that a parent fills conditionally can render to nothing; then there is no extra row.
+const extra = Astro.slots.has('default') ? (await Astro.slots.render('default')).trim() : '';
+---
+
+<header class="site-head" id={id}>
+  {
+    eyebrow && (
+      <p class="site-head-eyebrow small">
+        {eyebrowHref ? <a href={eyebrowHref}>{eyebrow}</a> : eyebrow}
+      </p>
+    )
+  }
+  <h1 class="display">{title}</h1>
+  {note && <p class="small">{note}</p>}
+  {lead && <p class="site-head-lead">{lead}</p>}
+  {extra && <div class="site-head-extra" set:html={extra} />}
+</header>
+
+<style>
+  /* The block a head opens starts 24 below the header, and so does a panel beside the head. */
+  :global(.site-top) {
+    padding-top: var(--space-24);
+  }
+
+  /* The eyebrow is a place, not a heading: grey, and its link is grey until the pointer is on it. */
+  .site-head-eyebrow {
+    margin-bottom: var(--space-2);
+  }
+
+  .site-head-eyebrow a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .site-head-eyebrow a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-thickness: var(--rule-hair);
+  }
+
+  /* The opening sentence: grey, at reading size, under the name as the study's summary is. */
+  .site-head-lead {
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+    color: var(--grey);
+    font-size: var(--text-16);
+    line-height: var(--leading-16);
+    text-wrap: pretty;
+  }
+
+  .site-head-extra {
+    margin-top: var(--space-16);
+  }
+</style>

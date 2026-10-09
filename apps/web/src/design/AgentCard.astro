@@ -1,0 +1,210 @@
+---
+// The card of an agent as a picture: its mark, its name, its rank and chips, one large signed
+// figure with a sparkline beside it, a row of small facts, and a footer. Every word and figure
+// is a prop, already formatted by the page; the card computes nothing.
+//
+//   card      the card of a board (the default)
+//   compact   one line: mark, name, rank and chips, the figure. For a short list beside a board.
+//   featured  the block that opens a page: the same parts, larger, with the line beside them
+//
+// The whole card is one link to `href`. The slot `action` holds a FollowButton and stays
+// pressable above that link; the slot `footer` holds a line under a hairline. A slot that
+// renders nothing leaves no wrapper behind. In a BoardList the same card is a row of the table
+// form.
+//
+// `hidden` keeps the card in the page but not shown, for a filter that shows it again.
+// `preview` is the card of an agent that does not exist yet (the builder): no link, no lift.
+import AgentMark from './AgentMark.astro';
+import Chip from './Chip.astro';
+import type { Domain } from './chart.ts';
+import Medal from './Medal.astro';
+import Sparkline from './Sparkline.astro';
+
+interface Props {
+  href: string;
+  /** The agent's id: it draws the mark, and becomes `data-agent` for the scripts that move cards. */
+  agentId: string;
+  name: string;
+  form?: 'card' | 'compact' | 'featured';
+  /** The heading level of the name. */
+  level?: 2 | 3 | 4;
+  /**
+   * The rank as the page words it: "#4", or "Not ranked". `place` 1, 2 or 3 draws the medal
+   * instead of the figures, and `label` then names it for assistive technology ("Rank 1").
+   */
+  rank?: { text: string; place?: 1 | 2 | 3; label?: string; unranked?: boolean };
+  chips?: Array<{ label: string; kind?: 'open' | 'pro' | 'house' | 'neutral' }>;
+  /** What the agent does, in a sentence or two. Two lines show on a card. */
+  summary?: string | null;
+  /** The large figure with its label. `tone` only for a signed figure whose sign is in `value`. */
+  figure: { value: string; label: string; tone?: 'gain' | 'loss' };
+  /** The line beside the figure. Leave out for no line. */
+  spark?: {
+    values: readonly number[];
+    domain?: Domain;
+    slots?: number;
+    baseline?: number;
+    label?: string;
+    emptyLabel?: string;
+  };
+  /** Small facts under the figure: "Max drawdown", "−3.85%". The first two are columns of the table form. */
+  facts?: Array<{ label: string; value: string }>;
+  /** A sentence in place of the facts, for an agent that has none yet: "Ranked after 5 trading days. It has 2." */
+  note?: string;
+  /**
+   * What the agent holds: up to three symbols with their weights, as small pills under the
+   * facts. The page picks the three largest and formats the weights ("34%"). More are cut.
+   */
+  holdings?: Array<{ symbol: string; weight: string }>;
+  /** The cash of the portfolio as one more pill after the holdings: its word and its weight. */
+  cash?: { label: string; weight: string };
+  /** The name of the row of holdings for assistive technology: "Largest holdings". */
+  holdingsLabel?: string;
+  /** Featured only: the words over the name, such as "Leading the Open division". */
+  eyebrow?: string;
+  /** Marks the figure for motion/count.ts and the line for motion/draw.ts. */
+  animate?: boolean;
+  /** Renders the card as a list item, for a CardGrid with `list`. */
+  as?: 'article' | 'li';
+  /** Kept in the page and not shown: for a filter that may show it again (reorder.ts fades it in). */
+  hidden?: boolean;
+  /** The card of an agent that does not exist yet, in the builder: the name is not a link and the card does not lift. */
+  preview?: boolean;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  href,
+  agentId,
+  name,
+  form = 'card',
+  level = 3,
+  rank,
+  chips = [],
+  summary,
+  figure,
+  spark,
+  facts = [],
+  note,
+  holdings = [],
+  cash,
+  holdingsLabel,
+  eyebrow,
+  animate = false,
+  as = 'article',
+  hidden = false,
+  preview = false,
+  // Astro hands a component the `slot` it was placed in. It is not an attribute of the element.
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+const Tag = as;
+const Heading = `h${level}` as 'h2' | 'h3' | 'h4';
+const pills = holdings.slice(0, 3);
+const markSize = form === 'compact' ? 'sm' : form === 'featured' ? 'lg' : 'md';
+// A slot that renders nothing (a condition that came out false) leaves no wrapper behind.
+const action = Astro.slots.has('action') ? (await Astro.slots.render('action')).trim() : '';
+const footer = Astro.slots.has('footer') ? (await Astro.slots.render('footer')).trim() : '';
+---
+
+<Tag
+  class:list={[
+    'card',
+    !preview && 'card--link',
+    'agent-card',
+    form !== 'card' && `agent-card--${form}`,
+  ]}
+  data-agent={agentId}
+  hidden={hidden || undefined}
+  {...rest}
+>
+  {form === 'featured' && eyebrow && <p class="agent-card-eyebrow">{eyebrow}</p>}
+  <AgentMark agentId={agentId} name={name} size={markSize} />
+  <Heading class="agent-card-name">
+    {preview ? <span>{name}</span> : <a href={href} data-carry-source="name">{name}</a>}
+  </Heading>
+  <p class="agent-card-meta">
+    {
+      rank && (
+        <span class:list={['agent-card-rank', rank.unranked && 'is-unranked']}>
+          {rank.place ? <Medal rank={rank.place} label={rank.label ?? rank.text} /> : rank.text}
+        </span>
+      )
+    }
+    {
+      chips.length > 0 && (
+        <span class="agent-card-chips">
+          {chips.map((chip) => (
+            <Chip label={chip.label} kind={chip.kind} />
+          ))}
+        </span>
+      )
+    }
+  </p>
+  {
+    action && (
+      <div class="agent-card-action">
+        <Fragment set:html={action} />
+      </div>
+    )
+  }
+  {form !== 'compact' && <p class="agent-card-summary">{summary}</p>}
+  <p class:list={['agent-card-figure', figure.tone]} data-count={animate ? '' : undefined}>{figure.value}</p>
+  <p class="agent-card-label">{figure.label}</p>
+  {
+    spark && form !== 'compact' && (
+      <div class="agent-card-spark">
+        <Sparkline
+          values={spark.values}
+          domain={spark.domain}
+          slots={spark.slots}
+          baseline={spark.baseline}
+          label={spark.label}
+          emptyLabel={spark.emptyLabel}
+          tone={figure.tone}
+          dot
+          draw={animate}
+        />
+      </div>
+    )
+  }
+  {
+    note ? (
+      <p class="agent-card-note">{note}</p>
+    ) : (
+      facts.length > 0 && (
+        <dl class="agent-card-facts">
+          {facts.map((fact) => (
+            <div>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )
+    )
+  }
+  {
+    form !== 'compact' && (pills.length > 0 || cash) && (
+      <ul class="agent-card-holdings" role="list" aria-label={holdingsLabel}>
+        {pills.map((holding) => (
+          <li>
+            <b>{holding.symbol}</b> {holding.weight}
+          </li>
+        ))}
+        {cash && (
+          <li class="is-cash">
+            <b>{cash.label}</b> {cash.weight}
+          </li>
+        )}
+      </ul>
+    )
+  }
+  {
+    footer && (
+      <div class="agent-card-foot">
+        <Fragment set:html={footer} />
+      </div>
+    )
+  }
+</Tag>

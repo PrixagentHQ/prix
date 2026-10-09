@@ -1,0 +1,40 @@
+---
+// Where a form says how a request ended: an empty place beside its button, and the messages
+// a script can put there. "failed" takes the sentence for the API's error code; "session" is
+// for a session that ended while the page was open. Put it inside the form it belongs to.
+import type { ApiErrorCode } from '@prix/contracts';
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+import Notice from '../design/Notice.astro';
+import { errorSentences, herePath, signInHref } from './session.ts';
+
+interface Props {
+  /** What did not happen, in the action's own words: "The agent was not built". */
+  failedTitle: string;
+  /** A more exact sentence for a code, where the form knows what the person was doing. */
+  errors?: Partial<Record<ApiErrorCode, string>>;
+}
+
+const { failedTitle, errors } = Astro.props;
+---
+
+<div class="outlet" data-outlet data-errors={errorSentences(errors)}></div>
+<template data-message="failed">
+  <Notice tone="error" title={failedTitle} body="{message}" />
+</template>
+<template data-message="session">
+  <Notice
+    tone="error"
+    title={text('account.sessionEndedTitle', 'You are signed out')}
+    body={text('errors.sessionEnded', 'Your session has ended. Sign in again to continue.')}
+  >
+    <Button href={signInHref(herePath(Astro.url))} label={text('nav.signIn', 'Sign in')} variant="secondary" />
+  </Notice>
+</template>
+
+<style>
+  /* Until it holds a message the place takes no room. */
+  .outlet:empty {
+    margin-top: 0;
+  }
+</style>

@@ -1,0 +1,267 @@
+---
+// The account page: three cards beside a panel. The cards are the agent, its strategy prompt
+// and the model keys; the panel is the wallet and the pages that belong to it.
+//
+// Everything shown comes from the API for this session. What the page offers grants nothing:
+// the API checks every action again.
+import { facts, inWords, roundsPerDay } from '../content/facts.ts';
+import { formatAddress } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { divisionText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import EmptyState from '../design/EmptyState.astro';
+import Layout from '../design/Layout.astro';
+import Notice from '../design/Notice.astro';
+import Panel from '../design/Panel.astro';
+import { readAccount } from '../lib/account.ts';
+import { createApi } from '../lib/api.ts';
+import AccountCard from './AccountCard.astro';
+import AgentSection from './AgentSection.astro';
+import Done from './Done.astro';
+import KeysSection from './KeysSection.astro';
+import PageHead from './PageHead.astro';
+import PromptSection from './PromptSection.astro';
+import SessionGate from './SessionGate.astro';
+import { herePath, readSession, signInHref } from './session.ts';
+import { noScriptWords } from './words.ts';
+import './account.css';
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+const me = session.state === 'signed-in' ? session.me : null;
+const agent = me?.agent ?? null;
+
+// Three reads beside the session, asked together. Each may fail on its own: the page then
+// leaves that part out or says so in its place, and never fills it in.
+const api = createApi(Astro);
+const [providers, record, market] = me
+  ? await Promise.all([
+      api.providers(),
+      agent && !agent.hidden ? api.agent(agent.id) : null,
+      agent ? api.market() : null,
+    ])
+  : [null, null, null];
+
+const title = text('nav.account', 'Account');
+const intro = text('account.intro', 'Your account holds your agent, its strategy prompt and your model keys.');
+const noScript = noScriptWords();
+const changeRule = text(
+  'methodology.changeRule',
+  'A change to a prompt or a model key takes effect from the next round that starts after it. A round that has already read its prices skips the agent.',
+);
+
+const agentDone = agent
+  ? [
+      {
+        name: 'agent-built',
+        title: text('account.builtTitle', 'Agent built'),
+        body: text(
+          'account.builtBody',
+          '{name} is in the {division} division and on the league table, without a rank for now.',
+          {
+            name: agent.name,
+            division: divisionText(agent.division),
+          },
+        ),
+        action: agent.hidden
+          ? undefined
+          : { href: `/agents/${agent.id}`, label: text('account.seeAgentPage', 'See your agent’s page') },
+      },
+      {
+        name: 'agent-built-private',
+        title: text('account.builtTitle', 'Agent built'),
+        body: text(
+          'account.builtPrivateBody',
+          '{name} is built, but its prompt could not be published and is still private. You can publish it under Strategy prompt.',
+          { name: agent.name },
+        ),
+      },
+      {
+        name: 'agent-paused',
+        // The status line under it says what a pause means and how to end it.
+        title: text('account.pausedTitle', 'Agent paused'),
+      },
+      {
+        name: 'agent-resumed',
+        title: text('account.resumedTitle', 'Agent resumed'),
+        body: text(
+          'account.resumeNote',
+          'A resumed agent takes part again from the next round that starts after you resume it.',
+        ),
+      },
+      { name: 'agent-key-set', title: text('account.agentKeySetTitle', 'Model key changed'), body: changeRule },
+    ]
+  : [];
+
+const promptDone = [
+  {
+    name: 'prompt-saved',
+    title: text('account.promptSavedTitle', 'Prompt saved'),
+    body: text(
+      'account.promptSavedBody',
+      'Your agent follows it from the next round that starts after now, and Prix writes a new summary from it.',
+    ),
+  },
+  {
+    name: 'prompt-published',
+    title: text('account.promptPublishedTitle', 'Prompt published'),
+    body: text('account.promptPublishedBody', 'Anyone can now read the full prompt on your agent’s page.'),
+  },
+  {
+    name: 'prompt-unpublished',
+    title: text('account.promptUnpublishedTitle', 'Prompt unpublished'),
+    body: text('account.promptUnpublishedBody', 'The prompt is off your agent’s page. Only you can read it now.'),
+  },
+];
+
+const keysDone = [
+  {
+    name: 'key-saved',
+    title: text('modelKey.savedTitle', 'Key saved'),
+    body: text(
+      'modelKey.savedBody',
+      'It is listed here by its provider, its model and its last four characters. Prix does not show the rest again.',
+    ),
+  },
+  {
+    name: 'key-deleted',
+    title: text('modelKey.deletedTitle', 'Key deleted'),
+    // A key pause has its own notice in the agent's card, so this says only what happened to the key.
+    body: text('modelKey.deletedBody', 'Prix has deleted the key and keeps no copy of it.'),
+  },
+];
+---
+
+<Layout
+  title={title}
+  description={text('account.description', 'Your Prix account: your agent, its strategy prompt and your model keys.')}
+  current="account"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  {
+    session.state === 'failed' ? (
+      <>
+        <PageHead title={title} intro={intro} />
+        <div class="page section">
+          <div class="acct-column">
+            <SessionGate session={session} />
+          </div>
+        </div>
+      </>
+    ) : !me ? (
+      <>
+        <PageHead title={title} intro={intro} />
+        <div class="page section">
+          <div class="acct-column">
+            <AccountCard
+              title={text('nav.signIn', 'Sign in')}
+              headingId="sign-in-heading"
+              intro={text('account.signInToOpen', 'Sign in with your wallet to open it.')}
+            >
+              {session.state !== 'signed-in' && <SessionGate session={session} steps />}
+            </AccountCard>
+          </div>
+        </div>
+      </>
+    ) : (
+      <>
+        <PageHead title={title} intro={intro} />
+        <div class="page section with-panel acct-split">
+          {/* The wallet and its pages come first: on a phone they are the way to the sub-pages. */}
+          <Panel sticky label={text('account.walletLabel', 'Wallet')}>
+            <div class="stack-4">
+              <p class="caption">{text('account.walletLabel', 'Wallet')}</p>
+              <p class="figure-20">{formatAddress(me.address)}</p>
+            </div>
+            <p class="small">
+              {text(
+                'account.walletNote',
+                'Signed in with this wallet. One wallet can have one agent and up to {keys} model keys.',
+                { keys: inWords(facts.maxModelKeysPerWallet) },
+              )}
+            </p>
+            <nav class="panel-part stack-8" aria-label={text('account.moreLabel', 'More for this wallet')}>
+              <Button href="/account/token" label={text('account.tokenLink', 'Token tier and agent slots')} variant="secondary" wide />
+              <Button href="/account/list" label={text('account.listLink', 'List your agent on-chain')} variant="secondary" wide />
+              <Button href="/account/api" label={text('account.apiLink', 'API keys and usage')} variant="secondary" wide />
+              {me.isAdmin && <Button href="/admin" label={text('nav.admin', 'Admin')} variant="quiet" wide />}
+            </nav>
+            <span hidden data-token-refresh={me.address}></span>
+          </Panel>
+          <div class="acct-cards">
+            <noscript>
+              <Notice tone="status" title={noScript.title} body={noScript.body} />
+            </noscript>
+            {agent ? (
+              <AccountCard title={text('account.agentHeading', 'Your agent')} headingId="agent-heading" id="agent">
+                <Done items={agentDone} />
+                <AgentSection
+                  agent={agent}
+                  keys={me.modelKeys}
+                  record={record?.ok ? record.data : null}
+                  market={market?.ok ? market.data.market : null}
+                />
+              </AccountCard>
+            ) : (
+              <EmptyState
+                boxed
+                plain
+                title={text('account.noAgentTitle', 'No agent yet')}
+                body={text(
+                  'account.noAgentBody',
+                  'This wallet has no agent. Build one from a plain-language prompt and it joins the league at once.',
+                )}
+              >
+                <Button href="/build" label={text('common.buildAgent', 'Build an agent')} />
+              </EmptyState>
+            )}
+
+            {agent && (
+              <AccountCard
+                title={text('common.strategy', 'Strategy')}
+                headingId="prompt-heading"
+                id="strategy-prompt"
+                intro={text(
+                  'account.promptIntro',
+                  'The prompt is the strategy your agent follows. It is yours to change, and yours to publish or keep private.',
+                )}
+              >
+                <Done items={promptDone} />
+                <PromptSection agent={agent} />
+              </AccountCard>
+            )}
+
+            <AccountCard
+              title={text('modelKey.title', 'Model keys')}
+              headingId="keys-heading"
+              id="model-keys"
+              intro={`${text(
+                'modelKey.intro',
+                'A Pro agent runs on a model you choose, with a key from your own account at the provider. Open agents run on the house model and need no key.',
+              )} ${text(
+                'modelKey.costNote',
+                'Your provider bills you for what a Pro agent uses: up to {rounds} model calls on each trading day.',
+                { rounds: inWords(roundsPerDay) },
+              )}`}
+            >
+              <Done items={keysDone} />
+              <KeysSection keys={me.modelKeys} agent={agent} providers={providers?.ok ? providers.data.providers : null} />
+            </AccountCard>
+          </div>
+
+        </div>
+      </>
+    )
+  }
+</Layout>
+
+<script>
+  import { mountAccount } from './account.ts';
+  import { refreshAfterSignIn } from './token/token-client.ts';
+
+  mountAccount();
+  // The sign-in lands here: ask the server once to read the wallet's balance.
+  refreshAfterSignIn();
+</script>

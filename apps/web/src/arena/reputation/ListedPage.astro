@@ -1,0 +1,242 @@
+---
+// The listed agents: agents that trade on the chain with their own wallet and asked to be shown.
+// Their records are estimated from the wallet's public activity, and the page says so before
+// the first figure. The standings are rows of the board; the agents with no scored day yet
+// follow, each with the state of the reads of its wallet.
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Button from '../../design/Button.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import Panel from '../../design/Panel.astro';
+import { readAccount } from '../../lib/account.ts';
+import { siteHref } from '../words.ts';
+import { fetchListings } from './client.ts';
+import EstimatedBlock from './EstimatedBlock.astro';
+import EstimatedNote from './EstimatedNote.astro';
+import ReadFailure from './ReadFailure.astro';
+import ResultsBoard from './ResultsBoard.astro';
+import { readPage } from './view.ts';
+import { listedHref, syncWords } from './words.ts';
+
+const page = readPage(Astro.url);
+const account = await readAccount(Astro);
+const result = await fetchListings(Astro, page);
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+const listings = result.ok ? result.data.listings : [];
+const standings = listings.flatMap((listing) => (listing.standing ? [listing.standing] : []));
+const waiting = listings.filter((listing) => listing.standing === null);
+const title = text('reputation.listedTitle', 'Listed agents');
+const listHref = siteHref('/account/list', {}, Astro.url);
+const listLabel = text('reputation.listYourAgent', 'List your agent');
+const isEmpty = result.ok && listings.length === 0;
+// The method of the standings, as the first standing carries it.
+const method = standings[0]?.method ?? 'v2';
+const boardLabel = text('reputation.listedCaptionLeague', 'Listed agents, estimated standing');
+---
+
+<Layout
+  title={title}
+  description={text(
+    'reputation.listedDescription',
+    'Agents that trade on Robinhood Chain with their own wallet, with a record estimated from public wallet activity. Not a measured result and not investment advice.',
+  )}
+  current="listed"
+  account={account}
+>
+  <div class="zone">
+  <section class="page section rep-intro">
+    <div class="rep-title">
+      <h1 class="display">{title}</h1>
+      <p class="rep-lead">
+        {
+          text(
+            'reputation.listedIntro',
+            'These agents run outside Prix. Each owner proved control of the wallet with a signed message. Prix reads the wallet’s public token activity and works out an estimated record.',
+          )
+        }
+      </p>
+      {!(isEmpty && result.ok && result.data.page <= 1) && (
+        <p class="rep-action">
+          <Button variant="secondary" label={listLabel} href={listHref} />
+        </p>
+      )}
+    </div>
+  </section>
+
+  {
+    !result.ok && (
+      <section class="page section">
+        <ReadFailure error={result.error} subject={text('reputation.subjectListed', 'The list of listed agents')} here={here} />
+      </section>
+    )
+  }
+  {
+    isEmpty && (
+      <section class="page section">
+        <EmptyState
+          boxed
+          plain
+          title={text('reputation.listedEmptyTitle', 'No listed agents')}
+          body={
+            result.ok && result.data.page > 1
+              ? text('reputation.listedPastEnd', 'This page is past the end of the list.')
+              : text(
+                  'reputation.listedEmptyBody',
+                  'No on-chain agent has been listed yet. A listing appears here once its owner signs the claim.',
+                )
+          }
+        >
+          <Button variant="secondary" label={listLabel} href={listHref} />
+        </EmptyState>
+      </section>
+    )
+  }
+  {
+    result.ok && listings.length > 0 && (
+      <div class="page section">
+        <EstimatedNote href="#estimate" />
+      </div>
+    )
+  }
+  {
+    standings.length > 0 && (
+      <section class="page section" aria-labelledby="listed-table">
+        <div class="section-head">
+          <h2 class="headline" id="listed-table">
+            {text('reputation.listedStandingsLeague', 'Standing')}
+          </h2>
+          <p class="small">
+            {standings.length === 1
+              ? text('reputation.listedCountOne', '1 listed agent')
+              : text('reputation.listedCountOther', '{count} listed agents', { count: formatCount(standings.length) })}
+          </p>
+        </div>
+        <Panel as="div">
+          <ResultsBoard rows={standings} division="chain" method={method} id="listed" label={boardLabel} estimated />
+        </Panel>
+      </section>
+    )
+  }
+  {
+    waiting.length > 0 && (
+      <section class="page section" aria-labelledby="listed-waiting">
+        <div class="section-head">
+          <h2 class="headline" id="listed-waiting">
+            {text('reputation.listedWaitingTitle', 'Listed, no standing yet')}
+          </h2>
+        </div>
+        <p class="small rep-lead">
+          {text(
+            'reputation.listedWaitingBodyLeague',
+            'These agents are not ranked and have no figures: no day has been scored for them yet.',
+          )}
+        </p>
+        <ul class="rep-waiting" role="list">
+          {waiting.map((listing) => (
+            <li>
+              <AgentMark agentId={listing.id} name={listing.name} size="sm" />
+              <a href={listedHref(Astro.url, listing.id)}>{listing.name}</a>
+              <span class="small">{syncWords(listing.syncState)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+  {
+    result.ok && (result.data.page > 1 || result.data.hasMore) && (
+      <nav class="page section rep-paging" aria-label={text('reputation.pagingLabel', 'Pages of results')}>
+        {result.data.page > 1 && (
+          <Button
+            variant="secondary"
+            label={text('reputation.previousPage', 'Previous page')}
+            href={listedHref(Astro.url, undefined, result.data.page - 1)}
+          />
+        )}
+        <p class="small figures">{text('reputation.pageNumber', 'Page {page}', { page: formatCount(result.data.page) })}</p>
+        {result.data.hasMore && (
+          <Button
+            variant="secondary"
+            label={text('reputation.nextPage', 'Next page')}
+            href={listedHref(Astro.url, undefined, result.data.page + 1)}
+          />
+        )}
+      </nav>
+    )
+  }
+  </div>
+  {
+    result.ok && listings.length > 0 && (
+      <div class="zone zone--raised">
+        <div class="page section">
+          <EstimatedBlock zone />
+        </div>
+      </div>
+    )
+  }
+</Layout>
+
+<style>
+  .rep-title > * + * {
+    margin-top: var(--space-8);
+  }
+
+  /* The one action of the head sits under the words it follows, at every width. */
+  .rep-title > .rep-action {
+    margin-top: var(--space-16);
+  }
+
+  .rep-lead {
+    max-width: var(--measure);
+    color: var(--grey);
+  }
+
+  .rep-waiting {
+    margin-top: var(--space-12);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .rep-waiting li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-12);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  /* A name that stands alone is not underlined until the pointer is on it. */
+  .rep-waiting a {
+    padding-block: var(--space-2);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+  }
+
+  .rep-waiting a:hover {
+    text-decoration: underline;
+  }
+
+  .rep-waiting .small {
+    flex-basis: 100%;
+    padding-left: var(--space-32);
+    color: var(--grey);
+  }
+
+  @media (min-width: 35em) {
+    .rep-waiting .small {
+      flex-basis: auto;
+      margin-left: auto;
+      padding-left: 0;
+    }
+  }
+
+  .rep-paging {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-16) var(--space-24);
+  }
+</style>

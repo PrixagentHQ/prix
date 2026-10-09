@@ -1,0 +1,21 @@
+---
+import { divisionSchema } from '@prix/contracts';
+import LeaguePage from '../arena/LeaguePage.astro';
+import { createApi } from '../lib/api.ts';
+import { statusOfRead } from '../lib/status.ts';
+
+// A component cannot set the status, so the route file does. It asks for the same table as
+// LeaguePage, with the same address, and gets that page's answer: a read is made once per
+// request. A table that could not be read is sent with the API's status, never as 200.
+// Prix is one continuous league (D-109): an old `season` parameter is ignored.
+const query = Astro.url.searchParams;
+const wantedDivision = divisionSchema.safeParse(query.get('division'));
+const wantedPage = Number(query.get('page') ?? '1');
+const result = await createApi(Astro).league({
+  division: wantedDivision.success ? wantedDivision.data : 'open',
+  page: Number.isInteger(wantedPage) && wantedPage >= 1 && wantedPage <= 10_000 ? wantedPage : 1,
+});
+Astro.response.status = statusOfRead(result);
+---
+
+<LeaguePage />

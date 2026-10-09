@@ -1,0 +1,312 @@
+---
+// The fork builder: a signed-in person makes a new agent from a public one. The page reads what
+// the parent shows publicly (fork-source): its summary, its measured DNA and, only while its owner
+// has published it, its prompt. Then it builds an ordinary agent with POST /api/agents, unchanged,
+// and asks the server to link the two. The page decides nothing: the server decides whether the
+// fork is linked, and a fork starts with no record and nothing of the parent's results.
+import {
+  DNA_MIN_DAYS,
+  FORK_LINK_WINDOW_SECONDS,
+  FORK_NAME_GUARD_MIN_KEY,
+  PROMPT_MAX,
+  PROMPT_MIN,
+} from '@prix/contracts';
+import { fetchForkSource } from '../../arena/social/client.ts';
+import DnaPanel from '../../arena/social/DnaPanel.astro';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { apiErrorText, divisionText } from '../../content/states.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Button from '../../design/Button.astro';
+import Chip from '../../design/Chip.astro';
+import Choice from '../../design/Choice.astro';
+import Choices from '../../design/Choices.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Select from '../../design/Select.astro';
+import Textarea from '../../design/Textarea.astro';
+import TextInput from '../../design/TextInput.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import { createApi } from '../../lib/api.ts';
+import AccountCard from '../AccountCard.astro';
+import Feedback from '../Feedback.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import type { Session } from '../session.ts';
+import { herePath, signInHref } from '../session.ts';
+import { fetchTokenMe } from '../token/token-client.ts';
+import { keyOptionLabel, promptCheckWords, promptWords } from '../words.ts';
+import { forkWords, noScript, unreadable } from './words.ts';
+import '../account.css';
+import './social.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+}
+
+const { account, session } = Astro.props;
+const id = Astro.params.id ?? '';
+const here = herePath(Astro.url);
+
+// The route file asked first; this is the same answer, because a read is made once per request.
+const source = await fetchForkSource(Astro, id);
+const parent = source.ok ? source.data.parent : null;
+const words = forkWords(parent?.name ?? '');
+
+const me = session.state === 'signed-in' ? session.me : null;
+const keys = me?.modelKeys ?? [];
+
+// A wallet with an agent may build another only while it has a free slot. The server decides
+// again when the agent is created: this only chooses between the form and the note.
+const slotsRead = me?.agent ? await fetchTokenMe(Astro) : null;
+const hasRoom = slotsRead?.ok === true && slotsRead.data.slots.used < slotsRead.data.slots.max;
+const full = me?.agent != null && !hasRoom;
+const gated = slotsRead?.ok === true && slotsRead.data.gatingOn;
+const market = me && !full ? await createApi(Astro).market() : null;
+const noSeason = market?.ok === true && market.data.season === null;
+
+const published = parent?.prompt ?? null;
+const pro = parent?.division === 'pro';
+const prompt = promptWords();
+
+const title = parent ? words.title : text('social.forkTitleFallback', 'Fork an agent');
+const formWords = {
+  ...promptCheckWords(),
+  ...words,
+  fullOpen: words.fullOpen,
+  fullPro: words.fullPro,
+};
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.forkDescription',
+    'Make a new paper-trading agent from a public one. A fork starts with no record of its own.',
+  )}
+  account={account}
+  signInHref={signInHref(here)}
+  noindex
+>
+  <PageHead title={title} intro={parent ? words.intro : undefined} back={parent ? { href: `/agents/${id}`, label: words.back } : undefined} />
+
+  <div class="page section">
+    {
+      !source.ok || !parent ? (
+        <div class="acct-column">
+          <Notice
+            tone="error"
+            title={unreadable(text('social.forkWhat', 'The agent to fork')).title}
+            body={`${apiErrorText(source.ok ? 'internal' : source.error.code)} ${unreadable('').body}`}
+          >
+            <Button href={here} label={unreadable('').action} variant="secondary" />
+          </Notice>
+        </div>
+      ) : (
+        <div class="acct-grid fork-grid">
+          {/* The form is the page's one job: first in the page, on the right from 960 pixels. */}
+          <div class="fork-action">
+            {
+              session.state !== 'signed-in' ? (
+                <AccountCard title={words.signInTitle} headingId="fork-sign-in-heading">
+                  <p class="body">{words.signInBody}</p>
+                  {session.state === 'signed-out' ? (
+                    <p>
+                      <Button href={signInHref(here)} label={text('nav.signIn', 'Sign in')} />
+                    </p>
+                  ) : (
+                    <SessionGate session={session} steps />
+                  )}
+                </AccountCard>
+              ) : full ? (
+                <AccountCard>
+                  <Notice
+                    tone="status"
+                    title={
+                      gated
+                        ? text('builder.slotsFullTitle', 'All your agent slots are in use')
+                        : text('builder.hasAgentTitle', 'This wallet already has an agent')
+                    }
+                    body={
+                      gated
+                        ? text(
+                            'builder.slotsFullBody',
+                            'Edit one of your agents on your account page, or see the token page for the slots each tier gives.',
+                          )
+                        : text(
+                            'builder.hasAgentBody',
+                            'Each wallet can have one agent. You can edit its prompt, publish the prompt or pause the agent on your account page.',
+                          )
+                    }
+                  >
+                    <Button href="/account" label={text('account.linkLabel', 'Go to your account')} variant="secondary" />
+                  </Notice>
+                </AccountCard>
+              ) : noSeason ? (
+                <AccountCard>
+                  <Notice
+                    tone="status"
+                    title={text('social.forkClosedTitle', 'The league is not taking new agents')}
+                    body={apiErrorText('no_active_season')}
+                  >
+                    <Button href="/league" label={text('errors.goToLeague', 'Go to the league')} variant="secondary" />
+                  </Notice>
+                </AccountCard>
+              ) : (
+                <AccountCard title={title} headingId="fork-form-heading" class="fork-form-card">
+                  <form
+                    class="build-form"
+                    method="dialog"
+                    novalidate
+                    aria-labelledby="fork-form-heading"
+                    data-fork
+                    data-parent-id={parent.id}
+                    data-parent-name={parent.name}
+                    data-division={parent.division}
+                    data-published={published ?? undefined}
+                    data-guard-min={FORK_NAME_GUARD_MIN_KEY}
+                    data-window={FORK_LINK_WINDOW_SECONDS}
+                    data-next="/account"
+                    data-words={JSON.stringify(formWords)}
+                  >
+                    <noscript>
+                      <Notice tone="status" title={noScript().title} body={noScript().body} />
+                    </noscript>
+
+                    <div class="stack-24">
+                      <TextInput
+                        label={words.nameLabel}
+                        name="name"
+                        required
+                        autocomplete="off"
+                        hint={words.nameHint.replace('{parent}', parent.name)}
+                      />
+
+                      <div class="build-prompt">
+                        <Textarea
+                          label={prompt.label}
+                          name="prompt"
+                          required
+                          value={published ?? ''}
+                          count={prompt.count}
+                          hint={
+                            published !== null
+                              ? words.publishedLabel
+                              : `${words.privateNote} ${text(
+                                  'social.forkPromptHint',
+                                  '{min} to {max} characters. Say what the agent holds and when that changes.',
+                                  { min: PROMPT_MIN, max: formatCount(PROMPT_MAX) },
+                                )}`
+                          }
+                        />
+                        <p class="small fork-same" data-same-hint role="status" hidden={published === null}>
+                          {words.sameHint}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="panel-part">
+                      <p class="small">{words.divisionNote.replace('{division}', divisionText(parent.division))}</p>
+                      {
+                        pro &&
+                          (keys.length > 0 ? (
+                            <div class="build-key">
+                              <Select
+                                label={words.keyLabel}
+                                name="modelKeyId"
+                                hint={words.keyHint}
+                                options={keys.map((key) => ({ value: key.id, label: keyOptionLabel(key) }))}
+                              />
+                            </div>
+                          ) : (
+                            <div class="build-key stack-8">
+                              <p class="small">{words.keyNone}</p>
+                              <p class="small">
+                                <a href="/account#model-keys">{words.keyAdd}</a>
+                              </p>
+                            </div>
+                          ))
+                      }
+                    </div>
+
+                    <div class="panel-part">
+                      <Choices id="publishing" role="group" legend={text('builder.privacyLegend', 'Who can read the prompt')} hint={text('legal.promptPrivacy', 'Your prompt is private. Only you can read it, and your agent’s page shows a short summary that a model writes from it.')}>
+                        <Choice type="checkbox" name="publish" value="yes" label={words.publishLabel} hint={words.publishHint} />
+                      </Choices>
+                    </div>
+
+                    <div class="panel-part stack-16">
+                      <p class="small">{words.notes}</p>
+                      <Button
+                        type="submit"
+                        label={words.submit}
+                        size="lg"
+                        busyLabel={words.busy}
+                        disabled={published !== null || (pro && keys.length === 0)}
+                        data-submit
+                        data-blocked={pro && keys.length === 0 ? 'true' : 'false'}
+                      />
+                      <Feedback failedTitle={words.failedTitle} />
+                      <template data-message="link-retry">
+                        <Notice tone="error" title={words.linkTitle.replace('{parent}', parent.name)} body={words.linkBody.replace('{parent}', parent.name)}>
+                          <p class="acct-actions">
+                            <Button
+                              label={words.linkAgain.replace('{parent}', parent.name)}
+                              busyLabel={words.linkBusy}
+                              variant="secondary"
+                              data-link-again
+                            />
+                            <Button href="/account" label={words.linkLater} variant="quiet" />
+                          </p>
+                        </Notice>
+                      </template>
+                      <template data-message="link-final">
+                        <Notice tone="error" title={words.linkTitle.replace('{parent}', parent.name)} body={words.linkBody.replace('{parent}', parent.name)}>
+                          <Button href="/account" label={words.linkLater} variant="secondary" />
+                        </Notice>
+                      </template>
+                    </div>
+                  </form>
+                </AccountCard>
+              )
+            }
+          </div>
+
+          <AccountCard title={words.parentTitle} headingId="fork-parent-heading" class="fork-parent">
+            <div class="acct-agent">
+              <AgentMark agentId={parent.id} size="lg" />
+              <div>
+                <p class="headline acct-agent-name">
+                  <a href={`/agents/${parent.id}`}>{parent.name}</a>
+                </p>
+                <p class="acct-agent-meta">
+                  <Chip label={divisionText(parent.division)} kind={parent.division} />
+                  {parent.house && <Chip label={text('agent.houseChip', 'House')} kind="house" />}
+                  <span>{text('social.byOwner', 'By {owner}', { owner: parent.ownerShort })}</span>
+                </p>
+              </div>
+            </div>
+
+            <div class="panel-part stack-8">
+              <h3 class="fork-subhead">{words.summaryTitle}</h3>
+              <p class="body">
+                {parent.summary ?? (parent.summaryStatus === 'failed' ? words.summaryFailed : words.summaryPending)}
+              </p>
+            </div>
+
+            <div class="panel-part">
+              <DnaPanel profile={source.data.dna} minDays={DNA_MIN_DAYS} id="fork-profile" level={3} />
+            </div>
+          </AccountCard>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<script>
+  import { mountFork } from './fork.ts';
+
+  mountFork();
+</script>

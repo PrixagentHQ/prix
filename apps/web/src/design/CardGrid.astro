@@ -1,0 +1,25 @@
+---
+// The grid that holds cards: four in a row from 1100 pixels, two from 560, one below, with 12
+// pixels between them. `columns` lowers the count of the widest form, for a row of two or three.
+// It lays out whatever it is given; a board that also has a table form uses BoardList.
+interface Props {
+  columns?: 2 | 3 | 4;
+  /** Renders a list: each child is then an `li`, or a card with `as="li"`. */
+  list?: boolean;
+  id?: string;
+  class?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const { columns = 4, list = false, id, class: extra, slot: _slot, ...rest } = Astro.props as Props & { slot?: string };
+const Tag = list ? 'ul' : 'div';
+---
+
+<Tag
+  class:list={['card-grid', columns !== 4 && `card-grid--${columns}`, extra]}
+  id={id}
+  role={list ? 'list' : undefined}
+  {...rest}
+>
+  <slot />
+</Tag>

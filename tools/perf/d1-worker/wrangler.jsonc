@@ -1,0 +1,17 @@
+// Local only. tools/perf/local-d1.mjs starts this Worker on this machine to get a D1 database
+// that counts rows the way Cloudflare does. It is never deployed: the database id names nothing.
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "prix-perf-d1",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prix-perf-local",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

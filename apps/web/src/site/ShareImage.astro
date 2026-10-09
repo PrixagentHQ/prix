@@ -1,0 +1,304 @@
+---
+// The share image: what a link to Prix shows when it is posted. One SVG, 1200 by 630, in two
+// forms: the site's own image and an agent's. Prix is one continuous league (D-109), so there is
+// no image of a season. docs/DESIGN.md
+// applies to it as to a page: Inter on the light ground, ink and grey, the mark of Prix in ink
+// with its blue seat, green and red only on a signed figure, the medals only for ranks one to three, a hairline
+// between two things of the same kind, and no illustration.
+//
+// It is a template and computes nothing. An agent's figures arrive as the strings the agent's
+// page shows, formatted by content/format.ts from the API's answer. A private prompt is not
+// among its props, so it cannot appear here.
+//
+// Every share image carries the disclaimer, and none carries a call to act.
+// No text sits within 48 units of an edge. Sizes are in the units of the 1200 by 630 canvas,
+// not in page pixels, so they are attributes here and not tokens.
+import '../design/tokens.css';
+import { text } from '../content/index.ts';
+import { SEAT } from '../design/seat.ts';
+import { SHARE_SIZE, shareStatement } from './share.ts';
+
+interface Figure {
+  /** The column's name, as the league names it: "Return". */
+  label: string;
+  /** The figure as the agent's page prints it, sign included: "+6.84%". */
+  value: string;
+  /** Smaller words after the value: "of 10 ranked agents". */
+  suffix?: string;
+  /** Only for a signed figure. The sign is in `value`. */
+  tone?: 'gain' | 'loss';
+  /** Rank one. The gold medal stands before the figure. */
+  first?: boolean;
+  /** True when the value is words, such as "Not ranked yet". */
+  words?: boolean;
+}
+
+interface Props {
+  /** An agent's image. Leave out for the site's own image. */
+  agent?: {
+    /** As its owner wrote it. Rendered as text. */
+    name: string;
+    /** The division, and how long the record is: "Open division. 9 trading days." */
+    context: string;
+    /** Rank first, then up to three figures. */
+    figures: Figure[];
+  };
+  /** A text alternative, when the image stands in a page. Without it the image is hidden from assistive technology. */
+  label?: string;
+}
+
+const { agent, label } = Astro.props;
+const { width, height } = SHARE_SIZE;
+
+// The canvas: a left edge at 72 and a right edge at 1128.
+const LEFT = 72;
+const RIGHT = width - LEFT;
+const MEASURE = RIGHT - LEFT;
+
+// The lockup, as drawn for the logo (D-111): the square of the mark is 1.32 times the cap height
+// of the word, centred on it, and 0.46 cap heights stand between the two. Inter's capitals are
+// 0.727 of the font size.
+const WORD_SIZE = 46;
+const WORD_BASELINE = 106;
+const CAP = WORD_SIZE * 0.727;
+const MARK_SIDE = Math.round(CAP * 1.32);
+const MARK_TOP = Math.round((WORD_BASELINE - CAP / 2 - MARK_SIDE / 2) * 10) / 10;
+const MARK_SCALE = MARK_SIDE / (SEAT.grid - 2 * SEAT.edge);
+const WORD_X = Math.round(LEFT + MARK_SIDE + CAP * 0.46);
+
+/** Breaks a sentence into lines of at most `limit` characters, at spaces. */
+function lines(sentence: string, limit: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of sentence.split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > limit) {
+      out.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/**
+ * An agent's name on one or two lines, with a size at which the widest letters still fit.
+ * A name of 32 capital letters with no space is the worst case: two lines of 16.
+ */
+function nameLines(name: string): { rows: string[]; size: number } {
+  const LARGEST = 60;
+  const SMALLEST = 40;
+  const ONE_LINE = 20;
+  const clean = [...name.trim().replace(/\s+/g, ' ')];
+  let rows = [clean.join('')];
+  if (clean.length > ONE_LINE) {
+    // The space nearest the middle, or the middle itself when the name has no space to break at.
+    const middle = Math.ceil(clean.length / 2);
+    let at = -1;
+    for (let index = 0; index < clean.length; index += 1) {
+      if (clean[index] === ' ' && (at < 0 || Math.abs(index - middle) < Math.abs(at - middle))) at = index;
+    }
+    const longest = at < 0 ? clean.length : Math.max(at, clean.length - at - 1);
+    rows =
+      at < 0 || longest > 22
+        ? [clean.slice(0, middle).join(''), clean.slice(middle).join('')]
+        : [clean.slice(0, at).join(''), clean.slice(at + 1).join('')];
+  }
+  const longest = Math.max(...rows.map((row) => [...row].length));
+  // The widest capital of Inter at weight 600 is a little under one em wide.
+  const size = Math.max(SMALLEST, Math.min(LARGEST, Math.floor(MEASURE / longest)));
+  return { rows, size };
+}
+
+const simulation = text('common.simulationLabel', 'Paper trading simulation');
+const notAdvice = text('common.notAdviceLabel', 'Not investment advice');
+const noOrders = text('common.noOrdersLabel', 'No real orders are placed');
+const disclaimerFirst = text('share.disclaimerFirst', '{simulation}. {notAdvice}.', { simulation, notAdvice });
+const disclaimerSecond = text('share.disclaimerSecond', '{noOrders}.', { noOrders });
+const host = text('share.siteHost', 'prixagent.com');
+
+const kind = agent ? 'agent' : 'site';
+const statement = lines(shareStatement(), 36);
+
+const name = agent ? nameLines(agent.name) : null;
+const figures = agent ? agent.figures.slice(0, 4) : [];
+// The figures keep the same distance from the line above them, whether the name takes one line or two.
+const tableY = name && name.rows.length > 1 ? 380 : 340;
+// The rank's column is the widest: it holds "1 of 10 ranked agents".
+const columns = [LEFT, 480, 704, 928];
+---
+
+<svg
+  class="share"
+  data-theme="light"
+  viewBox={`0 0 ${width} ${height}`}
+  width={width}
+  height={height}
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+>
+  <rect class="ground" width={width} height={height}></rect>
+
+  <g transform={`translate(${LEFT} ${MARK_TOP}) scale(${MARK_SCALE}) translate(${-SEAT.edge} ${-SEAT.edge})`}>
+    <path class="mark-square" d={SEAT.square}></path>
+    <path class="mark-seat" d={SEAT.seat}></path>
+  </g>
+  <text class="wordmark" x={WORD_X} y={WORD_BASELINE} font-size={WORD_SIZE}>{text('common.productName', 'Prix')}</text>
+  <text class="host" x={RIGHT} y="102" font-size="26" text-anchor="end">{host}</text>
+
+  {
+    kind === 'site' &&
+      statement.map((line, index) => (
+        <text class="statement" x={LEFT} y={250 + index * 68} font-size="54">
+          {line}
+        </text>
+      ))
+  }
+
+  {
+    kind === 'agent' && name && (
+      <>
+        {name.rows.map((row, index) => (
+          <text class="statement" x={LEFT} y={204 + index * 66} font-size={name.size}>
+            {row}
+          </text>
+        ))}
+        <text class="note" x={LEFT} y={204 + (name.rows.length - 1) * 66 + 50} font-size="28">
+          {agent?.context}
+        </text>
+
+        {figures.map((figure, index) => (
+          <text class="note" x={columns[index]} y={tableY} font-size="24">
+            {figure.label}
+          </text>
+        ))}
+        {figures.map((figure, index) => {
+          const x = columns[index] ?? LEFT;
+          const medal = figure.first;
+          return (
+            <>
+              {medal && (
+                <g class="medal medal-1">
+                  <circle cx={x + 22} cy={tableY + 42} r="20"></circle>
+                  <text x={x + 22} y={tableY + 50} font-size="22" text-anchor="middle">
+                    1
+                  </text>
+                </g>
+              )}
+              <text
+                class:list={['figure', figure.tone]}
+                x={medal ? x + 54 : x}
+                y={tableY + 58}
+                font-size={figure.words ? 32 : 44}
+              >
+                {figure.value}
+                {figure.suffix && (
+                  <tspan class="suffix" font-size="24">
+                    {` ${figure.suffix}`}
+                  </tspan>
+                )}
+              </text>
+            </>
+          );
+        })}
+      </>
+    )
+  }
+
+  <line class="hairline" x1={LEFT} x2={RIGHT} y1="463.5" y2="463.5" />
+  <text class="disclaimer" x={LEFT} y="522" font-size="30">{disclaimerFirst}</text>
+  <text class="disclaimer second" x={LEFT} y="564" font-size="30">{disclaimerSecond}</text>
+</svg>
+
+<style>
+  .share {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .ground {
+    fill: var(--ground);
+  }
+
+  .mark-square {
+    fill: var(--ink);
+  }
+
+  .mark-seat {
+    fill: var(--blue);
+  }
+
+  .wordmark {
+    fill: var(--ink);
+    font-family: var(--sans-display);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.03em;
+  }
+
+  .statement {
+    fill: var(--ink);
+    font-family: var(--sans-display);
+    font-weight: var(--weight-strong);
+    letter-spacing: -0.025em;
+  }
+
+  .host,
+  .note,
+  .suffix {
+    fill: var(--grey);
+    font-family: var(--sans);
+    font-weight: var(--weight-medium);
+  }
+
+  .figure {
+    fill: var(--ink);
+    font-family: var(--sans-display);
+    font-weight: var(--weight-strong);
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .figure.gain {
+    fill: var(--green);
+  }
+
+  .figure.loss {
+    fill: var(--red);
+  }
+
+  .disclaimer {
+    fill: var(--ink);
+    font-family: var(--sans);
+    font-weight: var(--weight-strong);
+  }
+
+  .disclaimer.second {
+    fill: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  .hairline {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+
+  /* The gold medal of rank one: a face and a rim of the same metal, and the numeral in ink. */
+  .medal circle {
+    stroke-width: 3;
+  }
+
+  .medal text {
+    fill: var(--medal-ink);
+    font-family: var(--sans-display);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  .medal-1 circle {
+    fill: var(--gold);
+    stroke: var(--gold-rim);
+  }
+</style>

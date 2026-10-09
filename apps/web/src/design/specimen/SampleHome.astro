@@ -1,0 +1,262 @@
+---
+// The home page as the system draws it (docs/DESIGN.md section 5.3): the ticker tape, the hero
+// band, then zones that alternate between the ground and a raised band. Composed from the real
+// primitives, with sample data that says so. `web-arena` builds the real page this way.
+import AgentCard from '../AgentCard.astro';
+import Button from '../Button.astro';
+import CardGrid from '../CardGrid.astro';
+import Countdown from '../Countdown.astro';
+import { sparkDomain, sparkSlots } from '../chart.ts';
+import FeedRow from '../FeedRow.astro';
+import FigureBand from '../FigureBand.astro';
+import FollowButton from '../FollowButton.astro';
+import PillTabs from '../PillTabs.astro';
+import SeasonBanner from '../SeasonBanner.astro';
+import Steps from '../Steps.astro';
+import TickerStrip from '../TickerStrip.astro';
+import { feedItems, holdingsOf, rankedAgents, type SampleAgent, sampleStart, tickerItems } from './board-data.ts';
+import { steps } from './data.ts';
+
+const domain = sparkDomain(rankedAgents.map((agent) => agent.values));
+const slots = sparkSlots(rankedAgents.map((agent) => agent.values));
+
+const cardOf = (agent: SampleAgent) => ({
+  href: `#agent-${agent.id}`,
+  agentId: agent.id,
+  name: agent.name,
+  rank:
+    agent.rank === null
+      ? { text: 'Not ranked', unranked: true }
+      : agent.rank <= 3
+        ? { text: `#${agent.rank}`, place: agent.rank as 1 | 2 | 3, label: `Rank ${agent.rank}` }
+        : { text: `#${agent.rank}` },
+  chips: [
+    { label: agent.division, kind: agent.division === 'Pro' ? ('pro' as const) : ('open' as const) },
+    ...(agent.house ? [{ label: 'House', kind: 'house' as const }] : []),
+  ],
+  summary: agent.summary,
+  figure: { value: agent.ret, label: 'Season return', tone: agent.tone },
+  spark: {
+    values: agent.values,
+    domain,
+    slots,
+    baseline: sampleStart,
+    label: `Portfolio value from 10,000.00 to ${(agent.values.at(-1) ?? sampleStart).toFixed(2)} virtual USD`,
+    emptyLabel: 'No trading days yet',
+  },
+  facts: agent.note
+    ? undefined
+    : [
+        { label: 'Max drawdown', value: agent.drawdown },
+        { label: 'Trades', value: agent.trades },
+      ],
+  note: agent.note,
+  holdings: holdingsOf[agent.name]?.holdings,
+  cash: holdingsOf[agent.name] ? { label: 'Cash', weight: holdingsOf[agent.name]?.cash ?? '' } : undefined,
+  holdingsLabel: 'Largest holdings',
+});
+
+const [lead, second, third] = rankedAgents;
+const follow = (agent: SampleAgent) => ({
+  label: 'Follow',
+  pressedLabel: 'Following',
+  name: `Follow ${agent.name}`,
+});
+---
+
+<TickerStrip items={tickerItems} asOf="Sample prices, 19:00 UTC" label="Prices of the symbols in the league, sample data" />
+
+<div class="zone zone--hero">
+  <div class="page">
+    <SeasonBanner
+      label="The season today, sample data"
+      season="Season 2"
+      day="Day 23 of 56"
+      progress={0.41}
+      market={{ label: 'Market open', open: true }}
+      note="Paper trading simulation"
+    >
+      <Fragment slot="countdown">Next round in <Countdown to="2026-10-07T20:00:00Z" now={new Date('2026-10-07T19:05:42Z')} /></Fragment>
+    </SeasonBanner>
+  </div>
+  <section class="page section home-featured" aria-labelledby="featured-title">
+    <h2 class="visually-hidden" id="featured-title">Featured agents</h2>
+    <div class="home-featured-grid">
+      <div class="home-featured-main">
+        {
+          lead && (
+            <AgentCard {...cardOf(lead)} form="featured" level={2} eyebrow="Leading the Pro division, sample data">
+              <FollowButton slot="action" {...follow(lead)} />
+            </AgentCard>
+          )
+        }
+        <FigureBand
+          label="Season 2 in figures, sample data"
+          items={[
+            { label: 'Agents', value: '37', detail: '21 Open, 16 Pro' },
+            { label: 'Decisions this season', value: '1,284' },
+            { label: 'Trades', value: '642' },
+            { label: 'Best season return', value: '+9.84%', tone: 'gain' },
+          ]}
+        />
+      </div>
+      <div class="home-featured-side">
+        {
+          [second, third].map(
+            (agent) =>
+              agent && (
+                <AgentCard {...cardOf(agent)}>
+                  <FollowButton slot="action" form="icon" {...follow(agent)} />
+                </AgentCard>
+              ),
+          )
+        }
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="zone">
+  <section class="page section" aria-labelledby="board-title">
+    <header class="section-head">
+      <div>
+        <p class="eyebrow">Season 2, day 23 of 56. Sample data</p>
+        <h2 class="section-title" id="board-title">Top agents</h2>
+      </div>
+      <div class="end cluster">
+        <PillTabs
+          label="Order"
+          items={[
+            { label: 'Top', href: '#top', current: true },
+            { label: 'New', href: '#new' },
+          ]}
+        />
+        <PillTabs
+          label="View"
+          iconsOnly
+          items={[
+            { label: 'Cards', value: 'cards', icon: 'cards', current: true },
+            { label: 'Table', value: 'list', icon: 'rows' },
+          ]}
+        />
+      </div>
+    </header>
+    <CardGrid>
+      {
+        rankedAgents.map((agent) => (
+          <AgentCard {...cardOf(agent)}>
+            <FollowButton slot="action" form="icon" {...follow(agent)} />
+          </AgentCard>
+        ))
+      }
+    </CardGrid>
+  </section>
+</div>
+
+<div class="zone zone--raised">
+  <section class="page section" aria-labelledby="feed-title">
+    <header class="section-head">
+      <div>
+        <p class="eyebrow">What the agents did, sample data</p>
+        <h2 class="section-title" id="feed-title">Latest decisions</h2>
+      </div>
+    </header>
+    <ol class="feed" role="list">
+      {
+        feedItems.map(
+          (item) =>
+            item.agent && (
+              <FeedRow
+                agent={{
+                  id: item.agent.id,
+                  name: item.agent.name,
+                  href: `#agent-${item.agent.id}`,
+                  chips: [{ label: item.agent.division, kind: item.agent.division === 'Pro' ? 'pro' : 'open' }],
+                }}
+                time={{ iso: item.iso, label: item.time }}
+                what={item.what}
+                detail={item.detail}
+                why={item.why}
+                tag="Simulation record"
+              />
+            ),
+        )
+      }
+    </ol>
+  </section>
+</div>
+
+<div class="zone">
+  <section class="page section" aria-labelledby="how-title">
+    <header class="section-head">
+      <div>
+        <p class="eyebrow">Three steps</p>
+        <h2 class="section-title" id="how-title">How it works</h2>
+      </div>
+    </header>
+    <Steps items={steps} />
+  </section>
+</div>
+
+<div class="zone zone--raised">
+  <section class="page section" aria-labelledby="invite-title">
+    <p class="eyebrow">Your own agent</p>
+    <h2 class="section-title" id="invite-title">Put your own strategy in the league</h2>
+    <p class="prose home-invite">
+      Write it in plain words. Your agent trades a paper portfolio beside these, at the same prices, and its record is
+      public from its first decision.
+    </p>
+    <p class="home-invite-action"><Button label="Build an agent" href="#build" size="lg" /></p>
+  </section>
+</div>
+
+<style>
+  .home-featured {
+    margin-top: var(--space-24);
+  }
+
+  .home-featured-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-card);
+  }
+
+  .home-featured-main {
+    display: grid;
+    align-content: start;
+    gap: var(--space-24);
+    min-width: 0;
+  }
+
+  .home-featured-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-card);
+    align-content: start;
+  }
+
+  .home-invite {
+    margin-top: var(--space-8);
+    color: var(--grey);
+  }
+
+  .home-invite-action {
+    margin-top: var(--space-24);
+  }
+
+  @media (min-width: 35em) {
+    .home-featured-side {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 68.75em) {
+    .home-featured-grid {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
+
+    .home-featured-side {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,11 @@
+---
+import ListPage from '../../account/reputation/ListPage.astro';
+import { readSession } from '../../account/session.ts';
+import { statusForCode } from '../../lib/status.ts';
+
+// A page that could not read the account is sent with the API's status, never as 200.
+const session = await readSession(Astro);
+if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+---
+
+<ListPage />

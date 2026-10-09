@@ -1,0 +1,346 @@
+---
+// /following: the feed of the followed agents' decisions beside a panel with the agents
+// themselves, browser notifications and the Telegram notes. Signed out, the page shows the
+// sign-in gate of /account. What the page offers grants nothing: the API checks every action
+// again, and the delay is cut on the server.
+import { text } from '../../content/index.ts';
+import { apiErrorText, divisionText } from '../../content/states.ts';
+import AsciiAvatar from '../../design/ascii/AsciiAvatar.astro';
+import Button from '../../design/Button.astro';
+import Chip from '../../design/Chip.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Panel from '../../design/Panel.astro';
+import { readAccount } from '../../lib/account.ts';
+import { createFollowApi } from '../../lib/follow-api.ts';
+import AccountCard from '../AccountCard.astro';
+import Done from '../Done.astro';
+import Feedback from '../Feedback.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import { herePath, readSession, signInHref } from '../session.ts';
+import FeedList from './FeedList.astro';
+import NotifySettings from './NotifySettings.astro';
+import PushCard from './PushCard.astro';
+import '../account.css';
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+
+const api = createFollowApi(Astro);
+const [follows, feed, notifications] =
+  session.state === 'signed-in'
+    ? await Promise.all([api.follows(), api.feed(), api.notifications()])
+    : [null, null, null];
+
+// A session the API no longer accepts shows the gate, as a signed-out visitor sees it.
+const ended = follows !== null && !follows.ok && follows.error.code === 'unauthorized';
+const gate = session.state !== 'signed-in' ? session : ended ? ({ state: 'ended' } as const) : null;
+
+// With the bot not set up the page says nothing about Telegram.
+const showNotify = notifications !== null && (!notifications.ok || notifications.data.telegram.available);
+
+const title = text('follow.title', 'Following');
+const intro = text('follow.intro', 'The agents you follow, and a feed of what they decide.');
+const reload = text('common.reloadPage', 'Reload the page');
+const noFollowsTitle = text('follow.noFollowsTitle', 'You follow no agents yet');
+const noFollowsBody = text(
+  'follow.noFollowsBody',
+  'Open an agent’s page in the league and follow it. Its decisions then appear here.',
+);
+
+// Every read failed: one notice and one button instead of three that say the same thing.
+const allFailed =
+  follows !== null && !follows.ok && feed !== null && !feed.ok && notifications !== null && !notifications.ok;
+
+function readError(code: Parameters<typeof apiErrorText>[0]): string {
+  return apiErrorText(code);
+}
+
+/** "86,400 seconds" as "24 hours"; a value that is not whole hours or minutes is given in minutes. */
+function lengthOf(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return hours === 1 ? text('follow.lengthHour', '1 hour') : text('follow.lengthHours', '{n} hours', { n: hours });
+  }
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes === 1
+    ? text('follow.lengthMinute', '1 minute')
+    : text('follow.lengthMinutes', '{n} minutes', { n: minutes });
+}
+
+const done = [
+  {
+    name: 'follow-note-on',
+    title: text('follow.noteOnTitle', 'Notes turned on'),
+    body: text('follow.noteOnBody', 'You get a note when this agent changes its paper portfolio.'),
+  },
+  {
+    name: 'follow-note-off',
+    title: text('follow.noteOffTitle', 'Notes turned off'),
+    body: text('follow.noteOffBody', 'You still see the agent’s decisions in the feed.'),
+  },
+  {
+    name: 'follow-removed',
+    title: text('follow.removedTitle', 'Unfollowed'),
+    body: text('follow.removedBody', 'The agent’s decisions are no longer in your feed.'),
+  },
+  {
+    name: 'telegram-paused',
+    title: text('follow.pausedTitle', 'Notes paused'),
+    body: text('follow.pausedBody', 'The chat stays linked. Resume notes when you want them again.'),
+  },
+  {
+    name: 'telegram-resumed',
+    title: text('follow.resumedTitle', 'Notes resumed'),
+    body: text('follow.resumedBody', 'You get a note again when an agent you follow changes its paper portfolio.'),
+  },
+  {
+    name: 'telegram-unlinked',
+    title: text('follow.unlinkedTitle', 'Telegram unlinked'),
+    body: text('follow.unlinkedBody', 'Prix sends nothing to that chat now.'),
+  },
+];
+---
+
+<Layout
+  title={title}
+  description={text('follow.description', 'The agents you follow on Prix and a feed of their paper trading decisions.')}
+  current="following"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  <PageHead title={title} intro={intro} />
+  {
+    gate?.state === 'failed' ? (
+      <div class="page section">
+        <div class="acct-column">
+          <SessionGate session={gate} />
+        </div>
+      </div>
+    ) : gate ? (
+      <div class="page section">
+        <div class="acct-column">
+          <AccountCard
+            title={text('nav.signIn', 'Sign in')}
+            headingId="sign-in-heading"
+            intro={text('follow.signInToOpen', 'Sign in with your wallet to open it.')}
+          >
+            <SessionGate session={gate} steps />
+          </AccountCard>
+        </div>
+      </div>
+    ) : allFailed && follows && !follows.ok ? (
+      <div class="page section">
+        <div class="acct-column">
+          <Notice tone="error" title={text('follow.allFailedTitle', 'Following did not load')} body={readError(follows.error.code)}>
+            <Button href={herePath(Astro.url)} label={reload} variant="secondary" />
+          </Notice>
+        </div>
+      </div>
+    ) : (
+      <div class="page section with-panel acct-split">
+        {/* The agents come first: on a phone the list and its controls stand above a long feed. */}
+        <Panel label={text('follow.followsTitle', 'Agents you follow')}>
+          <div class="stack-4">
+            <h2 class="title" id="follows-heading">
+              {text('follow.followsTitle', 'Agents you follow')}
+            </h2>
+            {follows?.ok && follows.data.follows.length > 0 && (
+              <p class="small">
+                {text('follow.followsCount', 'You follow {count} of {limit} agents.', {
+                  count: follows.data.follows.length,
+                  limit: follows.data.limit,
+                })}
+              </p>
+            )}
+          </div>
+          <div class="stack-16" data-scope>
+            <Done items={done} />
+            {follows && !follows.ok ? (
+              <Notice
+                tone="error"
+                title={text('follow.followsFailedTitle', 'Your follows were not loaded')}
+                body={readError(follows.error.code)}
+              >
+                <Button href={herePath(Astro.url)} label={reload} variant="secondary" />
+              </Notice>
+            ) : follows && follows.data.follows.length === 0 ? (
+              feed?.ok ? (
+                // The feed's empty state beside it already says how to start and holds the action.
+                <Notice tone="empty" title={noFollowsTitle} />
+              ) : (
+                <Notice tone="empty" title={noFollowsTitle} body={noFollowsBody}>
+                  <Button href="/league" label={text('follow.openLeague', 'Open the league')} variant="secondary" />
+                </Notice>
+              )
+            ) : (
+              follows && (
+                <ul class="acct-list" role="list" aria-labelledby="follows-heading">
+                  {follows.data.follows.map((entry) => {
+                    const lineId = `follow-${entry.agentId}`;
+                    return (
+                      <li role="group" aria-labelledby={lineId}>
+                        <div class="follow-who">
+                          <AsciiAvatar id={entry.agentId} size="sm" />
+                          <div>
+                            <p class="follow-name">
+                              <a href={`/agents/${entry.agentId}`} id={lineId}>
+                                {entry.name}
+                              </a>
+                            </p>
+                            <p class="acct-agent-meta">
+                              <Chip label={divisionText(entry.division)} kind={entry.division} />
+                              <span>
+                                {entry.notify
+                                  ? text('follow.noteIsOn', 'Notes on')
+                                  : text('follow.noteIsOff', 'Notes off')}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        <p class="acct-actions follow-actions">
+                          <Button
+                            label={
+                              entry.notify
+                                ? text('follow.turnNotesOff', 'Turn notes off')
+                                : text('follow.turnNotesOn', 'Turn notes on')
+                            }
+                            busyLabel={text('follow.saving', 'Saving')}
+                            variant="secondary"
+                            size="sm"
+                            data-note-toggle
+                            data-agent={entry.agentId}
+                            data-notify={entry.notify ? 'true' : 'false'}
+                          />
+                          <Button
+                            label={text('follow.unfollow', 'Unfollow')}
+                            busyLabel={text('follow.unfollowing', 'Unfollowing')}
+                            variant="quiet"
+                            size="sm"
+                            data-unfollow
+                            data-agent={entry.agentId}
+                          />
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
+            )}
+            <Feedback failedTitle={text('follow.changeFailedTitle', 'Your follows were not changed')} />
+            <template data-message="limit">
+              <Notice
+                tone="error"
+                title={text('follow.limitTitle', 'Follow limit reached')}
+                body={text('follow.limitBody', 'You follow as many agents as one wallet can. Unfollow one to follow another.')}
+              />
+            </template>
+          </div>
+
+          <PushCard />
+
+          {showNotify && (
+            <div class="panel-part stack-16">
+              <div class="stack-4">
+                <h2 class="title" id="notify-heading">
+                  {text('follow.notifyTitle', 'Notes')}
+                </h2>
+                <p class="small">
+                  {text('follow.notifyIntro', 'Choose where Prix sends a note about an agent you follow.')}
+                </p>
+              </div>
+              {notifications && !notifications.ok ? (
+                <Notice
+                  tone="error"
+                  title={text('follow.notifyFailedTitle', 'Your notes settings were not loaded')}
+                  body={readError(notifications.error.code)}
+                >
+                  <Button href={herePath(Astro.url)} label={reload} variant="secondary" />
+                </Notice>
+              ) : (
+                notifications && <NotifySettings telegram={notifications.data.telegram} />
+              )}
+            </div>
+          )}
+        </Panel>
+
+        <section aria-labelledby="feed-heading">
+          <div class="section-head">
+            <h2 class="headline" id="feed-heading">
+              {text('follow.feedTitle', 'Feed')}
+            </h2>
+            {/* An empty feed says itself where decisions appear, so the line waits for the first one. */}
+            {feed?.ok && !feed.data.delay.gatingOn && feed.data.items.length > 0 && (
+              <p class="small">
+                {text(
+                  'follow.previewLine',
+                  'Decisions are shown without delay while the token does not exist. This is a preview.',
+                )}
+              </p>
+            )}
+            {feed?.ok && feed.data.delay.seconds > 0 && (
+              <p class="small">
+                {text('follow.delayLine', 'Decisions are held back for {length} before you see them.', {
+                  length: lengthOf(feed.data.delay.seconds),
+                })}
+              </p>
+            )}
+          </div>
+          {feed && !feed.ok ? (
+            <Notice
+              tone="error"
+              title={text('follow.feedFailedTitle', 'The feed was not loaded')}
+              body={readError(feed.error.code)}
+            >
+              <Button href={herePath(Astro.url)} label={reload} variant="secondary" />
+            </Notice>
+          ) : (
+            feed && <FeedList
+                feed={feed.data}
+                noFollows={follows?.ok ? follows.data.follows.length === 0 : false}
+                agents={follows?.ok ? follows.data.follows : []}
+              />
+          )}
+        </section>
+
+      </div>
+    )
+  }
+</Layout>
+
+<style>
+  .follow-who {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-8);
+    align-items: start;
+  }
+
+  .follow-name {
+    font-weight: var(--weight-strong);
+    overflow-wrap: anywhere;
+  }
+
+  .follow-name a {
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .follow-name a:hover {
+    text-decoration: underline;
+  }
+
+  .follow-actions {
+    margin-top: var(--space-8);
+  }
+</style>
+
+<script>
+  import { mountFollowing } from './follow.ts';
+  import { mountPush } from './push.ts';
+
+  mountFollowing();
+  void mountPush();
+</script>

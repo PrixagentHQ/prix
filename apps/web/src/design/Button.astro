@@ -1,0 +1,78 @@
+---
+// A button or a link that looks like one. The label says what it does.
+// With `href` it renders a link; without, a button.
+//
+//   primary    the blue: the one action a screen asks for
+//   secondary  the ground with a hairline ring: every other action
+//   quiet      words until the pointer is on it: "Sign out", "How it works"
+//
+// Sizes: `sm` is 32 pixels for a bar, `md` is 40 for a form (the default), `lg` is 44 for the
+// one action of a panel.
+interface Props {
+  label: string;
+  href?: string;
+  variant?: 'primary' | 'secondary' | 'quiet';
+  size?: 'sm' | 'md' | 'lg';
+  /** Fills the width of what holds it. */
+  wide?: boolean;
+  type?: 'button' | 'submit';
+  disabled?: boolean;
+  /** The label while the action runs, for example "Building the agent". A script swaps it in. */
+  busyLabel?: string;
+  /** Renders the busy state on the server: the busy label, disabled. */
+  busy?: boolean;
+  /** For a button that holds a state. Renders `aria-pressed`; true is the tint with blue words. */
+  pressed?: boolean;
+  id?: string;
+  name?: string;
+  value?: string;
+  form?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  label,
+  href,
+  variant = 'primary',
+  size = 'md',
+  wide = false,
+  type = 'button',
+  disabled = false,
+  busyLabel,
+  busy = false,
+  pressed,
+  // Astro hands a component the `slot` it was placed in. It is not an attribute of the element.
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+
+const classes = [
+  'button',
+  variant !== 'primary' && `button--${variant}`,
+  size !== 'md' && `button--${size}`,
+  wide && 'button--wide',
+];
+const off = disabled || busy;
+const shown = busy && busyLabel ? busyLabel : label;
+---
+
+{
+  href !== undefined ? (
+    <a class:list={classes} href={off ? undefined : href} aria-disabled={off ? 'true' : undefined} {...rest}>
+      {shown}
+    </a>
+  ) : (
+    <button
+      class:list={classes}
+      type={type}
+      disabled={off}
+      aria-busy={busy ? 'true' : undefined}
+      aria-pressed={pressed === undefined ? undefined : pressed ? 'true' : 'false'}
+      data-label={label}
+      data-busy-label={busyLabel}
+      {...rest}
+    >
+      {shown}
+    </button>
+  )
+}

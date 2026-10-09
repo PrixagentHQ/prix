@@ -1,0 +1,12 @@
+---
+// A sentence of `parts()` (words.ts): text and links, each rendered as what it is.
+import type { Part } from './words.ts';
+
+interface Props {
+  parts: Part[];
+}
+
+const { parts } = Astro.props;
+---
+
+{parts.map((part) => (typeof part === 'string' ? part : <a href={part.href}>{part.text}</a>))}

@@ -1,0 +1,56 @@
+---
+// A secondary button that copies text, and a status line that says it did. The button is hidden
+// until the script runs, so a page without script shows the text alone. The text to copy is
+// `text`, or the `[data-copy-source]` element inside the nearest `[data-copy-scope]`.
+interface Props {
+  label: string;
+  /** What the status line says after a copy, for example "Address copied". */
+  copiedLabel: string;
+  /** What it says when the browser refused. */
+  failedLabel: string;
+  text?: string;
+  /** 32 in a bar, 40 in a form (the default), 44 for the action of a panel. */
+  size?: 'sm' | 'md' | 'lg';
+  /** The full width of its column, with the status line under it. */
+  wide?: boolean;
+}
+
+const { label, copiedLabel, failedLabel, text, size = 'md', wide = false } = Astro.props;
+---
+
+<span class:list={['copy', wide && 'copy--wide']}>
+  <button
+    class:list={['button', 'button--secondary', size !== 'md' && `button--${size}`, wide && 'button--wide']}
+    type="button"
+    hidden
+    data-copy
+    data-copy-text={text}
+    data-copied={copiedLabel}
+    data-failed={failedLabel}
+  >
+    {label}
+  </button>
+  <span class="copy-status small" role="status" data-copy-status></span>
+</span>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+    if (!navigator.clipboard) continue;
+    button.hidden = false;
+    const status = button.parentElement?.querySelector<HTMLElement>('[data-copy-status]');
+    button.addEventListener('click', async () => {
+      const source = button.closest('[data-copy-scope]')?.querySelector('[data-copy-source]');
+      const value = button.dataset.copyText ?? source?.textContent ?? '';
+      let message = button.dataset.copied ?? '';
+      try {
+        await navigator.clipboard.writeText(value.trim());
+      } catch {
+        message = button.dataset.failed ?? '';
+      }
+      if (status) status.textContent = message;
+      window.setTimeout(() => {
+        if (status) status.textContent = '';
+      }, 2500);
+    });
+  }
+</script>

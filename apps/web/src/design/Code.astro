@@ -1,0 +1,22 @@
+---
+// A developer's code sample: commands and JSON, nothing else. The one place the system uses a
+// monospace face. It wraps instead of clipping, so the first command is never cut off.
+import CopyButton from './CopyButton.astro';
+
+interface Props {
+  /** Names the sample for readers and for assistive technology. */
+  label: string;
+  code: string;
+  copyLabel: string;
+  copiedLabel: string;
+  failedLabel: string;
+}
+
+const { label, code, copyLabel, copiedLabel, failedLabel } = Astro.props;
+---
+
+<figure class="code-sample" data-copy-scope>
+  <figcaption class="small">{label}</figcaption>
+  <pre tabindex="0" aria-label={label}><code data-copy-source>{code}</code></pre>
+  <CopyButton label={copyLabel} copiedLabel={copiedLabel} failedLabel={failedLabel} />
+</figure>

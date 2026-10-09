@@ -1,0 +1,11 @@
+---
+import { fetchWars, pageOf, statusOf } from '../arena/social/client.ts';
+import WarsPage from '../arena/social/WarsPage.astro';
+
+// The status is the API's: with the switch off the route answers 404, and so does this page.
+const result = await fetchWars(Astro, pageOf(Astro.url));
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = statusOf(result);
+---
+
+<WarsPage />

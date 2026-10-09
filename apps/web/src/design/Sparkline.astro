@@ -1,0 +1,89 @@
+---
+// A sparkline: one line of a pixel and a half, three times as wide as it is high, over an area
+// in its own colour that fades to nothing at the foot. No axis. It takes the colour of its
+// tone: green for a gain, red for a loss, ink without one.
+// Every sparkline of a board shares one `domain` and one `slots` (see chart.ts).
+//
+// With `baseline` it carries the dashed line of the value the season started with, and a dot
+// on its latest value. With fewer than two values and a baseline it shows that line and the
+// first point alone: the picture of an agent that has not traded a day yet.
+import { areaId, type Domain, SPARK, sparkArea, sparkPoints, sparkY } from './chart.ts';
+
+interface Props {
+  /** The values, oldest first. Start with the season's starting value. */
+  values: readonly number[];
+  /** The shared vertical scale, from `sparkDomain`. Defaults to this line's own range. */
+  domain?: Domain;
+  /** The number of points of the longest line of the board, from `sparkSlots`. */
+  slots?: number;
+  /** A short text alternative. Without it the chart is hidden from assistive technology. */
+  label?: string;
+  /** What to say when there are fewer than two values, for example "No trading days yet". */
+  emptyLabel?: string;
+  /** The sign of the figure the line belongs to. The colour repeats it and never replaces it. */
+  tone?: 'gain' | 'loss';
+  /** The value the dashed line marks, for example the season's starting value. */
+  baseline?: number;
+  /** A dot on the latest value. On by default when `baseline` is given. */
+  dot?: boolean;
+  size?: 'sm' | 'md' | 'lg';
+  /** Marks the line for motion/draw.ts, which draws it once when it shows. */
+  draw?: boolean;
+}
+
+const {
+  values,
+  domain,
+  slots,
+  label,
+  emptyLabel,
+  tone,
+  baseline,
+  dot = baseline !== undefined,
+  size = 'md',
+  draw = false,
+} = Astro.props;
+const all = baseline === undefined ? [...values] : [...values, baseline];
+const own: Domain = [Math.min(...all), Math.max(...all)];
+const scale: Domain =
+  domain && baseline !== undefined ? [Math.min(domain[0], baseline), Math.max(domain[1], baseline)] : (domain ?? own);
+const points = sparkPoints(values, scale, slots);
+const baseY = baseline === undefined ? undefined : sparkY(baseline, scale);
+const lastPoint = points.split(' ').at(-1)?.split(',');
+const area = points ? sparkArea(points) : '';
+const gradient = area ? areaId() : '';
+const classes = ['spark', size !== 'md' && `spark--${size}`, tone];
+---
+
+{
+  points || baseY !== undefined ? (
+    <span
+      class:list={classes}
+      role={label || (!points && emptyLabel) ? 'img' : undefined}
+      aria-label={points ? label : (emptyLabel ?? label)}
+      aria-hidden={label || (!points && emptyLabel) ? undefined : 'true'}
+      data-draw={draw && points ? '' : undefined}
+    >
+      <svg viewBox={`0 0 ${SPARK.width} ${SPARK.height}`} aria-hidden="true" focusable="false">
+        {area && (
+          <defs>
+            <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
+              <stop class="area-from" offset="0" />
+              <stop class="area-to" offset="1" />
+            </linearGradient>
+          </defs>
+        )}
+        {area && <polygon class="spark-area" points={area} fill={`url(#${gradient})`} />}
+        {baseY !== undefined && <line class="spark-base" x1="0" y1={baseY} x2={SPARK.width} y2={baseY} />}
+        {points && <polyline points={points} />}
+        {points && dot && lastPoint && <path class="spark-dot" d={`M${lastPoint[0]} ${lastPoint[1]}h0.01`} />}
+        {!points && baseY !== undefined && <path class="spark-dot" d={`M3 ${baseY}h0.01`} />}
+      </svg>
+    </span>
+  ) : (
+    <span class="na">
+      <span aria-hidden="true">–</span>
+      {emptyLabel && <span class="visually-hidden">{emptyLabel}</span>}
+    </span>
+  )
+}

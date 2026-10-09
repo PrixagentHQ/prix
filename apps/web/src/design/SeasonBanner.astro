@@ -1,0 +1,64 @@
+---
+// The banner of the running season, on the wash: which season, how far into it, when the next
+// round starts, whether the market is open, and that all of it is a simulation. Every word is
+// a prop. The slot `countdown` takes the words and the Countdown of the next round; the default
+// slot takes anything else a page adds, one element per item.
+interface Props {
+  /** "Season 1". */
+  season: string;
+  /** "Day 3 of 20". */
+  day?: string;
+  /** How much of the season has passed, from 0 to 1. Draws the small bar beside `day`. */
+  progress?: number;
+  /** The market in words, and whether it is open. The dot is full while open and a ring while closed. */
+  market?: { label: string; open: boolean };
+  /** The last item, at the right end: "Paper trading simulation". */
+  note?: string;
+  /** The name of the banner for assistive technology. */
+  label: string;
+}
+
+const { season, day, progress, market, note, label } = Astro.props;
+const done = progress === undefined ? undefined : Math.round(Math.min(1, Math.max(0, progress)) * 56 * 10) / 10;
+---
+
+<section class="season" aria-label={label}>
+  <span><b>{season}</b></span>
+  {
+    day && (
+      <span>
+        {day}
+        {done !== undefined && (
+          <svg class="season-progress" viewBox="0 0 56 4" aria-hidden="true" focusable="false">
+            <rect class="season-track" width="56" height="4" rx="2" />
+            <rect class="season-done" width={done} height="4" rx="2" />
+          </svg>
+        )}
+      </span>
+    )
+  }
+  {
+    Astro.slots.has('countdown') && (
+      <span>
+        <slot name="countdown" />
+      </span>
+    )
+  }
+  {
+    market && (
+      <span data-season-market>
+        <svg
+          class:list={['season-dot', !market.open && 'is-closed']}
+          viewBox="0 0 8 8"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="4" cy="4" r="3" />
+        </svg>
+        {market.label}
+      </span>
+    )
+  }
+  <slot />
+  {note && <span class="season-note">{note}</span>}
+</section>

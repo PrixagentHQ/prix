@@ -1,0 +1,188 @@
+---
+// A long page: the methodology, the terms, the privacy page and the terms of the data API.
+// `editor` writes each as a `Doc`; this file is the one place that sets it.
+//
+// The head, then the text on the left at a reading measure and the list of contents in a panel
+// on the right that stays in view from 960 pixels. On a phone the contents follow the head.
+// A table, and the formulas the methodology gives as a table, sit in a panel of their own and
+// scroll inside it when they must. Every string of a `Doc` is rendered as text.
+import type { Block, Doc } from '../content/doc.ts';
+import { formatDay } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import Layout from '../design/Layout.astro';
+import Table from '../design/Table.astro';
+import { readAccount } from '../lib/account.ts';
+import Contents from './Contents.astro';
+import { oneLeague } from './one-league.ts';
+import PageHead from './PageHead.astro';
+import ShareMeta from './ShareMeta.astro';
+import { siteShareImage } from './share.ts';
+
+interface Props {
+  doc: Doc;
+  /** The section of the header this page belongs to, if it has one. */
+  current?: 'methodology' | 'developers' | null;
+  /** Where the page sits, when it belongs to a group of pages. */
+  eyebrow?: string;
+  eyebrowHref?: string;
+}
+
+const { current = null, eyebrow, eyebrowHref } = Astro.props;
+// One continuous league (D-109): every long page is shown with the seasons folded out.
+const doc = oneLeague(Astro.props.doc);
+const account = await readAccount(Astro);
+
+/** A link that leaves the site tells the other site nothing about where the reader came from. */
+const leavesSite = (href: string): boolean => /^https?:/.test(href);
+
+type Positioned = { block: Block; key: string };
+const sections = doc.sections.map((section) => ({
+  ...section,
+  blocks: section.blocks.map((block, index): Positioned => ({ block, key: `${section.id}-${index + 1}` })),
+}));
+const contents = sections.map((section) => ({ id: section.id, label: section.heading }));
+---
+
+<Layout title={doc.title} description={doc.lead} current={current} account={account}>
+  <ShareMeta slot="head" title={doc.title} description={doc.lead} image={siteShareImage()} />
+
+  <div class="page site-top doc-page">
+    <PageHead
+      title={doc.title}
+      eyebrow={eyebrow}
+      eyebrowHref={eyebrowHref}
+      note={text('legal.effectiveFrom', 'In effect from {date}', { date: formatDay(doc.updated) })}
+      lead={doc.lead}
+    >
+      {Astro.slots.has('tabs') && <slot name="tabs" />}
+    </PageHead>
+
+    <Contents title={text('methodology.contents', 'On this page')} items={contents} />
+
+  </div>
+
+  {
+    sections.map((section) => (
+      <section class="page section doc-section" aria-labelledby={section.id}>
+        <div class="longform doc">
+            <h2 class="title" id={section.id}>
+              {section.heading}
+            </h2>
+            {section.blocks.map(({ block, key }) => {
+              if (block.kind === 'paragraph') return <p class="prose">{block.text}</p>;
+              if (block.kind === 'note') return <p class="small">{block.text}</p>;
+              if (block.kind === 'link') {
+                return (
+                  <p class="prose">
+                    <a href={block.href} rel={leavesSite(block.href) ? 'noopener noreferrer' : undefined}>
+                      {block.text}
+                    </a>
+                  </p>
+                );
+              }
+              if (block.kind === 'list') {
+                const List = block.ordered ? 'ol' : 'ul';
+                return (
+                  <List>
+                    {block.items.map((item) => (
+                      <li>{item}</li>
+                    ))}
+                  </List>
+                );
+              }
+              return (
+                <div class="panel doc-table">
+                  <Table
+                    scroll={block.head.length > 3}
+                    minWidth="40rem"
+                    id={`table-${key}`}
+                    caption={section.heading}
+                    columns={block.head.map((label, column) => ({ key: `col-${column + 1}`, label }))}
+                  >
+                    <tbody>
+                      {block.rows.map((row) => (
+                        <tr>
+                          {row.map((cell, column) =>
+                            column === 0 ? (
+                              <th scope="row">
+                                <span class="cell">{cell}</span>
+                              </th>
+                            ) : (
+                              <td>
+                                <span class="cell">{cell}</span>
+                              </td>
+                            ),
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              );
+            })}
+        </div>
+      </section>
+    ))
+  }
+</Layout>
+
+<style>
+  /* The head and the contents stand side by side; each group of the text is a section of its own below. */
+  .doc-page {
+    padding-bottom: 0;
+  }
+
+  /* The contents sit under the head in as many columns as fit, so the head has no empty column beside it. */
+  .doc-page > :global(.panel) {
+    margin-top: var(--space-24);
+    position: static;
+  }
+
+  @media (min-width: 45em) {
+    .doc-page :global(.contents-list) {
+      columns: 2;
+      column-gap: var(--space-24);
+    }
+
+    .doc-page :global(.contents-list li) {
+      break-inside: avoid;
+    }
+  }
+
+  @media (min-width: 60em) {
+    .doc-page :global(.contents-list) {
+      columns: 3;
+    }
+  }
+
+  /* The text keeps its measure; a panel may take the whole column so a table has room. */
+  .doc {
+    min-width: 0;
+  }
+
+  /* A section reached from the contents keeps some of the page above its heading. */
+  .doc h2[id] {
+    scroll-margin-top: var(--space-24);
+  }
+
+  .doc > .title:first-child {
+    margin-top: 0;
+  }
+
+  /* A panel is evidence between paragraphs: it keeps more air than a paragraph does. */
+  .doc > .doc-table {
+    margin-block: var(--space-24);
+  }
+
+  /* The last row of a table in a panel has no line under it: the panel's edge closes it. */
+  .doc-table :global(tbody tr:last-child > *) {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  /* A cell's sentences keep the measure of interface text, however wide the table is. */
+  .cell {
+    display: block;
+    max-width: var(--measure-small);
+  }
+</style>

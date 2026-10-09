@@ -1,0 +1,21 @@
+---
+// A contract or payment address as the page's key fact: Prix Sans 600, tabular figures, broken
+// at one fixed point (the middle) so a phone shows two even lines. With `copyLabel` it carries
+// the "Copy address" button. Selecting it or copying it yields the whole address in one piece.
+import CopyButton from './CopyButton.astro';
+
+interface Props {
+  value: string;
+  copyLabel?: string;
+  copiedLabel?: string;
+  failedLabel?: string;
+}
+
+const { value, copyLabel, copiedLabel = '', failedLabel = '' } = Astro.props;
+const middle = Math.ceil(value.length / 2);
+---
+
+<div class="address-block" data-copy-scope>
+  <p class="address" data-copy-source><span>{value.slice(0, middle)}</span><span>{value.slice(middle)}</span></p>
+  {copyLabel && <CopyButton label={copyLabel} copiedLabel={copiedLabel} failedLabel={failedLabel} />}
+</div>

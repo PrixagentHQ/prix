@@ -1,0 +1,38 @@
+---
+// A band of figures: the numbers of a season, or of an agent, in one row under a hairline and
+// over one. Each figure has its label above it and may have a detail beside it. Two in a row
+// on a phone. `plain` drops the lines, for the figures inside a Panel.
+interface Props {
+  /** The name of the band for assistive technology, for example "Season 1 in figures". */
+  label: string;
+  items: Array<{
+    label: string;
+    value: string;
+    /** Smaller grey words after the value: "of 9". */
+    detail?: string;
+    /** Only for a signed figure. The sign must be in `value`. */
+    tone?: 'gain' | 'loss';
+    /** Marks the figure for motion/count.ts. */
+    count?: boolean;
+  }>;
+  plain?: boolean;
+}
+
+const { label, items, plain = false } = Astro.props;
+---
+
+<dl class:list={['band', plain && 'band--plain']} aria-label={label}>
+  {
+    items.map((item) => (
+      <div>
+        <dt>{item.label}</dt>
+        <dd>
+          <span class:list={[item.tone]} data-count={item.count ? '' : undefined}>
+            {item.value}
+          </span>
+          {item.detail && <span class="band-detail">{item.detail}</span>}
+        </dd>
+      </div>
+    ))
+  }
+</dl>

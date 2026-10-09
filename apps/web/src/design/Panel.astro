@@ -1,0 +1,44 @@
+---
+// A panel: what a visitor can do, beside the record. A card with the lifted shadow that does
+// not answer the pointer. Inside it, an element with the class `panel-part` starts a part
+// under a hairline, and `panel-fine` is the fine print under an action.
+// `sticky` keeps it in view beside a long column from 960 pixels.
+//
+// `as` picks the element: `aside` (the default) for a panel beside a record, `section` for a
+// panel that is the main thing of its page, `div` inside something that already names it.
+// `width` is the panel's column in `.with-panel` from 960 pixels: `narrow`, 340 (the default),
+// or `wide`, 400.
+interface Props {
+  /** A visible title. Leave out when the first thing in the panel names it. */
+  title?: string;
+  /** The name of the panel for assistive technology, when it has no visible title. */
+  label?: string;
+  sticky?: boolean;
+  as?: 'aside' | 'section' | 'div';
+  width?: 'narrow' | 'wide';
+  id?: string;
+  class?: string;
+}
+
+const { title, label, sticky = false, as = 'aside', width = 'narrow', id, class: extra } = Astro.props;
+const Tag = as;
+const titleId = title && id ? `${id}-title` : undefined;
+const named = Boolean(titleId || label || title);
+---
+
+<Tag
+  class:list={['panel', sticky && 'panel--sticky', width === 'wide' && 'panel--wide', extra]}
+  id={id}
+  role={as === 'div' && named ? 'group' : undefined}
+  aria-label={titleId ? undefined : (label ?? title)}
+  aria-labelledby={titleId}
+>
+  {
+    title && (
+      <h2 class="panel-title" id={titleId}>
+        {title}
+      </h2>
+    )
+  }
+  <slot />
+</Tag>

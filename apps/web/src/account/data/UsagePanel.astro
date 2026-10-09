@@ -1,0 +1,44 @@
+---
+// Usage: quota, used today, remaining, credits, reset time and the 30-day history.
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import Table from '../../design/Table.astro';
+import type { DataWords } from './words.ts';
+
+interface Props {
+  words: DataWords;
+}
+const { words } = Astro.props;
+---
+
+<div data-panel="usage" class="stack-24">
+  <div data-view="loading">
+    <Notice tone="loading" title={words.loadingTitle} body={words.loadingBody} minHeight="8rem" />
+  </div>
+  <div data-view="error" hidden>
+    <Notice tone="error" title={words.loadFailedTitle} body="{message}">
+      <Button label={words.retry} variant="secondary" data-retry />
+    </Notice>
+  </div>
+  <div data-view="ready" class="stack-24" hidden>
+    <div data-usage-summary></div>
+    <p class="small" data-usage-note></p>
+    <div data-history-empty hidden>
+      <Notice tone="empty" title={words.historyEmptyTitle} body={words.historyEmptyBody} />
+    </div>
+    <div data-history-table class="history-cap" hidden>
+      <Table
+        id="history-table"
+        caption={words.historyCaption}
+        captionVisible
+        columns={[
+          { key: 'day', label: words.historyColDay },
+          { key: 'free', label: words.historyColFree, align: 'end' },
+          { key: 'paid', label: words.historyColPaid, align: 'end' },
+        ]}
+      >
+        <tbody data-history-rows></tbody>
+      </Table>
+    </div>
+  </div>
+</div>

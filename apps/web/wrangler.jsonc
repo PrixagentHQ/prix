@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // The `prix-web` Worker: every page of the site. docs/CONTRACTS.md sections 13 and 15.
+  //
+  // There is one environment, production, at prixagent.com, so this file has no `env` blocks.
+  // The same settings serve local development: `astro dev` and `astro preview` use the bindings
+  // and ignore the routes.
+  //
+  // The Worker holds no secret, no variable and no storage. Everything it knows comes from the
+  // API Worker, through the `API` binding below.
+  //
+  // Deploying is done by hand at the gate: `pnpm --filter @prix/web run deploy`. `prix-api`
+  // must be deployed first, because a Worker cannot bind to a service that does not exist.
+  "name": "prix-web",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // No workers.dev address and no preview addresses: the site answers on prixagent.com only,
+  // where the session cookie, the API routes and the zone's rules apply.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // A Custom Domain: Cloudflare creates the DNS record and the certificate for prixagent.com.
+  // The API Worker's route `prixagent.com/api/*` is more specific and runs first, so /api/*
+  // never reaches this Worker.
+  "routes": [{ "pattern": "prixagent.com", "custom_domain": true }],
+
+  // Pages that render on the server call the API through this binding. A call is a subrequest
+  // inside Cloudflare, not a request over the network.
+  "services": [{ "binding": "API", "service": "prix-api" }],
+
+  // Workers Logs, free plan: 200,000 events a day for the whole account, shared with the API
+  // Worker and its scheduler. One event per page view would spend that allowance on nothing,
+  // so only the lines the code writes itself are kept: `api_call_failed` in src/lib/api.ts.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}

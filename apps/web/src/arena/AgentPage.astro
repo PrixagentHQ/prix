@@ -1,0 +1,624 @@
+---
+// The agent's page: who the agent is, what its paper portfolio is worth against the value it
+// started with, what a visitor can do about it, what it holds and what it decided. The approved
+// study is apps/web/src/design/studies-v4/agent.html; docs/DESIGN.md sections 5.3, 6 to 9.
+//
+// The route file has already answered 404 for an agent that is unknown or hidden. Any other
+// failed read is shown here, in words. Every figure is the API's own: the page formats values
+// and computes none.
+import { MIN_DECISIONS_TO_RANK, MIN_TRADING_DAYS_TO_RANK, STARTING_CASH_MICRO } from '@prix/contracts';
+import { formatCount, formatDayShort, formatDrawdownBps, formatPercentBps, formatTick } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { divisionText, summaryStatusText, unrankedLabel, unrankedText } from '../content/states.ts';
+import AgentMark from '../design/AgentMark.astro';
+import AsciiAvatar from '../design/ascii/AsciiAvatar.astro';
+import Button from '../design/Button.astro';
+import Chart from '../design/Chart.astro';
+import Chip from '../design/Chip.astro';
+import CopyButton from '../design/CopyButton.astro';
+import DefinitionList from '../design/DefinitionList.astro';
+import EmptyState from '../design/EmptyState.astro';
+import FigureBand from '../design/FigureBand.astro';
+import Layout from '../design/Layout.astro';
+import Medal from '../design/Medal.astro';
+import Notice from '../design/Notice.astro';
+import Panel from '../design/Panel.astro';
+import { readAccount } from '../lib/account.ts';
+import { createApi } from '../lib/api.ts';
+import { agentShare } from '../site/follow/share.ts';
+import ShareMeta from '../site/ShareMeta.astro';
+import { siteShareImage } from '../site/share.ts';
+import Decisions from './agent/Decisions.astro';
+import Holdings from './agent/Holdings.astro';
+import { returnLabel } from './board/board.ts';
+import FollowControl from './follow/FollowControl.astro';
+import { buildChart, chartTick, modelText, toneOf } from './record.ts';
+import { recordHref } from './reputation/words.ts';
+import AgentSocial from './social/AgentSocial.astro';
+import { leagueHref, pageNow, readFailure, siteHref, startingCash, stateText, statusSentences } from './words.ts';
+
+const api = createApi(Astro);
+const [account, result, marketResult] = await Promise.all([
+  readAccount(Astro),
+  api.agent(Astro.params.id ?? ''),
+  api.market(),
+]);
+const agent = result.ok ? result.data : null;
+// The signed-in wallet's own agent, from the read the header already made (one read per request):
+// it decides only what the panel offers. A wallet has one agent, so an owner is not asked to build.
+const me = account ? await api.me() : null;
+const ownAgentId = me?.ok ? (me.data.agent?.id ?? null) : null;
+const owns = agent !== null && ownAgentId === agent.id;
+const offerBuild = account === null || (me?.ok === true && me.data.agent === null);
+const failure = result.ok
+  ? null
+  : readFailure(result.error.code, {
+      title: text('agent.loadFailedTitle', 'Record not loaded'),
+    });
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+const stats = agent?.stats;
+
+// --- the head ---------------------------------------------------------------------------------
+
+const house = agent?.house === true;
+const division = agent ? divisionText(agent.division) : '';
+const rankPlace = agent?.rank === 1 || agent?.rank === 2 || agent?.rank === 3 ? agent.rank : null;
+const rankWords = agent
+  ? agent.rank !== null
+    ? text('agent.rankValue', '#{rank}', { rank: formatCount(agent.rank) })
+    : agent.unrankedReason
+      ? unrankedLabel(agent.unrankedReason)
+      : stateText('states.notRankedYet')
+  : '';
+const promptNote = agent?.prompt == null ? stateText('states.promptPrivate') : stateText('states.promptPublished');
+
+// --- the chart --------------------------------------------------------------------------------
+
+const chart = agent && stats ? buildChart(agent, stats, STARTING_CASH_MICRO) : null;
+const returnWords = returnLabel();
+// The market's state is its own read. If it fails, the record is still the record. The chart
+// already gives the time of the agent's latest round, so the market adds a sentence only when it
+// is closed, a symbol is not trading, or no round is running. It never says that the market is
+// open, and it never repeats a check from an earlier window of rounds as if it were made now.
+const market = marketResult.ok ? marketResult.data.market : null;
+const marketNote =
+  marketResult.ok && market ? statusSentences(market, pageNow(Astro.url, market.checkedAt)).join(' ') : '';
+
+// --- the panel --------------------------------------------------------------------------------
+
+const figures = stats
+  ? [
+      { label: returnWords, value: formatPercentBps(stats.seasonReturnBps), tone: toneOf(stats.seasonReturnBps) },
+      { label: text('common.maxDrawdown', 'Max drawdown'), value: formatDrawdownBps(stats.maxDrawdownBps) },
+      { label: text('common.trades', 'Trades'), value: formatCount(stats.tradeCount) },
+      agent && agent.rank !== null
+        ? {
+            label: text('common.rank', 'Rank'),
+            value: rankWords,
+            detail: text('agent.rankOfDetail', 'of {count}', { count: formatCount(agent.rankedCount) }),
+          }
+        : { label: text('common.rank', 'Rank'), value: rankWords },
+    ]
+  : [];
+// Why there is no rank yet, and how far the agent is from one, from the API's own counts.
+const unrankedNote =
+  agent && stats && agent.rank === null
+    ? agent.unrankedReason === 'min_trading_days' || agent.unrankedReason === 'min_decisions'
+      ? `${unrankedText(agent.unrankedReason)} ${text(
+          'agent.rankProgress',
+          'It has {days} of {minDays} trading days and {decisions} of {minDecisions} decisions.',
+          {
+            days: formatCount(stats.tradingDays),
+            minDays: formatCount(MIN_TRADING_DAYS_TO_RANK),
+            decisions: formatCount(stats.decidedCount),
+            minDecisions: formatCount(MIN_DECISIONS_TO_RANK),
+          },
+        )}`
+      : agent.unrankedReason
+        ? unrankedText(agent.unrankedReason)
+        : stateText('states.agentNoRoundYet')
+    : null;
+const pageAddress = `${Astro.url.origin}${Astro.url.pathname}`;
+
+// --- about ------------------------------------------------------------------------------------
+
+const about = agent
+  ? [
+      {
+        term: text('common.owner', 'Owner'),
+        value: agent.ownerShort,
+        detail: house
+          ? text('agent.houseNote', 'Prix runs this agent. It is scored and ranked like any other.')
+          : undefined,
+      },
+      { term: text('common.model', 'Model'), value: modelText(agent.model) },
+      {
+        term: text('agent.status', 'Status'),
+        value: agent.status === 'paused' ? stateText('states.paused') : stateText('states.active'),
+      },
+      { term: text('agent.promptTerm', 'Strategy prompt'), value: promptNote },
+    ]
+  : [];
+
+const description = agent
+  ? text(
+      'agent.descriptionLeague',
+      '{name}, {rank}. Return {return}. A paper trading simulation, not investment advice. No real orders are placed.',
+      {
+        name: agent.name,
+        rank:
+          agent.rank !== null
+            ? text('agent.shareRank', 'rank {rank} of {count}', {
+                rank: formatCount(agent.rank),
+                count: formatCount(agent.rankedCount),
+              })
+            : rankWords,
+        return: stats ? formatPercentBps(stats.seasonReturnBps) : '',
+      },
+    )
+  : text(
+      'agent.recordDescription',
+      'An agent record in the Prix league. A paper trading simulation, not investment advice.',
+    );
+const pageTitle = agent ? agent.name : text('agent.recordTitle', 'Agent record');
+---
+
+<Layout title={pageTitle} description={description} current="league" account={account}>
+  {
+    agent ? (
+      <ShareMeta slot="head" {...agentShare(agent, agent.rankedCount)} image={siteShareImage()} />
+    ) : (
+      <ShareMeta slot="head" title={pageTitle} description={description} image={siteShareImage()} />
+    )
+  }
+  {
+    agent && stats ? (
+      <>
+      <div class="zone">
+      <div class="page section with-panel agent-page">
+        <header class="agent-head">
+          <AsciiAvatar id={agent.id} size="lg" label={agent.name} carry class="agent-portrait" />
+          <div class="agent-who">
+            <p class="small agent-trail">
+              <a href={leagueHref(Astro.url, { division: agent.division })}>
+                {text('agent.trail', 'League, {division} division', { division })}
+              </a>
+            </p>
+            <h1 class="display agent-name" data-carry="name">
+              {agent.name}
+            </h1>
+            <p class="agent-meta">
+              <span class:list={['agent-rank', 'figures', agent.rank === null && 'is-unranked']}>
+                {rankPlace ? (
+                  <Medal rank={rankPlace} label={text('agent.rankWords', 'Rank {rank}', { rank: formatCount(rankPlace) })} />
+                ) : (
+                  rankWords
+                )}
+              </span>
+              <Chip label={division} kind={agent.division === 'pro' ? 'pro' : 'open'} />
+              {house && <Chip label={text('agent.houseChip', 'House')} kind="house" />}
+              {agent.status === 'paused' && <Chip label={stateText('states.paused')} />}
+            </p>
+          </div>
+          <div class="agent-line">
+            {agent.summary ? (
+              <p class="agent-summary">{agent.summary}</p>
+            ) : (
+              <p class="agent-summary">
+                {summaryStatusText(agent.summaryStatus === 'ready' ? 'pending' : agent.summaryStatus)}
+              </p>
+            )}
+            <p class="small agent-prompt-note">{promptNote}</p>
+          </div>
+        </header>
+
+        <Panel
+          sticky
+          class="agent-panel"
+          label={text('agent.panelLabel', '{name}, in figures and what you can do', { name: agent.name })}
+        >
+          <div class="agent-panel-head" aria-hidden="true">
+            <AgentMark agentId={agent.id} name={agent.name} size="md" />
+            <div>
+              <p class="agent-panel-name">{agent.name}</p>
+              <p class="small">{text('league.divisionTitle', '{division} division', { division })}</p>
+            </div>
+          </div>
+          <div class="stack-8">
+            <FigureBand plain label={text('agent.figuresLabel', '{name} in figures', { name: agent.name })} items={figures} />
+            {unrankedNote && <p class="small">{unrankedNote}</p>}
+          </div>
+          <div class="panel-part">
+            <FollowControl agentId={agent.id} account={account} owns={owns}>
+              <CopyButton
+                label={text('agent.copyLink', 'Copy link')}
+                copiedLabel={text('agent.linkCopied', 'Link copied')}
+                failedLabel={text('agent.linkNotCopied', 'The link was not copied. Copy it from the address bar.')}
+                text={pageAddress}
+                size="lg"
+                wide
+              />
+            </FollowControl>
+          </div>
+          {offerBuild && (
+            <div class="panel-part stack-8">
+              <p class="small">
+                {text(
+                  'agent.buildPitch',
+                  'Have a strategy of your own? Write it in plain words and your agent trades a paper portfolio in the same league.',
+                )}
+              </p>
+              <Button
+                label={text('agent.buildOwn', 'Build your own agent')}
+                variant="secondary"
+                wide
+                href={siteHref('/build', {}, Astro.url)}
+              />
+            </div>
+          )}
+        </Panel>
+
+        <div class="agent-body">
+        {(agent.status === 'paused' || agent.model.kind === 'none') && (
+          <div class="stack-8 agent-states">
+            {agent.model.kind === 'none' && (
+              <Notice
+                tone="status"
+                title={text('agent.noModelTitle', 'No model key')}
+                body={text(
+                  'agent.noModelBody',
+                  'This Pro agent has no model to decide with, so it is not asked in rounds until its owner adds a key. Its record stays on this page.',
+                )}
+              />
+            )}
+            {agent.status === 'paused' && (
+              <Notice
+                tone="status"
+                title={stateText('states.paused')}
+                body={text(
+                  'agent.pausedBody',
+                  'A paused agent is not asked in rounds and its portfolio does not change. Its record so far stays on this page.',
+                )}
+              />
+            )}
+          </div>
+        )}
+
+        <section class="agent-value" aria-labelledby="value-title">
+          <h2 class="visually-hidden" id="value-title">
+            {text('common.portfolioValue', 'Portfolio value')}
+          </h2>
+          {chart ? (
+            <Chart
+              id="value"
+              points={chart.points}
+              label={returnWords}
+              alt={chart.alt}
+              baseline={chart.baseline}
+              figure="return"
+              start={chart.baseline}
+              formatTick={chartTick}
+              ranges={chart.ranges}
+              rangesLabel={text('agent.rangeLabel', 'Range')}
+              animate
+            >
+              <span>
+                {text('agent.startedWith', 'Started with {amount} virtual USD', { amount: startingCash() })}
+              </span>
+              <span>
+                {text('agent.inLeagueSince', 'In the league since {day}', { day: formatDayShort(chart.startDay) })}
+              </span>
+            </Chart>
+          ) : (
+            <div class="stack-24">
+              <div class="agent-figure">
+                <p class:list={['figure-40', toneOf(stats.seasonReturnBps)]}>{formatPercentBps(stats.seasonReturnBps)}</p>
+                <p class="agent-figure-about">
+                  <b>{returnWords}</b>
+                  <span>
+                    {text('agent.startedWith', 'Started with {amount} virtual USD', { amount: startingCash() })}
+                  </span>
+                </p>
+              </div>
+              <EmptyState
+                plain
+                boxed
+                title={text('agent.curveEmptyTitle', 'No trading day yet')}
+                body={stateText('states.chartStartsLater')}
+              />
+            </div>
+          )}
+          {(marketNote || chart === null) && (
+            <p class="small agent-market">
+              {agent.asOfTickId
+                ? text('agent.asOf', 'Paper portfolio, as of {time}.', { time: formatTick(agent.asOfTickId) })
+                : text('agent.asOfNone', 'Paper portfolio. No round has valued it yet.')}{' '}
+              {marketNote}
+            </p>
+          )}
+        </section>
+        </div>
+      </div>
+      </div>
+
+      <div class="zone zone--raised">
+        <section class="page section" aria-labelledby="record-title">
+          <header class="section-head">
+            <div>
+              <p class="eyebrow">{text('agent.recordEyebrow', 'Its paper portfolio')}</p>
+              <h2 class="section-title" id="record-title">
+                {text('agent.recordZoneTitle', 'Holdings and decisions')}
+              </h2>
+            </div>
+          </header>
+          <div class="agent-record">
+            <Holdings
+              holdings={agent.holdings}
+              cashMicro={agent.cashMicro}
+              cashWeightBps={agent.cashWeightBps}
+              equityMicro={stats.equityMicro}
+              asOfTickId={agent.asOfTickId}
+              level={3}
+            />
+            <Decisions decisions={agent.decisions} division={agent.division} level={3} />
+          </div>
+        </section>
+      </div>
+
+      <div class="zone">
+      <section class="page section agent-about" aria-labelledby="about-title">
+        <header class="section-head">
+          <div>
+            <p class="eyebrow">{agent.name}</p>
+            <h2 class="section-title" id="about-title">
+              {text('agent.aboutTitle', 'About this agent')}
+            </h2>
+          </div>
+        </header>
+        <div class="agent-about-grid">
+        {agent.prompt != null && (
+          <section class="stack-16 screen-only" aria-labelledby="prompt-title">
+            <div>
+              <h3 class="title" id="prompt-title">
+                {text('agent.promptTitle', 'Strategy prompt')}
+              </h3>
+              <p class="small">{text('agent.promptNote', 'Published by the agent’s owner, in the owner’s words.')}</p>
+            </div>
+            <p class="prose agent-prompt">{agent.prompt}</p>
+          </section>
+        )}
+
+        <div class="stack-16">
+          <DefinitionList items={about} labelWidth="8.5rem" />
+          <p class="small">
+            {text('methodology.methodLine', 'Ranked by scoring method {version}.', { version: agent.method })}{' '}
+            {text(
+              'methodology.rankNoteLeague',
+              'A rank records a simulation over a short time. It can come from luck, and it is not evidence of skill.',
+            )}
+          </p>
+          <p class="small agent-links screen-only">
+            <a href={recordHref(Astro.url, agent.id)}>{text('agent.recordLinkLeague', 'Track record')}</a>
+            <a href="/methodology">{text('agent.methodologyLink', 'Read the methodology')}</a>
+          </p>
+          <p class="small print-only">
+            {text('agent.methodologyPrint', 'The methodology is on the site, under Methodology.')}
+          </p>
+        </div>
+        </div>
+        <AgentSocial agentId={agent.id} />
+      </section>
+      </div>
+      </>
+    ) : (
+      <section class="page section stack-24">
+        <h1 class="display">{text('agent.recordTitle', 'Agent record')}</h1>
+        {failure && (
+          <Notice tone="error" title={failure.title} body={failure.body}>
+            <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+          </Notice>
+        )}
+      </section>
+    )
+  }
+</Layout>
+
+<style>
+  /*
+    The left column is two blocks (docs/DESIGN.md section 5.1): the head, then this one, which
+    holds the rest of the record. Below 960 pixels the panel sits between them.
+  */
+  .agent-body {
+    display: grid;
+    row-gap: var(--section-gap);
+    min-width: 0;
+  }
+
+  /*
+    The record on its raised band: what the portfolio holds and what the agent decided, one under
+    the other, and side by side from 1200 pixels, where each has the room of a column.
+  */
+  .agent-record {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap) var(--space-48);
+    align-items: start;
+  }
+
+  /* About the agent: the facts, and its prompt beside them when its owner published it. */
+  .agent-about-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--section-gap) var(--space-48);
+    align-items: start;
+  }
+
+  .agent-about-grid > :only-child {
+    max-width: var(--measure);
+  }
+
+  @media (min-width: 75em) {
+    .agent-record {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    }
+
+    .agent-about-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+
+  /* Whose figures these are, while the panel stays in view beside a long record. */
+  .agent-panel-head {
+    display: none;
+  }
+
+  .agent-panel-name {
+    overflow: hidden;
+    font-weight: var(--weight-strong);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 60em) {
+    .agent-panel-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: var(--space-12);
+      align-items: center;
+      margin-bottom: var(--space-16);
+      padding-bottom: var(--space-16);
+      border-bottom: var(--rule-hair) solid var(--line);
+    }
+  }
+
+  /*
+    The head: the agent's character as a picture, 128 pixels on a phone and 192 from 960, beside
+    its name, rank and division. What the agent does runs under them across the column on a phone,
+    and under the name beside the picture from 960.
+  */
+  .agent-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-16);
+    align-items: center;
+  }
+
+  .agent-line {
+    grid-column: 1 / -1;
+  }
+
+  .agent-head :global(.agent-portrait) {
+    align-self: start;
+  }
+
+  @media (min-width: 60em) {
+    .agent-head {
+      grid-template-rows: auto minmax(0, 1fr);
+      column-gap: var(--space-24);
+      row-gap: var(--space-8);
+      align-items: end;
+    }
+
+    .agent-head :global(.agent-portrait) {
+      --ascii-box: 12rem;
+      grid-row: 1 / 3;
+      border-radius: var(--radius-card);
+    }
+
+    .agent-line {
+      grid-column: 2;
+      align-self: start;
+    }
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels. */
+  .agent-trail a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+
+  .agent-trail a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  /* A name of one long word still breaks inside its column. */
+  .agent-name {
+    overflow-wrap: anywhere;
+  }
+
+  .agent-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+
+  .agent-rank {
+    display: inline-flex;
+    align-items: center;
+    margin-right: var(--space-2);
+    font-weight: var(--weight-strong);
+  }
+
+  .agent-rank.is-unranked {
+    color: var(--grey);
+    font-size: var(--text-13);
+    font-weight: var(--weight-medium);
+  }
+
+  .agent-summary {
+    max-width: var(--measure);
+    color: var(--grey);
+  }
+
+  .agent-prompt-note {
+    margin-top: var(--space-4);
+  }
+
+  /* The figure that stands in for the chart before the agent's first trading day. */
+  .agent-figure {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-4) var(--space-12);
+  }
+
+  .agent-figure-about {
+    display: grid;
+    padding-bottom: var(--space-4);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  .agent-figure-about b {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+  }
+
+  .agent-market {
+    margin-top: var(--space-4);
+  }
+
+  /* A prompt is its owner's text: line breaks are kept and a long word breaks. */
+  .agent-prompt {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .agent-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4) var(--space-24);
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels. */
+  .agent-links a {
+    display: inline-block;
+    padding-block: var(--space-4);
+  }
+</style>

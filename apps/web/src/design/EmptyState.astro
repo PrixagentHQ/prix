@@ -1,0 +1,39 @@
+---
+// Nothing yet, and the first thing to do: an empty division, a search without a match, a feed
+// before its first decision. A title, a sentence and one action in the default slot, centred in
+// the place the content will take. `boxed` outlines the place, on an opaque surface (the field of
+// characters never shows inside it). Every empty state is plain words: the sign (the dashed line
+// a sparkline starts from, with the first point on it) is drawn only with `plain={false}`, which
+// no page uses; `plain` stays accepted.
+interface Props {
+  title: string;
+  body?: string;
+  boxed?: boolean;
+  /** Leaves the sign out. The default: every empty state is words only. */
+  plain?: boolean;
+  id?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const { title, body, boxed = false, plain = true, id, slot: _slot, ...rest } = Astro.props as Props & { slot?: string };
+---
+
+<div class:list={['empty', boxed && 'empty--boxed']} id={id} {...rest}>
+  {
+    !plain && (
+      <svg class="empty-sign" viewBox="0 0 72 24" aria-hidden="true" focusable="false">
+        <line x1="0" y1="12" x2="72" y2="12" />
+        <circle cx="4" cy="12" r="3" />
+      </svg>
+    )
+  }
+  <p class="empty-title">{title}</p>
+  {body && <p class="empty-body">{body}</p>}
+  {
+    Astro.slots.has('default') && (
+      <div class="empty-action">
+        <slot />
+      </div>
+    )
+  }
+</div>

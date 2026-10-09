@@ -1,0 +1,257 @@
+/*
+  The signed-in pages: sign-in, the builder, the account and its sub-pages, the admin page and
+  /following. They are built from the primitives of apps/web/src/design; this file only places
+  them. Every value is a token (docs/DESIGN.md sections 2 to 5). Nothing here moves: the few
+  transitions of these pages are at the end, inside prefers-reduced-motion: no-preference.
+*/
+
+/* ---------- The head of a page: where you are, the page's name, one sentence ---------- */
+
+.acct-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-16) var(--space-24);
+}
+
+.acct-head-text > * + * {
+  margin-top: var(--space-4);
+}
+
+.acct-head > .end {
+  margin-left: auto;
+}
+
+.acct-eyebrow {
+  color: var(--grey);
+}
+
+.acct-eyebrow a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.acct-eyebrow a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.acct-intro {
+  max-width: var(--measure);
+  color: var(--grey);
+}
+
+/* ---------- A card that holds a form, or one block of an account ---------- */
+
+.acct-card {
+  padding: var(--space-16);
+}
+
+.acct-card > * + * {
+  margin-top: var(--space-16);
+}
+
+@media (min-width: 45em) {
+  .acct-card {
+    padding: var(--space-24);
+  }
+}
+
+.acct-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-12);
+}
+
+.acct-card-head > .end {
+  margin-left: auto;
+}
+
+.acct-card-intro {
+  max-width: var(--measure);
+  color: var(--grey);
+}
+
+/* A column of cards, and the gap a board keeps between two cards. */
+.acct-cards > * + * {
+  margin-top: var(--space-16);
+}
+
+/* One card alone on a page: the width of a field and the card's own padding on each side. */
+.acct-narrow {
+  max-width: calc(var(--measure-small) + 2 * var(--space-24));
+}
+
+/* A page of forms with no panel: the width of a line of prose and the card's padding. */
+.acct-column {
+  max-width: calc(var(--measure) + 2 * var(--space-24));
+}
+
+/*
+  A column of cards beside a panel. The page's cards are one block, so the panel takes the first
+  row only and does not leave the empty rows of a longer record under the cards.
+*/
+@media (min-width: 60em) {
+  .with-panel.acct-split > .panel {
+    grid-row: 1;
+  }
+}
+
+/* Two cards side by side from 960 pixels, 12 apart as cards on a board are. */
+.acct-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-card);
+  align-items: start;
+}
+
+@media (min-width: 60em) {
+  .acct-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Under a card, the notes that belong to the whole page. */
+.acct-notes {
+  max-width: var(--measure);
+  color: var(--grey);
+}
+
+.acct-notes > * + * {
+  margin-top: var(--space-8);
+}
+
+/* A row of actions that wraps: a primary action and a quiet one beside it. */
+.acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-12);
+}
+
+/* A list of things of one kind inside a card, a hairline between two of them. */
+.acct-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acct-list > li {
+  padding-block: var(--space-16);
+}
+
+.acct-list > li + li {
+  border-top: var(--rule-hair) solid var(--line);
+}
+
+.acct-list > li:first-child {
+  padding-top: 0;
+}
+
+.acct-list > li:last-child {
+  padding-bottom: 0;
+}
+
+/* The agent at the top of a card: its mark, its name and its chips, as on its own page. */
+.acct-agent {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-12);
+  align-items: center;
+}
+
+/* Its type is the class `headline`; here it keeps to one line. */
+.acct-agent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acct-agent-name a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.acct-agent-name a:hover {
+  text-decoration: underline;
+}
+
+.acct-agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+  margin-top: var(--space-2);
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+/* A message a script writes takes no room until it holds one. */
+.acct-outlet:empty {
+  display: none;
+}
+
+/* ---------- Motion: transform and opacity only, and none under reduced motion ---------- */
+
+/* The bar under the builder's prompt is scaled from its left end. */
+.build-meter .meter-fill {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+@keyframes acct-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-4));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .build-meter .meter-fill {
+    transition: transform var(--motion-press) var(--ease);
+  }
+
+  /* The card of the division just chosen arrives beside the form. */
+  .build-preview .is-switched {
+    animation: acct-card-in var(--motion-move) var(--ease);
+  }
+}
+
+/* ---------- The builder's card before the agent exists ---------- */
+
+/*
+  The agent gets its animal from its id, and the id exists once it is built. Until then the card
+  carries a neutral place for it: a quiet square of dots in the greys of the theme, and a hairline
+  in place of the accent line.
+*/
+.build-preview .agent-card {
+  --accent: var(--line-strong);
+}
+
+.build-preview .agent-card > .agent-mark {
+  background: var(--wash);
+  color: var(--grey);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0;
+}
+
+.build-preview .agent-card > .agent-mark::after {
+  content: ":·:";
+  font-size: var(--text-14);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/*
+  A notice for a browser without JavaScript may open the column. With JavaScript on it takes no
+  room, so the first card starts at the top of the column, level with a panel beside it.
+*/
+.acct-cards > noscript:first-child + * {
+  margin-top: 0;
+}
+
+.acct-cards > noscript:first-child > * {
+  margin-bottom: var(--space-16);
+}

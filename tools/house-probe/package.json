@@ -1,0 +1,16 @@
+{
+  "name": "@prix/house-probe",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Asks Workers AI for decisions with the real prompt, on this machine. Never deployed.",
+  "type": "module",
+  "scripts": {
+    "serve": "wrangler dev --port 8799 --ip 127.0.0.1 --show-interactive-dev-session=false",
+    "matrix": "node run.mjs"
+  },
+  "dependencies": {
+    "@prix/contracts": "workspace:*",
+    "@prix/market": "workspace:*",
+    "@prix/runtime": "workspace:*"
+  }
+}

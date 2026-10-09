@@ -1,0 +1,397 @@
+---
+// The shared layout: head, header, main, footer. Every page renders inside it.
+// It is the only primitive that reads the copy deck itself, because its words are the same
+// on every page. docs/DESIGN.md section 5 describes it.
+//
+// The header has two rows (docs/CONTRACTS.md section 17). The first: the mark and the wordmark,
+// the search field, a link to how it works, the theme control, then "Sign in" and "Build an
+// agent", or the wallet and "Sign out". The second: the sections of the site as tabs. The tab
+// "Social" and the footer's links to rivalries, model wars and paper managers render only while
+// the cached probe of SOCIAL_ENABLED answers on (docs/contracts/phase-6-social.md section 4).
+//
+// The theme: dark unless the cookie `prix_theme` says `light`. It is read here, on the server,
+// and written into <html data-theme>, so the first paint is already right and nothing flashes.
+// The control's script (theme.ts) switches it and sets the cookie.
+import './tokens.css';
+import './base.css';
+import './primitives.css';
+import './board.css';
+import './ascii/ascii.css';
+import './ground/ground.css';
+import './motion.css';
+import './print.css';
+import { text } from '../content/index.ts';
+import appleTouchIcon from './apple-touch-icon.png?url&no-inline';
+// The two faces (this one and Inter, below), the same files the stylesheets name (ascii/ascii.css,
+// tokens.css). Preloaded in the head, they load beside the stylesheet instead of after it.
+import asciiFont from './ascii/fonts/JetBrainsMono-ascii.woff2?url&no-inline';
+// The favicon is built as files of their own with hashed names. `no-inline` keeps them out of the
+// page. The SVG follows the browser's theme; a browser that asks for a PNG gets the pixel-snapped
+// cut at 16 or 32 for its theme (mark-export.mjs draws them all).
+import favicon from './favicon.svg?url&no-inline';
+import favicon16 from './favicon-16.png?url&no-inline';
+import favicon16Dark from './favicon-16-dark.png?url&no-inline';
+import favicon32 from './favicon-32.png?url&no-inline';
+import favicon32Dark from './favicon-32-dark.png?url&no-inline';
+import interFont from './fonts/Inter-latin.woff2?url&no-inline';
+// The field of characters behind the page head, drawn when the code is written (docs/DESIGN.md section 2.3).
+import { FIELD_MARKUP } from './ground/field.data.ts';
+import PrixMark from './PrixMark.astro';
+import SearchField from './SearchField.astro';
+
+interface Props {
+  /** The page's name, for example "League". The site name is added after it. */
+  title: string;
+  /** True when `title` is already the whole title, as on the home page. */
+  bareTitle?: boolean;
+  description?: string;
+  /** Which tab is marked. Null on pages outside the tabs. */
+  current?:
+    | 'league'
+    | 'archive'
+    | 'listed'
+    | 'token'
+    | 'following'
+    | 'social'
+    | 'developers'
+    | 'methodology'
+    | 'signIn'
+    | 'account'
+    | null;
+  /** The signed-in wallet, shortened by the server. Null or absent when signed out. */
+  account?: { short: string } | null;
+  /** Where "Sign in" leads. A page passes its own address so the person returns to it. */
+  signInHref?: string;
+  /** Keeps a page out of search results: the account, the builder, the admin page. */
+  noindex?: boolean;
+  /**
+   * The specimen's only: renders the page in this theme whatever the cookie says. A page of the
+   * site never passes it; the visitor's choice decides.
+   */
+  theme?: 'dark' | 'light';
+}
+
+const {
+  title,
+  bareTitle = false,
+  description,
+  current = null,
+  account = null,
+  signInHref = '/sign-in',
+  noindex = false,
+  theme: forced,
+} = Astro.props;
+
+// Dark unless the visitor chose light. A build with sample data also takes `?theme=light`, so a
+// screenshot can show either theme without a cookie; a production build ignores the parameter.
+const FIXTURES = typeof __PRIX_FIXTURES__ !== 'undefined' && __PRIX_FIXTURES__;
+function chosenTheme(): 'dark' | 'light' {
+  if (forced) return forced;
+  if (FIXTURES) {
+    const asked = Astro.url.searchParams.get('theme');
+    if (asked === 'light' || asked === 'dark') return asked;
+  }
+  try {
+    return Astro.cookies.get('prix_theme')?.value === 'light' ? 'light' : 'dark';
+  } catch {
+    // A page built ahead of any request has no cookie to read.
+    return 'dark';
+  }
+}
+const theme = chosenTheme();
+// The colour a browser gives its own bar: the header's surface in each theme (tokens.css).
+const themeColours = { dark: '#000000', light: '#ffffff' } as const;
+
+const path = Astro.url.pathname;
+const canonical = new URL(path, Astro.site ?? Astro.url);
+const printedAddress = `${canonical.host}${canonical.pathname === '/' ? '' : canonical.pathname}`;
+
+// The footer names the token once an address is configured, and the data API's page once the API
+// is on. Both reads are kept 60 seconds and never throw: a failed read leaves the footer as it was.
+const tokenAddress = await readTokenAddress(Astro);
+const developersOn = await readDevelopersOn(Astro);
+const socialOn = await readSocialOn(Astro);
+async function readTokenAddress(context: typeof Astro): Promise<string | null> {
+  try {
+    const { readTokenInfoCached } = await import('../site/token/read-token.ts');
+    return (await readTokenInfoCached(context))?.tokenAddress ?? null;
+  } catch {
+    return null;
+  }
+}
+async function readDevelopersOn(context: typeof Astro): Promise<boolean> {
+  if (typeof __PRIX_FIXTURES__ !== 'undefined' && __PRIX_FIXTURES__) return true;
+  const memory = globalThis as { __prixDataOn?: { at: number; on: boolean } };
+  const now = Date.now();
+  if (memory.__prixDataOn && now - memory.__prixDataOn.at < 60_000) return memory.__prixDataOn.on;
+  let on = false;
+  try {
+    const { createServerTransport } = await import('../lib/api-server.ts');
+    on = (await createServerTransport(context)({ method: 'GET', path: '/api/data/pricing' })).ok;
+  } catch {
+    on = false;
+  }
+  memory.__prixDataOn = { at: now, on };
+  return on;
+}
+// Phase 6 is shown only on the probe's 'on': 'off' and 'failed' both leave the header as it was.
+// The probe is the social client's, kept 60 seconds in isolate memory, so a page costs no API call
+// while the switch is off. It never throws.
+async function readSocialOn(context: typeof Astro): Promise<boolean> {
+  try {
+    const { socialIsOn } = await import('../arena/social/client.ts');
+    return (await socialIsOn(context)) === 'on';
+  } catch {
+    return false;
+  }
+}
+// The season archive and the season results belong to the league; the developer pages and the trust
+// lookup belong to Developers. A page that passes nothing, or the retired 'archive', still lands there.
+// The three list pages of Phase 6 and their detail pages belong to Social, whatever the page passes
+// (they were written to pass 'league' before the tab existed).
+const section = /^\/(rivalries|wars|managers)(\/|$)/.test(path)
+  ? 'social'
+  : current === null || current === 'archive'
+    ? path.startsWith('/results') || path.startsWith('/league/archive')
+      ? 'league'
+      : path.startsWith('/developers') || path.startsWith('/trust')
+        ? 'developers'
+        : current
+    : current;
+const mark = (key: Props['current'], href: string) => (section === key ? (path === href ? 'page' : 'true') : undefined);
+
+// The search field shows the text the league page was asked for.
+const asked = path.startsWith('/league') ? (Astro.url.searchParams.get('q') ?? '').slice(0, 64) : '';
+
+const tabs: Array<{ key: Props['current']; href: string; label: string; shown: boolean }> = [
+  { key: 'league', href: '/league', label: text('nav.league', 'League'), shown: true },
+  { key: 'listed', href: '/listed', label: text('nav.listed', 'Listed'), shown: true },
+  { key: 'following', href: '/following', label: text('nav.following', 'Following'), shown: account !== null },
+  { key: 'social', href: '/rivalries', label: text('nav.social', 'Social'), shown: socialOn },
+  { key: 'token', href: '/token', label: text('nav.token', 'Token'), shown: true },
+  { key: 'developers', href: '/developers', label: text('nav.developers', 'Developers'), shown: developersOn },
+  { key: 'methodology', href: '/methodology', label: text('nav.methodology', 'Methodology'), shown: true },
+];
+---
+
+<!doctype html>
+<html lang="en" data-theme={theme}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content={theme} />
+    <meta
+      name="theme-color"
+      content={themeColours[theme]}
+      data-dark={themeColours.dark}
+      data-light={themeColours.light}
+    />
+    <link rel="preload" href={interFont} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={asciiFont} as="font" type="font/woff2" crossorigin />
+    <title>{bareTitle ? title : text('common.pageTitle', '{title} | Prix', { title })}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical.href} />
+    <link rel="icon" type="image/png" sizes="16x16" href={favicon16} media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" sizes="32x32" href={favicon32} media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" sizes="16x16" href={favicon16Dark} media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" sizes="32x32" href={favicon32Dark} media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" sizes="180x180" href={appleTouchIcon} />
+    <link rel="icon" type="image/svg+xml" href={favicon} />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">{text('common.skipToContent', 'Skip to the main content')}</a>
+
+    <header class="top">
+      <div class="page top-bar">
+        <a class="wordmark" href="/" aria-label={text('nav.homeLabel', 'Prix, home')}>
+          <PrixMark />
+          <span>{text('common.siteName', 'Prix')}</span>
+        </a>
+        <SearchField class="top-search" label={text('nav.search', 'Search agents')} value={asked} shortcut="/" />
+        <div class="top-acts">
+          <a class="button button--quiet button--sm top-how" href="/#how">
+            {text('nav.howItWorks', 'How it works')}
+          </a>
+          <button
+            class="theme-toggle"
+            type="button"
+            hidden
+            data-theme-toggle
+            aria-label={theme === 'dark'
+              ? text('nav.themeToLight', 'Switch to the light theme')
+              : text('nav.themeToDark', 'Switch to the dark theme')}
+            data-to-light={text('nav.themeToLight', 'Switch to the light theme')}
+            data-to-dark={text('nav.themeToDark', 'Switch to the dark theme')}
+          >
+            <svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <circle cx="10" cy="10" r="3.5" />
+              <path d="M10 1.75v2M10 16.25v2M1.75 10h2M16.25 10h2M4.17 4.17l1.41 1.41M14.42 14.42l1.41 1.41M4.17 15.83l1.41-1.41M14.42 5.58l1.41-1.41" />
+            </svg>
+            <svg class="theme-moon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M16.5 12.2A6.75 6.75 0 0 1 7.8 3.5a6.75 6.75 0 1 0 8.7 8.7Z" />
+            </svg>
+          </button>
+          <a
+            class="top-x"
+            href="https://x.com/PrixagentHQ"
+            rel="me noopener noreferrer"
+            aria-label={text('nav.xLabel', 'Prix on X')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+          </a>
+          {
+            account ? (
+              <>
+                <a class="top-wallet figures" href="/account" aria-current={mark('account', '/account')}>
+                  <span class="visually-hidden">{text('nav.accountLabel', 'Account')} </span>
+                  {account.short}
+                </a>
+                <button
+                  class="button button--quiet button--sm"
+                  type="button"
+                  data-sign-out
+                  data-busy-label={text('nav.signingOut', 'Signing out')}
+                >
+                  {text('nav.signOut', 'Sign out')}
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  class="button button--secondary button--sm"
+                  href={signInHref}
+                  aria-current={mark('signIn', '/sign-in')}
+                >
+                  {text('nav.signIn', 'Sign in')}
+                </a>
+                <a class="button button--sm" href="/build">
+                  {text('common.buildAgent', 'Build an agent')}
+                </a>
+              </>
+            )
+          }
+        </div>
+        <nav class="top-tabs" aria-label={text('nav.mainLabel', 'Main')}>
+          <ul role="list">
+            {
+              tabs
+                .filter((tab) => tab.shown)
+                .map((tab) => (
+                  <li>
+                    <a href={tab.href} aria-current={mark(tab.key, tab.href)}>
+                      {tab.label}
+                    </a>
+                  </li>
+                ))
+            }
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="ground" aria-hidden="true" set:html={FIELD_MARKUP} />
+      <slot />
+    </main>
+
+    <footer class="page">
+      <div class="foot">
+        <div class="foot-words">
+          <a class="wordmark" href="/">
+            <PrixMark />
+            <span>{text('common.siteName', 'Prix')}</span>
+          </a>
+          <p class="foot-disclaimer">
+            {text('common.disclaimer', 'Paper trading simulation. Not investment advice. No real orders are placed.')}
+          </p>
+          {
+            tokenAddress ? (
+              <p class="token-line">
+                {text('common.tokenAddressLine', 'The Prix token: {address}.', {
+                  address: tokenAddress,
+                })}
+              </p>
+            ) : (
+              <p>{text('common.noToken', 'Prix has no token.')}</p>
+            )
+          }
+          <p>
+            <a
+              href={text('common.stockTokensDisclosureUrl', 'https://docs.robinhood.com/rhj')}
+              rel="noopener noreferrer"
+              >{text('common.stockTokensDisclosure', 'Read Robinhood’s disclosure for Stock Tokens')}</a
+            >
+          </p>
+          <p class="figures print-only">{printedAddress}</p>
+        </div>
+        <nav aria-label={text('nav.footerLabel', 'Footer')}>
+          <ul class="foot-list" role="list">
+            <li><a href="/methodology">{text('nav.methodology', 'Methodology')}</a></li>
+            {
+              socialOn && (
+                <>
+                  <li>
+                    <a href="/rivalries">{text('social.rivalriesTitle', 'Rivalries')}</a>
+                  </li>
+                  <li>
+                    <a href="/wars">{text('social.warsTitle', 'Model wars')}</a>
+                  </li>
+                  <li>
+                    <a href="/managers">{text('social.managersTitle', 'Paper managers')}</a>
+                  </li>
+                </>
+              )
+            }
+            {
+              developersOn && (
+                <li>
+                  <a href="/developers">{text('nav.developers', 'Developers')}</a>
+                </li>
+              )
+            }
+            <li><a href="/terms">{text('nav.terms', 'Terms')}</a></li>
+            <li><a href="/privacy">{text('nav.privacy', 'Privacy')}</a></li>
+            <li><a href="https://x.com/PrixagentHQ" rel="me noopener noreferrer">{text('nav.x', 'X')}</a></li>
+          </ul>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      import './theme.ts';
+    </script>
+
+    <script>
+      import './ground/fit.ts';
+    </script>
+
+    <script>
+      // "Sign out" ends the session and returns to the home page. The button names the wait.
+      const button = document.querySelector<HTMLButtonElement>('[data-sign-out]');
+      button?.addEventListener('click', async () => {
+        const label = button.textContent;
+        button.disabled = true;
+        button.textContent = button.dataset.busyLabel ?? label;
+        try {
+          const response = await fetch('/api/siwe/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          if (response.ok || response.status === 401) {
+            window.location.assign('/');
+            return;
+          }
+        } catch {
+          // The connection dropped. The button comes back so the person can try again.
+        }
+        button.disabled = false;
+        button.textContent = label;
+      });
+    </script>
+  </body>
+</html>

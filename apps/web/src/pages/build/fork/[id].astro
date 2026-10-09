@@ -1,0 +1,27 @@
+---
+import { idSchema } from '@prix/contracts';
+import { readSession } from '../../../account/session.ts';
+import ForkBuilderPage from '../../../account/social/ForkBuilderPage.astro';
+import { fetchForkSource, socialIsOn } from '../../../arena/social/client.ts';
+import { readAccount } from '../../../lib/account.ts';
+import { statusForCode, statusOfRead } from '../../../lib/status.ts';
+
+// The status is decided here, because a component cannot set it. While Phase 6 is switched off
+// the page does not exist: it is the site's 404, and so is an address that cannot be an agent
+// id (that costs no API call), an unknown agent and a hidden one. A parent that could not be read
+// (500, 503) and an account that could not be read are sent with their status, never as 200.
+const id = Astro.params.id ?? '';
+if (!idSchema.safeParse(id).success) return Astro.rewrite('/404');
+const social = await socialIsOn(Astro);
+if (social === 'off') return Astro.rewrite('/404');
+
+const source = await fetchForkSource(Astro, id);
+if (!source.ok && source.status === 404) return Astro.rewrite('/404');
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+Astro.response.status =
+  social === 'failed' ? 503 : session.state === 'failed' ? statusForCode(session.code) : statusOfRead(source);
+---
+
+<ForkBuilderPage account={account} session={session} />

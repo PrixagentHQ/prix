@@ -1,0 +1,11 @@
+---
+import { readTokenResult } from '../site/token/read-token.ts';
+import TokenPage from '../site/token/TokenPage.astro';
+
+// A component cannot set the status, so the route file does. Not launched is a page and answers 200;
+// a read that failed is sent with the API's own status. The page shares this one API read.
+const result = await readTokenResult(Astro);
+Astro.response.status = result.ok ? 200 : result.status;
+---
+
+<TokenPage />

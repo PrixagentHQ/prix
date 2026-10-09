@@ -1,0 +1,96 @@
+---
+// Several lines of text with a label, a hint, an error and an optional running count.
+// It shows six lines at least and wraps a long unbroken word. The face is Prix Sans.
+import { formatCount } from '../content/format.ts';
+
+interface Props {
+  label: string;
+  name: string;
+  id?: string;
+  value?: string;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+  rows?: number;
+  minlength?: number;
+  /**
+   * A running count. `max` is the limit. `template` is the sentence while inside the limit
+   * and `overTemplate` the sentence once past it; `{count}` and `{over}` are filled in.
+   * Example: "{count} of 2,000 characters" and "{over} characters over the limit. Shorten the prompt."
+   */
+  count?: { max: number; template: string; overTemplate: string };
+}
+
+const { label, name, id = name, value = '', hint, error, rows = 6, count, ...rest } = Astro.props;
+const hintId = hint ? `${id}-hint` : undefined;
+const countId = count ? `${id}-count` : undefined;
+const errorId = `${id}-error`;
+
+const fill = (template: string, values: Record<string, number>) =>
+  template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? formatCount(values[key] ?? 0) : match));
+const length = value.length;
+const over = count !== undefined && length > count.max;
+const countText = count
+  ? length > count.max
+    ? fill(count.overTemplate, { count: length, over: length - count.max })
+    : fill(count.template, { count: length, over: 0 })
+  : undefined;
+---
+
+<div class="field" data-field={name}>
+  <label class="field-label" for={id}>{label}</label>
+  {hint && <p class="field-hint" id={hintId}>{hint}</p>}
+  <textarea
+    class="input"
+    id={id}
+    name={name}
+    rows={rows}
+    aria-describedby={[hintId, countId, errorId].filter(Boolean).join(' ')}
+    aria-invalid={error || over ? 'true' : undefined}
+    data-invalid={error ? 'true' : undefined}
+    {...rest}>{value}</textarea
+  >
+  {
+    count && (
+      <p
+        class={over ? 'field-error' : 'field-count'}
+        id={countId}
+        data-count-for={id}
+        data-max={count.max}
+        data-template={count.template}
+        data-over-template={count.overTemplate}
+      >
+        {countText}
+      </p>
+    )
+  }
+  <p class="field-error" id={errorId} role="alert" data-field-error hidden={!error}>{error}</p>
+</div>
+
+<script>
+  import { formatCount } from '../content/format.ts';
+
+  // Keeps the running count in step with what is typed.
+  for (const counter of document.querySelectorAll<HTMLElement>('[data-count-for]')) {
+    const field = document.getElementById(counter.dataset.countFor ?? '');
+    if (!(field instanceof HTMLTextAreaElement)) continue;
+    const max = Number(counter.dataset.max);
+    const update = () => {
+      const length = field.value.length;
+      const over = length > max;
+      const template = (over ? counter.dataset.overTemplate : counter.dataset.template) ?? '';
+      const values: Record<string, number> = { count: length, over: Math.max(0, length - max) };
+      counter.textContent = template.replace(/\{(\w+)\}/g, (match, key: string) =>
+        key in values ? formatCount(values[key] ?? 0) : match,
+      );
+      counter.classList.toggle('field-error', over);
+      counter.classList.toggle('field-count', !over);
+      // Past the limit the field is marked invalid. An error the server sent keeps it marked.
+      if (over || field.dataset.invalid === 'true') field.setAttribute('aria-invalid', 'true');
+      else field.removeAttribute('aria-invalid');
+    };
+    field.addEventListener('input', update);
+    update();
+  }
+</script>

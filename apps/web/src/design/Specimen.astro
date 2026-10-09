@@ -1,0 +1,1482 @@
+---
+// The specimen: every primitive in every state, with sample data that says so.
+// It is not a page of the site and has no route. To see it:
+//
+//   node apps/web/src/design/specimen/export.mjs --serve 8600
+//
+// writes static pages to .artifacts/specimen/ and serves them. docs/DESIGN.md section 14 says
+// how to screenshot them.
+//
+//   view="primitives"    the tokens and every primitive in every state (the default)
+//   view="home"          the home page as the system draws it: tape, hero band, zones
+//   theme="light"        any view in the light theme (dark is the default)
+//   view="landing"       a page of direction A, standing on the new primitives without a change
+//   view="agent"         the same for the agent's page
+//   view="agent-stress"  the agent's page with the longest content the product allows
+import Address from './Address.astro';
+import AgentCard from './AgentCard.astro';
+import AgentMark from './AgentMark.astro';
+import { SPECIES } from './ascii/animal.ts';
+import { agentAvatar } from './ascii/avatar.ts';
+import BoardList from './BoardList.astro';
+import Button from './Button.astro';
+import CardGrid from './CardGrid.astro';
+import Chart from './Chart.astro';
+import Chip from './Chip.astro';
+import Choice from './Choice.astro';
+import Choices from './Choices.astro';
+import Code from './Code.astro';
+import CopyButton from './CopyButton.astro';
+import Countdown from './Countdown.astro';
+import { sparkDomain, sparkSlots } from './chart.ts';
+import DefinitionList from './DefinitionList.astro';
+import EmptyState from './EmptyState.astro';
+import EquityCurve from './EquityCurve.astro';
+import FeedRow from './FeedRow.astro';
+import FigureBand from './FigureBand.astro';
+import FollowButton from './FollowButton.astro';
+import Layout from './Layout.astro';
+import Medal from './Medal.astro';
+import Meter from './Meter.astro';
+import Notice from './Notice.astro';
+import Panel from './Panel.astro';
+import PillTabs from './PillTabs.astro';
+import PrixMark from './PrixMark.astro';
+import SeasonBanner from './SeasonBanner.astro';
+import Select from './Select.astro';
+import Skeleton from './Skeleton.astro';
+import Sparkline from './Sparkline.astro';
+import StatRow from './StatRow.astro';
+import Steps from './Steps.astro';
+import {
+  chartPoints,
+  earlyAgents,
+  feedItems,
+  holdingsOf,
+  rankedAgents,
+  type SampleAgent,
+  sampleHoldings,
+  sampleStart,
+  sampleTick,
+  tickerItems,
+} from './specimen/board-data.ts';
+import { curveDays, leagueFacts, ranked, steps, unranked } from './specimen/data.ts';
+import SampleAgentPage from './specimen/SampleAgent.astro';
+import SampleHome from './specimen/SampleHome.astro';
+import SampleLanding from './specimen/SampleLanding.astro';
+import SampleLeague from './specimen/SampleLeague.astro';
+import Table from './Table.astro';
+import Tabs from './Tabs.astro';
+import Textarea from './Textarea.astro';
+import TextInput from './TextInput.astro';
+import TickerStrip from './TickerStrip.astro';
+import Toast from './Toast.astro';
+
+interface Props {
+  view?: 'primitives' | 'home' | 'landing' | 'agent' | 'agent-stress';
+  theme?: 'dark' | 'light';
+}
+
+const { view = 'primitives', theme = 'dark' } = Astro.props;
+
+// The palette of both themes: the token, its value in dark (the default) and in light, its job.
+const colours = [
+  { name: 'Ground', token: 'ground', dark: '#000000', light: '#F2F4F7', use: 'The page.' },
+  { name: 'Raised', token: 'raised', dark: '#000000', light: '#FFFFFF', use: 'A full-bleed band and the hero.' },
+  { name: 'Card', token: 'card', dark: '#0A0B0D', light: '#FFFFFF', use: 'A card and a panel.' },
+  { name: 'Card high', token: 'card-high', dark: '#000000', light: '#FFFFFF', use: 'A key, ringed.' },
+  { name: 'Ink', token: 'ink', dark: '#F3F4F6', light: '#23272D', use: 'Text, and what is chosen.' },
+  { name: 'Grey', token: 'grey', dark: '#9AA1AC', light: '#626971', use: 'Words that step back; the edge of a field.' },
+  { name: 'Line', token: 'line', dark: '#262A31', light: '#E3E6EA', use: 'A hairline between two things of one kind.' },
+  {
+    name: 'Blue',
+    token: 'blue',
+    dark: '#4C8DFF',
+    light: '#1452F0',
+    use: 'Where Prix asks you to act: a link, focus, the tint of a state.',
+  },
+  {
+    name: 'Blue fill',
+    token: 'blue-fill',
+    dark: '#2A66E0',
+    light: '#1452F0',
+    use: 'A primary action, and the mark of Prix.',
+  },
+  { name: 'Green', token: 'green', dark: '#22C55E', light: '#007A25', use: 'A figure with a plus sign, and its line.' },
+  { name: 'Red', token: 'red', dark: '#F2594E', light: '#D20B0F', use: 'A figure with a minus sign, and its line.' },
+  {
+    name: 'Wash',
+    token: 'wash',
+    dark: 'white at 6%',
+    light: 'ink at 5%',
+    use: 'A place that is not a card: a field, a banner.',
+  },
+  { name: 'Tint', token: 'tint', dark: 'blue at 12%', light: 'blue at 10%', use: 'A state you turned on: Following.' },
+];
+const medals = [
+  { name: 'Gold', token: 'gold', dark: '#F2C33D', light: '#F2C33D', use: 'Rank one.' },
+  { name: 'Silver', token: 'silver', dark: '#C9CED6', light: '#C9CED6', use: 'Rank two.' },
+  { name: 'Bronze', token: 'bronze', dark: '#DC9A66', light: '#DC9A66', use: 'Rank three.' },
+];
+const sizes = [
+  { name: 'Figure 56, the hero', cls: 'figure-56', sample: '+9.84%' },
+  { name: 'Section title 32', cls: 'section-title', sample: 'Top agents' },
+  { name: 'Eyebrow 13', cls: 'eyebrow', sample: 'Season 2, sample data' },
+  { name: 'Figure 40', cls: 'figure-40', sample: '+9.84%' },
+  { name: 'Figure 28', cls: 'figure-28', sample: '+9.84%' },
+  { name: 'Display 24', cls: 'display', sample: 'Semis Rotation' },
+  { name: 'Headline 20', cls: 'headline', sample: 'Top agents' },
+  { name: 'Title 16', cls: 'title', sample: 'Holdings' },
+  { name: 'Prose 16', cls: 'prose', sample: 'Rotates between NVDA, AMD, MU and INTC on relative strength.' },
+  {
+    name: 'Body 14',
+    cls: 'body',
+    sample: 'Following puts this agent’s decisions in your feed. Nothing is traded for you.',
+  },
+  { name: 'Small 13', cls: 'small', sample: 'The paper portfolio after the last round, at reference prices.' },
+  { name: 'Caption 12', cls: 'caption', sample: 'Season return' },
+];
+const spaces = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96];
+const markIds = [
+  'k2m9x4q7w1zt',
+  'p7c3n8v5b2ya',
+  '4nxdlbu3idgu',
+  'h5t1r9e6s3df',
+  'w8g2j6l4m0pq',
+  'z1a5o9i3u7ye',
+  'b6v0c4x8z2nm',
+  'q3f7d1s5a9gh',
+  'm4k8t2w6r0pa',
+  'y9e3u7i1o5sd',
+  'f2h6j0l4z8xc',
+  'c8s2e6n0t4vb',
+  'r1d5g9k3p7lw',
+  'u0y4q8a2j6hx',
+  'e7i1m5b9f3zo',
+  'n3w7c1t5v9ks',
+  'x6l0r4h8d2ga',
+  'j9p3z7u1s5me',
+];
+
+// One sample id for each of the twelve animals: the first id of a fixed run that draws it.
+const animalIds: string[] = [];
+for (let index = 0; animalIds.length < SPECIES.length && index < 2000; index += 1) {
+  const id = `sample${index.toString(36).padStart(6, '0')}`;
+  const species = agentAvatar(id).species;
+  if (!animalIds.some((known) => agentAvatar(known).species === species)) animalIds.push(id);
+}
+// The nine house agents of the fixture league-early, by the ids the fixtures give them.
+const boardIdOf = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z2-7]/g, '')
+    .padEnd(12, 'a')
+    .slice(0, 12);
+const todaysBoard = [
+  'Index Core',
+  'Semis Rotation',
+  'Treasury First',
+  'Dip Buyer',
+  'Momentum Five',
+  'Oil And Idle',
+  'Big Tech Equal',
+  'Crypto Proxies',
+  'Crowd Favourites',
+].map((name) => ({ name, id: boardIdOf(name) }));
+
+const domainOf = (agents: SampleAgent[]) => sparkDomain(agents.map((agent) => agent.values));
+const slotsOf = (agents: SampleAgent[]) => sparkSlots(agents.map((agent) => agent.values));
+const rankedDomain = domainOf(rankedAgents);
+const rankedSlots = slotsOf(rankedAgents);
+const earlySlots = slotsOf(earlyAgents);
+
+const cardOf = (agent: SampleAgent, slots: number, domain?: readonly [number, number]) => ({
+  href: `#agent-${agent.id}`,
+  agentId: agent.id,
+  name: agent.name,
+  rank:
+    agent.rank === null
+      ? { text: 'Not ranked', unranked: true }
+      : agent.rank <= 3
+        ? { text: `#${agent.rank}`, place: agent.rank as 1 | 2 | 3, label: `Rank ${agent.rank}` }
+        : { text: `#${agent.rank}` },
+  chips: [
+    { label: agent.division, kind: agent.division === 'Pro' ? ('pro' as const) : ('open' as const) },
+    ...(agent.house ? [{ label: 'House', kind: 'house' as const }] : []),
+  ],
+  summary: agent.summary,
+  figure: { value: agent.ret, label: 'Season return', tone: agent.tone },
+  spark: {
+    values: agent.values,
+    domain,
+    slots,
+    baseline: sampleStart,
+    label: `Portfolio value from 10,000.00 to ${(agent.values.at(-1) ?? sampleStart).toFixed(2)} virtual USD`,
+    emptyLabel: 'No trading days yet',
+  },
+  facts: [
+    { label: 'Max drawdown', value: agent.drawdown },
+    { label: 'Trades', value: agent.trades },
+  ],
+  holdings: holdingsOf[agent.name]?.holdings,
+  cash: holdingsOf[agent.name] ? { label: 'Cash', weight: holdingsOf[agent.name]?.cash ?? '' } : undefined,
+  holdingsLabel: 'Largest holdings',
+});
+const heads = {
+  rank: 'Rank',
+  agent: 'Agent',
+  figure: 'Season return',
+  line: 'Portfolio value',
+  facts: ['Max drawdown', 'Trades'],
+};
+const leader = rankedAgents[0];
+---
+
+<Layout
+  title="Specimen"
+  description="Every primitive of the Prix design system, with sample data."
+  current={view === 'primitives' ? null : 'league'}
+  account={view === 'agent' ? { short: '0x7a3f…c91e' } : null}
+  noindex
+  theme={theme}
+>
+  {view === 'home' && <SampleHome />}
+  {view === 'landing' && <SampleLanding />}
+  {view === 'agent' && <SampleAgentPage />}
+  {view === 'agent-stress' && <SampleAgentPage stress />}
+  {
+    view === 'primitives' && (
+      <div class="page specimen">
+        <header class="section">
+          <h1 class="display">Specimen</h1>
+          <p class="small">
+            <strong>Sample data.</strong> Every name and figure on this page is invented to show the primitives.
+          </p>
+        </header>
+
+        <section class="section" aria-labelledby="s-colour">
+          <div class="section-head">
+            <h2 class="title" id="s-colour">
+              Colour
+            </h2>
+          </div>
+          <ul class="swatches" role="list">
+            {[...colours, ...medals].map((colour) => (
+              <li>
+                <span class={`swatch sw-${colour.token}`} />
+                <span>
+                  <strong>{colour.name}</strong>{' '}
+                  <span class="figures">
+                    {theme === 'dark' ? colour.dark : colour.light}
+                  </span>
+                  <span class="facts-detail figures">
+                    Dark {colour.dark}, light {colour.light}
+                  </span>
+                  <span class="facts-detail">{colour.use}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section class="section" aria-labelledby="s-type">
+          <div class="section-head">
+            <h2 class="title" id="s-type">
+              Type
+            </h2>
+          </div>
+          <dl class="types">
+            {sizes.map((size) => (
+              <>
+                <dt class="caption">{size.name}</dt>
+                <dd class={size.cls}>{size.sample}</dd>
+              </>
+            ))}
+          </dl>
+        </section>
+
+        <section class="section" aria-labelledby="s-space">
+          <div class="section-head">
+            <h2 class="title" id="s-space">
+              Space, radius, shadow
+            </h2>
+          </div>
+          <ul class="spaces" role="list">
+            {spaces.map((space) => (
+              <li>
+                <span class="figures caption">{space}</span>
+                <span class={`space-bar sp-${space}`} />
+              </li>
+            ))}
+          </ul>
+          <div class="cluster shapes">
+            <div class="card shape">Card at rest, 15</div>
+            <div class="card card--link shape" tabindex="0">
+              Card under the pointer lifts
+            </div>
+            <div class="panel shape">Panel, lifted</div>
+            <div class="shape shape-box">Box, 12</div>
+            <div class="shape shape-control">Control, 10</div>
+            <div class="shape shape-pill">Pill, 6</div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-marks">
+          <div class="section-head">
+            <h2 class="title" id="s-marks">
+              Marks, medals, chips
+            </h2>
+          </div>
+          <div class="stack-16">
+            <div class="cluster">
+              <PrixMark label="Prix" class="specimen-mark-lg" />
+              <span class="wordmark">
+                <PrixMark />
+                <span>Prix</span>
+              </span>
+            </div>
+            <div class="cluster">
+              {markIds.map((id, index) => (
+                <AgentMark agentId={id} name={rankedAgents[index % rankedAgents.length]?.name ?? 'Sample'} />
+              ))}
+            </div>
+            <div class="grounds">
+              <h3 class="caption">Sample data. Twelve animals in the ink and greys of the theme, and a mark without an id</h3>
+              <ul class="ground-row" role="list">
+                {animalIds.map((id) => (
+                  <li>
+                    <AgentMark agentId={id} name="Sample" size="lg" />
+                    <span class="small">{agentAvatar(id).species}</span>
+                  </li>
+                ))}
+                <li>
+                  <AgentMark agentId="" name="Semis Rotation" size="lg" />
+                  <span class="small">Initials, no id</span>
+                </li>
+              </ul>
+              <h3 class="caption">The nine house agents of league-early</h3>
+              <ul class="ground-board" role="list">
+                {todaysBoard.map((agent) => (
+                  <li>
+                    <AgentMark agentId={agent.id} name={agent.name} />
+                    <span class="small">{agent.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div class="cluster">
+              <AgentMark agentId="k2m9x4q7w1zt" name="Semis Rotation" size="xl" />
+              <AgentMark agentId="k2m9x4q7w1zt" name="Semis Rotation" size="lg" />
+              <AgentMark agentId="k2m9x4q7w1zt" name="Semis Rotation" />
+              <AgentMark agentId="k2m9x4q7w1zt" name="Semis Rotation" size="sm" />
+            </div>
+            <div class="cluster">
+              <Medal rank={1} label="Rank 1" />
+              <Medal rank={2} label="Rank 2" />
+              <Medal rank={3} label="Rank 3" />
+              <Medal rank={1} label="Rank 1" size="lg" />
+              <span class="agent-card-rank">#4</span>
+              <span class="agent-card-rank is-unranked">Not ranked</span>
+            </div>
+            <div class="cluster">
+              <Chip label="Open" kind="open" />
+              <Chip label="Pro" kind="pro" />
+              <Chip label="House" kind="house" />
+              <Chip label="Simulation record" />
+            </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-button">
+          <div class="section-head">
+            <h2 class="title" id="s-button">
+              Buttons
+            </h2>
+          </div>
+          <div class="stack-16">
+            <div class="cluster">
+              <Button label="Build an agent" href="#build" size="sm" />
+              <Button label="Sign in" variant="secondary" size="sm" />
+              <Button label="How it works" variant="quiet" size="sm" />
+            </div>
+            <div class="cluster">
+              <Button label="Build an agent" href="#build" />
+              <Button label="Save key" type="submit" />
+              <Button label="Build an agent" busyLabel="Building the agent" busy />
+              <Button label="Build an agent" disabled />
+            </div>
+            <div class="cluster">
+              <Button label="Cancel" variant="secondary" />
+              <Button label="Delete key" variant="secondary" busyLabel="Deleting the key" busy />
+              <Button label="Sign out" variant="quiet" />
+              <Button label="Publish the prompt" variant="quiet" disabled />
+            </div>
+            <div class="specimen-narrow stack-8">
+              <Button label="Build your own agent" size="lg" wide />
+              <Button label="Copy link" variant="secondary" size="lg" wide />
+            </div>
+            <div class="cluster" data-demo-follow>
+              <FollowButton label="Follow" pressedLabel="Following" name="Follow Semis Rotation" />
+              <FollowButton label="Follow" pressedLabel="Following" name="Follow Earnings Drift" pressed />
+              <FollowButton label="Follow" pressedLabel="Following" name="Follow Index Core" form="icon" />
+              <FollowButton label="Follow" pressedLabel="Following" name="Follow Dip Buyer 9000" form="icon" pressed />
+              <FollowButton label="Follow" pressedLabel="Following" name="Follow T-Bill Tortoise" href="#sign-in" />
+            </div>
+            <div class="specimen-narrow stack-8" data-demo-follow>
+              <FollowButton label="Follow this agent" pressedLabel="Following" name="Follow Semis Rotation" form="action" />
+              <FollowButton
+                label="Follow this agent"
+                pressedLabel="Following"
+                name="Follow Earnings Drift"
+                form="action"
+                pressed
+              />
+            </div>
+            <div class="cluster">
+              <PillTabs
+                label="View"
+                iconsOnly
+                items={[
+                  { label: 'Cards', value: 'cards', icon: 'cards', current: true },
+                  { label: 'Table', value: 'list', icon: 'rows' },
+                ]}
+              />
+              <PillTabs
+                label="Order"
+                items={[
+                  { label: 'Top', href: '#top', current: true },
+                  { label: 'New', href: '#new' },
+                ]}
+              />
+              <PillTabs
+                label="Range"
+                variant="plain"
+                items={[{ label: '1W' }, { label: '2W' }, { label: 'Season', current: true }]}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-season">
+          <div class="section-head">
+            <h2 class="title" id="s-season">
+              Season banner, band of figures
+            </h2>
+          </div>
+          <div class="stack-16">
+            <SeasonBanner
+              label="Season 1"
+              season="Season 1"
+              day="Day 3 of 20"
+              progress={0.15}
+              market={{ label: 'Market open', open: true }}
+              note="Paper trading simulation"
+            >
+              <Fragment slot="countdown">
+                Next round in <Countdown to="2026-10-07T20:00:00Z" now={new Date('2026-10-07T19:05:42Z')} />
+              </Fragment>
+            </SeasonBanner>
+            <SeasonBanner
+              label="Season 1, market closed"
+              season="Season 1"
+              day="Day 3 of 20"
+              progress={0.15}
+              market={{ label: 'Market closed', open: false }}
+              note="Paper trading simulation"
+            >
+              <Fragment slot="countdown">
+                Next round in <Countdown to="2026-10-08T15:00:00Z" now={new Date('2026-10-07T21:30:00Z')} />
+              </Fragment>
+            </SeasonBanner>
+            <FigureBand
+              label="Season 1 in figures"
+              items={[
+                { label: 'Agents', value: '9', detail: 'all run by Prix', count: true },
+                { label: 'Decisions', value: '41', detail: 'in 3 trading days', count: true },
+                { label: 'Trades', value: '27', count: true },
+                { label: 'Best season return', value: '+0.47%', tone: 'gain', detail: 'Momentum Mill', count: true },
+              ]}
+            />
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-ticker">
+          <div class="section-head">
+            <h2 class="title" id="s-ticker">
+              Ticker tape
+            </h2>
+            <span class="small">Twenty-two symbols, sample prices: the twenty Stock Tokens, a hairline, then the two crypto assets. One pass takes 100 seconds, the speed of twenty at 90. It stops under the pointer or the keyboard.</span>
+          </div>
+        </section>
+        <div class="specimen-bleed">
+          <TickerStrip
+            items={tickerItems}
+            asOf="Sample prices, 19:00 UTC"
+            label="Prices of the symbols in the league, sample data"
+          />
+        </div>
+
+        <section class="section" aria-labelledby="s-zones">
+          <div class="section-head">
+            <h2 class="title" id="s-zones">
+              Zones: the hero, a raised band, the ground
+            </h2>
+          </div>
+        </section>
+        <div class="specimen-bleed">
+          <div class="zone zone--hero">
+            <div class="page">
+              <p class="eyebrow">The hero band, sample data</p>
+              <h3 class="section-title">The one gradient of the site</h3>
+              <p class="figure-56 gain specimen-hero-figure">+9.84%</p>
+              <p class="caption">Season return</p>
+            </div>
+          </div>
+          <div class="zone">
+            <div class="page">
+              <p class="eyebrow">A zone on the ground</p>
+              <h3 class="section-title">Top agents</h3>
+            </div>
+          </div>
+          <div class="zone zone--raised">
+            <div class="page">
+              <p class="eyebrow">A raised zone</p>
+              <h3 class="section-title">Latest decisions</h3>
+            </div>
+          </div>
+        </div>
+
+        {leader && (
+          <section class="section" aria-labelledby="s-featured">
+            <div class="section-head">
+              <h2 class="title" id="s-featured">
+                Agent card, featured
+              </h2>
+            </div>
+            <AgentCard
+              {...cardOf(leader, rankedSlots)}
+              form="featured"
+              level={3}
+              eyebrow="Leading the Pro division"
+              facts={[
+                { label: 'Max drawdown', value: leader.drawdown },
+                { label: 'Trades', value: leader.trades },
+                { label: 'Trading days', value: '17' },
+              ]}
+              animate
+            >
+              <FollowButton slot="action" label="Follow" pressedLabel="Following" name={`Follow ${leader.name}`} />
+              <Fragment slot="footer">Last decision 7 Oct, 19:00 UTC: bought MU, 1.2% of the portfolio.</Fragment>
+            </AgentCard>
+          </section>
+        )}
+
+        <section class="section" aria-labelledby="s-board">
+          <div class="section-head">
+            <h2 class="headline" id="s-board">
+              Top agents
+            </h2>
+            <span class="small">8 agents, sample data</span>
+            <PillTabs
+              class="end"
+              label="View"
+              iconsOnly
+              data-demo-switch="board-ranked"
+              items={[
+                { label: 'Cards', value: 'cards', icon: 'cards', current: true },
+                { label: 'Table', value: 'list', icon: 'rows' },
+              ]}
+            />
+          </div>
+          <BoardList id="board-ranked" form="cards" label="Sample: a full board" heads={heads}>
+            {rankedAgents.map((agent) => (
+              <AgentCard {...cardOf(agent, rankedSlots, rankedDomain)} note={agent.note} animate>
+                <FollowButton slot="action" label="Follow" pressedLabel="Following" name={`Follow ${agent.name}`} />
+              </AgentCard>
+            ))}
+          </BoardList>
+        </section>
+
+        <section class="section" aria-labelledby="s-list">
+          <div class="section-head">
+            <h2 class="title" id="s-list">
+              The same board as a table
+            </h2>
+          </div>
+          <BoardList id="board-list" label="Sample: a full board as a table" heads={heads}>
+            {rankedAgents.map((agent) => (
+              <AgentCard {...cardOf(agent, rankedSlots, rankedDomain)} note={agent.note}>
+                <FollowButton slot="action" label="Follow" pressedLabel="Following" name={`Follow ${agent.name}`} />
+              </AgentCard>
+            ))}
+          </BoardList>
+          <h3 class="caption specimen-gap">The table without its line column: series false</h3>
+          <BoardList
+            id="board-plain"
+            label="Sample: a board as a table without lines"
+            heads={{ ...heads, line: undefined }}
+            series={false}
+          >
+            {rankedAgents.slice(0, 4).map((agent) => (
+              <AgentCard {...cardOf(agent, rankedSlots, rankedDomain)} note={agent.note}>
+                <FollowButton slot="action" label="Follow" pressedLabel="Following" name={`Follow ${agent.name}`} />
+              </AgentCard>
+            ))}
+          </BoardList>
+        </section>
+
+        <section class="section" aria-labelledby="s-early">
+          <div class="section-head">
+            <h2 class="title" id="s-early">
+              The first week: house agents, no ranks, a line of one or two points
+            </h2>
+          </div>
+          <CardGrid>
+            {earlyAgents.map((agent) => (
+              <AgentCard {...cardOf(agent, earlySlots)} note={agent.note}>
+                <FollowButton slot="action" label="Follow" pressedLabel="Following" name={`Follow ${agent.name}`} />
+              </AgentCard>
+            ))}
+          </CardGrid>
+          <h3 class="caption specimen-gap">
+            In the builder: preview (no link, no lift). An action slot that renders nothing leaves no wrapper. A
+            fifth card is in the page, hidden for a filter.
+          </h3>
+          <CardGrid>
+            {earlyAgents.slice(0, 1).map((agent) => (
+              <AgentCard {...cardOf(agent, earlySlots)} name="Your agent" note={agent.note} preview />
+            ))}
+            {earlyAgents.slice(1, 2).map((agent) => (
+              <AgentCard {...cardOf(agent, earlySlots)} note={agent.note}>
+                <Fragment slot="action">{false && <span>Never shown</span>}</Fragment>
+              </AgentCard>
+            ))}
+            {earlyAgents.slice(2, 3).map((agent) => (
+              <AgentCard {...cardOf(agent, earlySlots)} note={agent.note} hidden />
+            ))}
+          </CardGrid>
+        </section>
+
+        <section class="section" aria-labelledby="s-states">
+          <div class="section-head">
+            <h2 class="title" id="s-states">
+              Empty, loading, toast
+            </h2>
+          </div>
+          <div class="stack-16">
+            <EmptyState
+              boxed
+              title="No agents in the Pro division yet"
+              body="An agent in Pro runs on its owner’s model key and decides up to five times on each trading day."
+            >
+              <Button label="Build an agent" href="#build" />
+            </EmptyState>
+            <EmptyState plain title="No agent is named “zebra”" body="The search looks at the names on this page.">
+              <Button label="Clear the search" variant="secondary" size="sm" />
+            </EmptyState>
+            <CardGrid>
+              <Skeleton form="card" count={4} label="Loading the league" />
+            </CardGrid>
+            <div class="specimen-half">
+              <Skeleton form="row" count={2} label="Loading the feed" />
+              <Skeleton form="lines" label="Loading the summary" />
+            </div>
+            <div class="cluster">
+              <Toast shown text="Following Semis Rotation" />
+              <Button label="Show a toast" variant="secondary" size="sm" data-demo-toast="Following Semis Rotation" />
+            </div>
+            <Toast />
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-feed" data-reveal>
+          <div class="section-head">
+            <h2 class="title" id="s-feed">
+              Feed of decisions
+            </h2>
+            <span class="end">
+              <Button label="A new row arrives" variant="secondary" size="sm" data-demo-arrive="feed-league" />
+            </span>
+          </div>
+          <ol class="feed" role="list" id="feed-league">
+            {feedItems.map(
+              (item) =>
+                item.agent && (
+                  <FeedRow
+                    agent={{
+                      id: item.agent.id,
+                      name: item.agent.name,
+                      href: `#agent-${item.agent.id}`,
+                      chips: item.agent.house ? [{ label: 'House', kind: 'house' }] : [],
+                    }}
+                    time={{ iso: item.iso, label: item.time }}
+                    what={item.what}
+                    detail={item.detail}
+                    why={item.why}
+                    tag="Simulation record"
+                  />
+                ),
+            )}
+          </ol>
+          <h3 class="caption specimen-gap">Compact, for the right column of the home page</h3>
+          <div class="specimen-narrow">
+            <ol class="feed" role="list">
+              {feedItems.map(
+                (item) =>
+                  item.agent && (
+                    <FeedRow
+                      compact
+                      agent={{
+                        id: item.agent.id,
+                        name: item.agent.name,
+                        href: `#agent-${item.agent.id}`,
+                        chips: item.agent.house ? [{ label: 'House', kind: 'house' }] : [],
+                      }}
+                      time={{ iso: item.iso, label: item.time }}
+                      what={item.what}
+                      detail={item.detail}
+                      why={item.why}
+                      tag="Simulation record"
+                    />
+                  ),
+              )}
+            </ol>
+          </div>
+        </section>
+
+        <section class="section with-panel" aria-labelledby="s-agent">
+          <header class="agent-head">
+            <AgentMark agentId="k2m9x4q7w1zt" size="xl" carry />
+            <div>
+              <p class="small">League, Pro division</p>
+              <h2 class="display" id="s-agent" data-carry="name">
+                Semis Rotation
+              </h2>
+              <p class="small">Rotates between NVDA, AMD, MU and INTC on relative strength.</p>
+            </div>
+          </header>
+          <Panel sticky label="Semis Rotation, what you can do" id="agent-panel">
+            <FigureBand
+              plain
+              label="Semis Rotation in figures"
+              items={[
+                { label: 'Season return', value: '+9.84%', tone: 'gain' },
+                { label: 'Max drawdown', value: '−3.85%' },
+                { label: 'Trades', value: '64' },
+                { label: 'Rank', value: '#1', detail: 'of 37' },
+              ]}
+            />
+            <div class="panel-part stack-8" data-demo-follow>
+              <FollowButton label="Follow this agent" pressedLabel="Following" name="Follow Semis Rotation" form="action" />
+              <CopyButton
+                label="Copy link"
+                copiedLabel="Link copied"
+                failedLabel="The browser did not allow the copy. Copy the address from the address bar."
+                text="https://prixagent.com/agents/k2m9x4q7w1zt"
+                size="lg"
+                wide
+              />
+              <p class="panel-fine">
+                Following puts this agent’s decisions in your feed. Nothing is traded for you.
+              </p>
+            </div>
+            <div class="panel-part stack-8">
+              <p class="small">
+                Have a strategy of your own? Write it in plain words and your agent trades a paper portfolio in the
+                same league.
+              </p>
+              <Button label="Build your own agent" variant="secondary" size="lg" wide href="#build" />
+            </div>
+          </Panel>
+          <div>
+          <Chart
+            id="chart-sample"
+            points={chartPoints}
+            label="Season return"
+            alt="Sample: portfolio value by round. Use the arrow keys to move through the rounds."
+            baseline={sampleStart}
+            formatTick={sampleTick}
+            ranges={[{ label: '1W', last: 26 }, { label: '2W', last: 51 }, { label: 'Season', current: true }]}
+            rangesLabel="Range"
+            figure="return"
+            start={sampleStart}
+            animate
+          >
+            <span>Started with $10,000 of virtual USD</span>
+            <span>In the league since 15 Sep</span>
+          </Chart>
+          <div class="section">
+            <h3 class="title">Holdings</h3>
+            <p class="small">The paper portfolio after the last round, at reference prices.</p>
+            <ul class="holdings" role="list">
+              {sampleHoldings.map((holding) => (
+                <li>
+                  <span>
+                    <strong>{holding.symbol}</strong>
+                    <span class="cell-detail">{holding.name}</span>
+                  </span>
+                  <Meter share={holding.share} />
+                  <span class="figure-20">{holding.weight}</span>
+                  <span class="figures small">{holding.value}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div class="section">
+            <h3 class="title">Decisions</h3>
+            <p class="small">Each entry is the record of a simulation. A model wrote the reasons. They are not advice.</p>
+            <ol class="feed specimen-gap" role="list">
+              {feedItems.map((item) => (
+                <FeedRow
+                  time={{ iso: item.iso, label: item.time }}
+                  what={item.what}
+                  detail={item.detail}
+                  why={item.why}
+                  tag="Simulation record"
+                />
+              ))}
+            </ol>
+          </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-compact">
+          <div class="section-head">
+            <h2 class="title" id="s-compact">
+              Agent card, compact, in a panel
+            </h2>
+          </div>
+          <div class="specimen-narrow">
+            <Panel title="New agents" id="panel-new" as="section">
+              <div class="stack-4">
+                {rankedAgents.slice(3, 7).map((agent) => (
+                  <AgentCard {...cardOf(agent, rankedSlots)} form="compact" level={4} />
+                ))}
+              </div>
+            </Panel>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-field">
+          <div class="section-head">
+            <h2 class="title" id="s-field">
+              Fields
+            </h2>
+          </div>
+          <form class="stack-24" novalidate>
+            <TextInput
+              label="Agent name"
+              name="name"
+              hint="3 to 32 characters. The name is public."
+              value="Slow Compounder"
+              minlength={3}
+              maxlength={32}
+              required
+            />
+            <TextInput
+              label="Agent name"
+              name="name-error"
+              hint="3 to 32 characters. The name is public."
+              value="Prix"
+              error="That name is not allowed. Choose another."
+            />
+            <TextInput label="Agent name" name="name-off" value="Slow Compounder" disabled />
+            <Textarea
+              label="Strategy prompt"
+              name="prompt"
+              hint="20 to 2,000 characters. Only you see the prompt."
+              value="Buy large, profitable companies and hold them. Add to a position only after it has risen for twenty days."
+              count={{
+                max: 2000,
+                template: '{count} of 2,000 characters',
+                overTemplate: '{over} characters over the limit of 2,000. Shorten the prompt.',
+              }}
+            />
+            <Select
+              label="Provider"
+              name="provider"
+              hint="Pick the provider your key belongs to."
+              error="Pick a provider."
+              options={[
+                { value: '', label: 'Pick a provider', selected: true },
+                { value: 'openai', label: 'OpenAI' },
+                { value: 'anthropic', label: 'Anthropic' },
+              ]}
+            />
+            <Choices id="division" legend="Division" hint="You cannot change the division later.">
+              <Choice
+                type="radio"
+                name="division"
+                value="open"
+                label="Open"
+                hint="Runs on the house model. One decision per trading day."
+                checked
+              />
+              <Choice
+                type="radio"
+                name="division"
+                value="pro"
+                label="Pro"
+                hint="Runs on your own model key. Up to one decision per hour while the market is open."
+              />
+              <Choice
+                type="radio"
+                name="division"
+                value="off"
+                label="Pro"
+                hint="Needs a model key. Add one on your account page first."
+                disabled
+              />
+            </Choices>
+            <Choices id="division-cards" legend="Division, as cards" form="cards">
+              <Choice
+                type="radio"
+                name="division-cards"
+                value="open"
+                label="Open"
+                hint="Runs on the house model. One decision per trading day."
+                checked
+              />
+              <Choice
+                type="radio"
+                name="division-cards"
+                value="pro"
+                label="Pro"
+                hint="Runs on your own model key. Up to one decision per hour while the market is open."
+              />
+            </Choices>
+            <Choices id="publish" legend="Prompt" role="group">
+              <Choice
+                type="checkbox"
+                name="publish"
+                value="yes"
+                label="Publish the prompt"
+                hint="Anyone will be able to read the full prompt on the agent’s page."
+              />
+              <Choice type="checkbox" name="publish-on" value="yes" label="Publish the prompt" checked />
+            </Choices>
+          </form>
+        </section>
+
+        <section class="section" aria-labelledby="s-words">
+          <div class="section-head">
+            <h2 class="title" id="s-words">
+              Tabs, notices, facts, steps
+            </h2>
+          </div>
+          <div class="stack-24">
+            <Tabs
+              id="tabs-sample"
+              label="Division"
+              items={[
+                { label: 'Open', href: '#open', current: true },
+                { label: 'Pro', href: '#pro' },
+              ]}
+            />
+            <Notice
+              tone="status"
+              title="Market closed"
+              body="Prices have not updated recently, as on nights, weekends and holidays. No trades fill while the market is closed."
+            />
+            <Notice tone="loading" title="Loading the league table" />
+            <Notice
+              tone="error"
+              title="The league table did not load"
+              body="The connection dropped. Check it and load the page again."
+            >
+              <Button label="Load the page again" variant="secondary" href="#reload" />
+            </Notice>
+            <DefinitionList items={leagueFacts} labelWidth="6.5rem" />
+            <Steps items={steps}>
+              <Button label="Build an agent" href="#build" />
+            </Steps>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-table">
+          <div class="section-head">
+            <h2 class="title" id="s-table">
+              Tables, stat row
+            </h2>
+          </div>
+          <div class="stack">
+            <StatRow
+              caption="Performance summary, sample of a ranked agent"
+              items={[
+                { label: 'Rank', value: '1', suffix: 'of 10 ranked agents', first: true },
+                { label: 'Season return', value: '+6.84%', tone: 'gain' },
+                { label: 'Max drawdown', value: '−1.92%' },
+                { label: 'Trades', value: '18' },
+                { label: 'Days active', value: '9' },
+              ]}
+            />
+            <SampleLeague id="t-league" caption="Sample: Open division, Season 1, day 9 of 28" rows={ranked} groups={unranked} />
+            <Table
+              id="t-scroll"
+              caption="Sample: a table that scrolls inside its own container"
+              captionVisible
+              scroll
+              minWidth="44rem"
+              columns={[
+                { key: 'symbol', label: 'Symbol' },
+                { key: 'price', label: 'Reference price, USD', align: 'end' },
+                { key: 'day1', label: '1 day', align: 'end' },
+                { key: 'day5', label: '5 days', align: 'end' },
+                { key: 'day20', label: '20 days', align: 'end' },
+                { key: 'updated', label: 'Last update' },
+              ]}
+            >
+              <tbody>
+                <tr>
+                  <th scope="row">NVDA</th>
+                  <td class="num">182.41</td>
+                  <td class="num gain">+0.84%</td>
+                  <td class="num loss">−2.10%</td>
+                  <td class="num na">
+                    <span aria-hidden="true">–</span>
+                    <span class="visually-hidden">Not enough history</span>
+                  </td>
+                  <td>6 Oct, 15:00 UTC</td>
+                </tr>
+                <tr>
+                  <th scope="row">MSFT</th>
+                  <td class="num">431.07</td>
+                  <td class="num">0.00%</td>
+                  <td class="num gain">+1.32%</td>
+                  <td class="num gain">+4.05%</td>
+                  <td>6 Oct, 15:00 UTC</td>
+                </tr>
+                <tr>
+                  <th scope="row">BTC</th>
+                  <td class="num">121,904.55</td>
+                  <td class="num gain">+0.73%</td>
+                  <td class="num na">
+                    <span aria-hidden="true">–</span>
+                    <span class="visually-hidden">Not enough history</span>
+                  </td>
+                  <td class="num na">
+                    <span aria-hidden="true">–</span>
+                    <span class="visually-hidden">Not enough history</span>
+                  </td>
+                  <td>6 Oct, 15:00 UTC</td>
+                </tr>
+              </tbody>
+            </Table>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-spark">
+          <div class="section-head">
+            <h2 class="title" id="s-spark">
+              Sparkline, equity curve
+            </h2>
+          </div>
+          <div class="stack">
+            <ul class="sparks" role="list">
+              <li>
+                <Sparkline values={[100, 101.19, 102.31, 100.35, 102.75, 105.13, 106.84]} baseline={100} tone="gain" draw />
+                <span class="small">A gain, with the line it started from</span>
+              </li>
+              <li>
+                <Sparkline values={[100, 100.9, 99.2, 97.4, 95.98, 96.8, 97.29]} baseline={100} tone="loss" draw />
+                <span class="small">A loss</span>
+              </li>
+              <li>
+                <Sparkline values={[100, 100.45]} baseline={100} tone="gain" slots={2} />
+                <span class="small">Two points: one trading day</span>
+              </li>
+              <li>
+                <Sparkline values={[100]} baseline={100} emptyLabel="No trading days yet" />
+                <span class="small">One point: no trading day yet</span>
+              </li>
+              <li>
+                <Sparkline values={[100, 100.02, 100.1, 99.98, 100.03, 100.06, 100]} domain={[95.98, 106.84]} size="sm" />
+                <span class="small">Small, in ink, on a shared scale</span>
+              </li>
+              <li>
+                <Sparkline values={[100]} emptyLabel="No trading days yet" />
+                <span class="small">Fewer than two values and no baseline: no line</span>
+              </li>
+            </ul>
+            <EquityCurve
+              start={{ value: 10000, label: '10,000.00' }}
+              days={curveDays}
+              alt="Sample line chart of portfolio value by day. It starts at 10,000.00 virtual USD, is highest and latest at 10,684.00 on Tue 6 Oct, and is lowest after its peak at 10,035.20 on Thu 1 Oct."
+              end={{ value: '10,684.00', change: '+6.84%', tone: 'gain' }}
+              low={{ index: 4, value: '10,035.20', note: '−1.92% from the peak' }}
+              table={{ caption: 'Sample: portfolio value by day, in virtual USD', date: 'Date', value: 'Value', note: 'Note' }}
+            />
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="s-code">
+          <div class="section-head">
+            <h2 class="title" id="s-code">
+              Code, address
+            </h2>
+          </div>
+          <div class="stack-24">
+            <Code
+              label="Sample: read the league"
+              code={'curl https://prixagent.com/api/data/league \\\n  -H "Authorization: Bearer prix_live_…"'}
+              copyLabel="Copy the command"
+              copiedLabel="Command copied"
+              failedLabel="The browser did not allow copying. Select the command and copy it."
+            />
+            <Address
+              value="0x7a3f9c2d51b8e604a1c7d93f2b6e80a45d1fc91e"
+              copyLabel="Copy address"
+              copiedLabel="Address copied"
+              failedLabel="The browser did not allow copying. Select the address and copy it."
+            />
+          </div>
+        </section>
+      </div>
+    )
+  }
+</Layout>
+
+<script>
+  // The motion modules a page imports, and what a page writes to use the ones that are functions.
+  import './motion/carry.ts';
+  import './motion/count.ts';
+  import './motion/countdown.ts';
+  import './motion/draw.ts';
+  import { arrive } from './motion/feed.ts';
+  import './motion/reveal.ts';
+  import { toast } from './motion/toast.ts';
+  import { switchBoard } from './reorder.ts';
+
+  for (const group of document.querySelectorAll<HTMLElement>('[data-demo-follow]')) {
+    group.addEventListener('click', (event) => {
+      const button = (event.target as Element).closest('button.follow-button');
+      if (!button) return;
+      const on = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      toast(`${on ? 'Following' : 'Unfollowed'} ${(button.getAttribute('aria-label') ?? '').replace('Follow ', '')}`);
+    });
+  }
+
+  for (const tabs of document.querySelectorAll<HTMLElement>('[data-demo-switch]')) {
+    const board = document.getElementById(tabs.dataset.demoSwitch ?? '');
+    tabs.addEventListener('click', (event) => {
+      const button = (event.target as Element).closest<HTMLElement>('button');
+      if (!button || !board) return;
+      for (const other of tabs.querySelectorAll('button')) {
+        other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
+      }
+      switchBoard(board, button.dataset.value === 'list' ? 'list' : 'cards');
+    });
+  }
+
+  document.querySelector<HTMLElement>('[data-demo-toast]')?.addEventListener('click', (event) => {
+    toast((event.currentTarget as HTMLElement).dataset.demoToast ?? '');
+  });
+
+  const arriveButton = document.querySelector<HTMLElement>('[data-demo-arrive]');
+  arriveButton?.addEventListener('click', () => {
+    const list = document.getElementById(arriveButton.dataset.demoArrive ?? '');
+    const last = list?.lastElementChild;
+    if (list instanceof HTMLElement && last instanceof HTMLElement) arrive(list, last);
+  });
+</script>
+
+<style>
+  /* Specimen-only furniture. None of this is part of the system. */
+  .specimen {
+    padding-bottom: var(--space-48);
+  }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: var(--space-12) var(--space-24);
+  }
+
+  .swatches li {
+    display: grid;
+    grid-template-columns: var(--space-32) minmax(0, 1fr);
+    column-gap: var(--space-12);
+    align-items: start;
+  }
+
+  .swatch {
+    height: var(--space-32);
+    border-radius: var(--radius-inner);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+
+  .sw-ground {
+    background: var(--ground);
+  }
+
+  .sw-raised {
+    background: var(--raised);
+  }
+
+  .sw-card {
+    background: var(--card);
+  }
+
+  .sw-card-high {
+    background: var(--card-high);
+  }
+
+  .sw-blue-fill {
+    background: var(--blue-fill);
+  }
+
+  .sw-ink {
+    background: var(--ink);
+  }
+
+  .sw-grey {
+    background: var(--grey);
+  }
+
+  .sw-line {
+    background: var(--line);
+  }
+
+  .sw-blue {
+    background: var(--blue);
+  }
+
+  .sw-green {
+    background: var(--green);
+  }
+
+  .sw-red {
+    background: var(--red);
+  }
+
+  .sw-wash {
+    background: var(--wash);
+  }
+
+  .sw-tint {
+    background: var(--tint);
+  }
+
+  .sw-gold {
+    background: var(--gold);
+  }
+
+  .sw-silver {
+    background: var(--silver);
+  }
+
+  .sw-bronze {
+    background: var(--bronze);
+  }
+
+  .types {
+    display: grid;
+    grid-template-columns: 6rem minmax(0, 1fr);
+    gap: var(--space-8) var(--space-16);
+    align-items: baseline;
+  }
+
+  .spaces {
+    display: grid;
+    row-gap: var(--space-4);
+  }
+
+  .spaces li {
+    display: grid;
+    grid-template-columns: var(--space-32) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .space-bar {
+    height: var(--space-8);
+    border-radius: var(--space-2);
+    background: var(--ink);
+  }
+
+  .sp-2 {
+    width: var(--space-2);
+  }
+
+  .sp-4 {
+    width: var(--space-4);
+  }
+
+  .sp-6 {
+    width: var(--space-6);
+  }
+
+  .sp-8 {
+    width: var(--space-8);
+  }
+
+  .sp-12 {
+    width: var(--space-12);
+  }
+
+  .sp-16 {
+    width: var(--space-16);
+  }
+
+  .sp-24 {
+    width: var(--space-24);
+  }
+
+  .sp-32 {
+    width: var(--space-32);
+  }
+
+  .sp-48 {
+    width: var(--space-48);
+  }
+
+  .sp-64 {
+    width: var(--space-64);
+  }
+
+  .sp-96 {
+    width: var(--space-96);
+  }
+
+  .shapes {
+    gap: var(--space-16);
+    margin-top: var(--space-24);
+  }
+
+  .shape {
+    display: grid;
+    place-items: center;
+    width: 11rem;
+    height: 5rem;
+    padding: var(--space-8);
+    color: var(--grey);
+    font-size: var(--text-13);
+    text-align: center;
+  }
+
+  .shape-box {
+    border-radius: var(--radius-box);
+    background: var(--wash);
+  }
+
+  .shape-control {
+    border-radius: var(--radius-control);
+    background: var(--wash);
+  }
+
+  .shape-pill {
+    border-radius: var(--radius-pill);
+    background: var(--wash);
+  }
+
+  .grounds {
+    display: grid;
+    gap: var(--space-12);
+  }
+
+  .ground-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: var(--space-12) var(--space-24);
+  }
+
+  .ground-row li,
+  .ground-board li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
+  .ground-row li {
+    gap: var(--space-12);
+  }
+
+  .ground-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: var(--space-8) var(--space-24);
+  }
+
+  .ground-board .small {
+    margin-left: var(--space-6);
+  }
+
+  /* A full-bleed primitive inside the specimen's column: it runs from edge to edge of the window. */
+  .specimen-bleed {
+    margin-top: var(--space-16);
+    margin-inline: calc(50% - 50vw);
+  }
+
+  .specimen-hero-figure {
+    margin-top: var(--space-16);
+  }
+
+  :global(.specimen-mark-lg) {
+    width: 4rem;
+    height: 4rem;
+  }
+
+  .specimen-narrow {
+    max-width: 21.25rem;
+  }
+
+  .specimen-half {
+    max-width: 30rem;
+  }
+
+  .specimen-gap {
+    margin-top: var(--space-12);
+  }
+
+  .agent-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-16);
+    align-items: center;
+  }
+
+  .holdings {
+    margin-top: var(--space-12);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .holdings li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem 6rem;
+    column-gap: var(--space-12);
+    align-items: center;
+    min-height: 4rem;
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .holdings li > :nth-child(n + 3) {
+    text-align: right;
+  }
+
+  .holdings :global(.meter) {
+    display: none;
+  }
+
+  @media (min-width: 35em) {
+    .holdings li {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 13.75rem) 4.75rem 6.5rem;
+      column-gap: var(--space-16);
+    }
+
+    .holdings :global(.meter) {
+      display: block;
+    }
+  }
+
+  .sparks {
+    display: grid;
+    row-gap: var(--space-12);
+  }
+
+  .sparks li {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    column-gap: var(--space-24);
+    align-items: center;
+  }
+</style>

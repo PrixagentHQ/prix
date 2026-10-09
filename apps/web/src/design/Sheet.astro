@@ -1,0 +1,41 @@
+---
+// Deprecated: a plain section that keeps the pages of direction A standing. The two-column grid
+// is gone. What a page put in `side` is the section's heading, the default slot follows it, and
+// `notes` close it. A single sheet is one column of at most 46rem, for long-form text and forms.
+// New pages use `section` with the classes `page` and `section` (docs/DESIGN.md section 5).
+interface Props {
+  layout?: 'split' | 'single';
+  /** The id of the heading that names this sheet, when it is a section of its own. */
+  labelledby?: string;
+  id?: string;
+  /** Kept so that old calls still type-check. It does nothing: no column is pinned. */
+  pin?: boolean;
+}
+
+const { layout = 'split', labelledby, id } = Astro.props;
+const Tag = labelledby ? 'section' : 'div';
+---
+
+<Tag class="page sheet" id={id} aria-labelledby={labelledby}>
+  {
+    layout === 'single' ? (
+      <div class="sheet-single">
+        <slot />
+      </div>
+    ) : (
+      <>
+        <div class="sheet-side">
+          <slot name="side" />
+        </div>
+        <div class="sheet-main">
+          <slot />
+        </div>
+        {Astro.slots.has('notes') && (
+          <div class="sheet-notes">
+            <slot name="notes" />
+          </div>
+        )}
+      </>
+    )
+  }
+</Tag>

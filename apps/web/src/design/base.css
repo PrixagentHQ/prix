@@ -1,0 +1,720 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: the file is ordered by component and then by breakpoint, not by specificity. */
+/* biome-ignore-all lint/complexity/noImportantStyles: the reduced-motion rule must beat any transition a page declares. */
+
+/*
+  Base: reset, elements, type roles, the page and the utilities.
+  The rules behind every value are in docs/DESIGN.md.
+*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+ol,
+ul,
+dl,
+dd,
+figure,
+fieldset,
+legend {
+  margin: 0;
+}
+
+ol,
+ul,
+fieldset,
+legend {
+  padding: 0;
+}
+
+ol,
+ul {
+  list-style: none;
+}
+
+fieldset {
+  min-width: 0;
+  border: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--text-14);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-14);
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-wrap: break-word;
+}
+
+/* A part of a page may carry a theme of its own (`data-theme` on any element): its words take that theme's ink. */
+[data-theme] {
+  color: var(--ink);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+b,
+strong {
+  font-weight: var(--weight-strong);
+}
+
+/*
+  A link in a sentence is blue and underlined: the underline, not the colour, is what tells it
+  from the words around it. A link that stands alone (a tab, a name on a card, a button) sets
+  its own colour and drops the underline. `:where` keeps this rule under every class.
+*/
+:where(a) {
+  color: var(--blue);
+  text-decoration-line: underline;
+  text-decoration-thickness: var(--rule-hair);
+  text-underline-offset: 0.2em;
+}
+
+:where(a):hover {
+  text-decoration-thickness: var(--rule);
+}
+
+button,
+input,
+select,
+textarea {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Focus is the blue ring, on every control, two pixels clear of it. */
+:focus-visible {
+  outline: var(--rule) solid var(--blue);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-pill);
+}
+
+svg {
+  display: block;
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+th,
+td {
+  padding: 0;
+  font-weight: var(--weight-regular);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+/* ---------- Utilities ---------- */
+
+/* Hidden hides, whatever display a class sets. */
+[hidden] {
+  display: none !important;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.print-only {
+  display: none;
+}
+
+/* Signed figures. The sign is a character in the text; the colour only repeats it. */
+.gain {
+  color: var(--green);
+}
+
+.loss {
+  color: var(--red);
+}
+
+.figures {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.skip {
+  position: absolute;
+  top: -6rem;
+  left: var(--margin);
+  z-index: 10;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-control);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+}
+
+.skip:focus {
+  top: var(--space-8);
+}
+
+/* ---------- Type roles ---------- */
+
+/* A page's name: an agent, "Methodology". */
+.display {
+  font-family: var(--sans-display);
+  font-size: var(--text-24);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-24);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* The name of a board or of a block that opens a page: "Top agents". */
+.headline {
+  font-size: var(--text-20);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-20);
+  letter-spacing: -0.01em;
+}
+
+/* A section heading. */
+.title {
+  font-size: var(--text-16);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-16);
+}
+
+/* An opening sentence, at reading size. Never a slogan. */
+.statement {
+  max-width: var(--measure);
+  font-size: var(--text-20);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-20);
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+/* Sentences meant to be read: summaries, reasons, long-form pages. */
+.prose {
+  max-width: var(--measure);
+  font-size: var(--text-16);
+  line-height: var(--leading-16);
+  text-wrap: pretty;
+}
+
+/* Interface sentences: help text and messages at body size. */
+.body {
+  max-width: var(--measure-small);
+}
+
+/* Notes beside records: dates, sources, the disclaimer. */
+.small {
+  max-width: var(--measure-small);
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+.small strong {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+/* A link that is alone in its note is a standalone target: 13 + 2 x 4 + leading = 26 px high. */
+p.small > a:only-child {
+  display: inline-block;
+  padding-block: var(--space-4);
+  margin-block: calc(-1 * var(--space-4));
+}
+
+/* A note directly under a heading belongs to it. */
+.title + .small,
+.headline + .small {
+  margin-top: var(--space-2);
+}
+
+.display + .small {
+  margin-top: var(--space-4);
+}
+
+/* The label of a figure, the head of a column. */
+.caption {
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-12);
+}
+
+/* The three sizes of a figure. A figure is tabular, 600, and takes `gain` or `loss` only when it is signed. */
+.figure-20,
+.figure-28,
+.figure-40 {
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.figure-20 {
+  font-size: var(--text-20);
+  line-height: var(--leading-20);
+  letter-spacing: -0.01em;
+}
+
+.figure-28 {
+  font-family: var(--sans-display);
+  font-size: var(--text-28);
+  line-height: var(--leading-28);
+  letter-spacing: -0.02em;
+}
+
+.figure-40 {
+  font-family: var(--sans-display);
+  font-size: var(--text-40);
+  line-height: var(--leading-40);
+  letter-spacing: -0.025em;
+}
+
+/*
+  The small label over a section's title: what the block is, in a few words ("This season",
+  "From the agents"). 13/18, 600, grey. Never capitals, never a colour.
+*/
+.eyebrow {
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-13);
+}
+
+/* The title of a section of the home page and of a band: 24 on a phone, 32 from 720. */
+.section-title {
+  font-family: var(--sans-display);
+  font-size: var(--text-24);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-24);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/*
+  A back-link in the eyebrow over a page's title (site, social and account page heads): grey and
+  without an underline at rest, so it reads as a place; the underline comes on hover and on
+  keyboard focus, so the link can be found. Nothing else about it changes. The `p` and `[href]`
+  lift this rule over each page head's own scoped `text-decoration: none`.
+*/
+p:is(.site-head-eyebrow, .social-trail, .acct-eyebrow) > a[href]:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-thickness: var(--rule-hair);
+}
+
+.eyebrow + .section-title {
+  margin-top: var(--space-4);
+}
+
+@media (min-width: 45em) {
+  .section-title {
+    font-size: var(--text-32);
+    line-height: var(--leading-32);
+    letter-spacing: -0.022em;
+  }
+}
+
+/* The largest figure of the site: the featured agent's, in the hero band. One per page. */
+.figure-56 {
+  font-family: var(--sans-display);
+  font-size: var(--text-40);
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: var(--leading-40);
+  letter-spacing: -0.025em;
+}
+
+@media (min-width: 60em) {
+  .figure-56 {
+    font-size: var(--text-56);
+    line-height: var(--leading-56);
+    letter-spacing: -0.03em;
+  }
+}
+
+/* Long-form pages: methodology, terms, privacy. One column on the left edge. */
+.longform > * + * {
+  margin-top: var(--space-16);
+}
+
+.longform > .title {
+  margin-top: var(--space-32);
+}
+
+.longform > .title + * {
+  margin-top: var(--space-8);
+}
+
+.longform ul,
+.longform ol {
+  max-width: var(--measure);
+  padding-left: var(--space-24);
+  font-size: var(--text-16);
+  line-height: var(--leading-16);
+}
+
+.longform ul {
+  list-style: disc;
+}
+
+.longform ol {
+  list-style: decimal;
+}
+
+.longform li + li {
+  margin-top: var(--space-8);
+}
+
+/* ---------- Page ---------- */
+
+.page {
+  max-width: calc(var(--page) + 2 * var(--margin));
+  margin-inline: auto;
+  padding-inline: var(--margin);
+}
+
+/*
+  A card on its way to a new place never widens the page, nor does a band that reaches the
+  edges of the window. `main` is its own stacking context, so the band of the page head (below)
+  can lie behind everything in it.
+*/
+main {
+  /* Its own block formatting context: the first block's margin stays inside, under the band. */
+  display: flow-root;
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+/* A block of a page: its heading, then what it holds. */
+.section {
+  margin-top: var(--section-gap);
+}
+
+/*
+  Zones: the rhythm of a page. A zone is a full-bleed band that holds one or more blocks
+  (`section.page.section`); the zones of a page alternate between the ground and a raised
+  band, so the eye can tell one part of the page from the next without a rule or a box.
+
+    <div class="zone zone--raised"><section class="page section">…</section></div>
+
+  `zone--hero` is the first band of the home page: raised, with the light of the hero behind
+  it, the ink at 7% of its strength in dark, from the top right. Each zone sets
+  `--surface`, so what stands in it knows its ground.
+
+  A page that does not use zones gets the same rhythm from the layout (below): the band of the
+  page head, and every second block on a raised band.
+*/
+.zone {
+  padding-block: var(--space-32);
+}
+
+.zone > :first-child,
+.zone > :first-child > .section:first-child {
+  margin-top: 0;
+}
+
+.zone--raised {
+  --surface: var(--raised);
+  border-block: var(--rule-hair) solid var(--line);
+  background: var(--raised);
+}
+
+.zone--raised + .zone--raised {
+  border-top: 0;
+}
+
+.zone--hero {
+  --surface: var(--raised);
+  position: relative;
+  padding-block: var(--space-24) var(--space-32);
+  border-bottom: var(--rule-hair) solid var(--line);
+}
+
+/*
+  The hero's ground lies under the field of characters (ground/ground.css): it is drawn at -2 in
+  the stacking context of `main`, the field at -1, so the field shows on the hero's open ground
+  and under none of its cards. In dark the raised surface is the black of the page and the light
+  is off: the field is the light of the head.
+*/
+.zone--hero::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background: radial-gradient(ellipse 70% 100% at 85% 0%, var(--hero-tint), transparent 75%), var(--raised);
+  content: "";
+  pointer-events: none;
+}
+
+/* What follows a zone starts its own band: the footer keeps clear of the last one. */
+.zone + .zone {
+  margin-top: 0;
+}
+
+@media (min-width: 45em) {
+  .zone {
+    padding-block: var(--space-48);
+  }
+
+  .zone--hero {
+    padding-block: var(--space-32) var(--space-48);
+  }
+}
+
+/*
+  The band of the page head, on every page that has no hero of its own: the raised surface
+  behind the top of the page, flat (no light in a corner), fading into the ground over 24rem (the
+  height of a page head and its first block), so it never ends in an edge across the content.
+  It is drawn by the layout; a page does nothing. A page with a `zone--hero` keeps its own.
+*/
+main::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0 0 auto;
+  height: min(100%, 24rem);
+  background: linear-gradient(var(--raised), var(--ground));
+  content: "";
+  pointer-events: none;
+}
+
+main:has(> .zone--hero)::before {
+  content: none;
+}
+
+/*
+  The alternating blocks of a page that has no zones: the second, fourth and every other block
+  (`.page.section` straight inside `main`) stands on a raised band that reaches the edges of
+  the window, with a hairline above and below. The band is the element's own border image,
+  drawn out to the sides (`main` clips it to the window), so the block keeps its place and its
+  measure. A page that lays out zones itself turns this off.
+*/
+main:not(:has(> .zone)) > :nth-child(even of .page.section):not(:empty) {
+  --surface: var(--raised);
+  margin-top: var(--section-gap);
+  padding-block: var(--space-32);
+  border-image-source: linear-gradient(
+    var(--line) 0 var(--rule-hair),
+    var(--raised) var(--rule-hair) calc(100% - var(--rule-hair)),
+    var(--line) calc(100% - var(--rule-hair))
+  );
+  border-image-slice: 0 fill;
+  border-image-width: 0;
+  border-image-outset: 0 100vw;
+}
+
+@media (min-width: 45em) {
+  main:not(:has(> .zone)) > :nth-child(even of .page.section):not(:empty) {
+    padding-block: var(--space-48);
+  }
+}
+
+/*
+  The footer stands on its own raised band, the width of the window, under a hairline: the
+  page ends in a band, never in a stretch of bare ground.
+*/
+body > footer {
+  --surface: var(--raised);
+  margin-top: var(--space-48);
+  border-image-source: linear-gradient(var(--line) 0 var(--rule-hair), var(--raised) var(--rule-hair));
+  border-image-slice: 0 fill;
+  border-image-width: 0;
+  border-image-outset: 0 100vw;
+}
+
+/*
+  When the last block of a page is itself on a raised band (a `zone--raised`, or an even block of
+  a page without zones), the footer joins it: no strip of ground between two bands, and one
+  hairline, the band's own lower edge, between the last block and the footer. "Last" counts
+  only what takes a place on the page: a toast (fixed at the foot of the window), a template
+  and a script after the last block do not end the page.
+*/
+main:has(> .zone--raised:nth-last-child(1 of :not(.toast, template, script, style))) + footer,
+main:not(:has(> .zone)):has(
+    > :nth-child(even of .page.section):not(:empty):nth-last-child(1 of :not(.toast, template, script, style))
+  )
+  + footer {
+  margin-top: 0;
+  border-image-source: linear-gradient(var(--raised), var(--raised));
+}
+
+/*
+  The window never scrolls sideways for a band drawn out to its edges. The page is a column at
+  least as tall as the window and the footer's band takes what is left, so on a short page
+  (404, sign in, a build page with its slots full) the band reaches the bottom edge: no bare
+  ground under it, and none between a last raised block and the footer.
+*/
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+body > footer {
+  flex: 1 0 auto;
+}
+
+/* A centred `.page` in a column would shrink to its words: the header and the footer keep the full width. */
+body > :is(header, footer) {
+  width: 100%;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+/* What sits at the right end of a heading's row: a switch, a link to more. */
+.section-head > .end {
+  margin-left: auto;
+}
+
+/* A heading with an eyebrow over it: the switch at the right sits on the title's baseline. */
+.section-head:has(.eyebrow) {
+  align-items: flex-end;
+  margin-bottom: var(--space-24);
+}
+
+/* Blocks inside one column. */
+.stack > * + * {
+  margin-top: var(--section-gap);
+}
+
+.stack-24 > * + * {
+  margin-top: var(--space-24);
+}
+
+.stack-16 > * + * {
+  margin-top: var(--space-16);
+}
+
+.stack-8 > * + * {
+  margin-top: var(--space-8);
+}
+
+.stack-4 > * + * {
+  margin-top: var(--space-4);
+}
+
+/* A row of controls or chips that wraps. */
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+/* The record on the left, the panel of what a visitor can do on the right. One column under 960. */
+.with-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--space-24);
+  align-items: start;
+}
+
+/*
+  From 960 the panel takes the right column for the whole height of the left one. The left
+  column is two blocks at most (the head, then one block holding the rest): the second row
+  takes all the height that is left, so the panel's area ends where the record ends and a
+  sticky panel travels the whole way. A third block would fall below the panel's area.
+*/
+@media (min-width: 60em) {
+  .with-panel {
+    grid-template-columns: minmax(0, 1fr) 21.25rem;
+    grid-template-rows: auto 1fr;
+    column-gap: var(--space-32);
+  }
+
+  .with-panel:has(> .panel--wide) {
+    grid-template-columns: minmax(0, 1fr) 25rem;
+  }
+
+  .with-panel > .panel {
+    grid-column: 2;
+    grid-row: 1 / -1;
+  }
+
+  .with-panel > :not(.panel) {
+    grid-column: 1;
+  }
+}
+
+/*
+  Sheet (deprecated): the two-column grid of direction A is gone. A sheet is now a plain
+  section: what was its side column is its heading, its main column follows, its notes close it.
+*/
+.sheet {
+  padding-top: var(--space-24);
+}
+
+.sheet + .sheet,
+.sheet + script + .sheet {
+  margin-top: var(--space-32);
+  padding-top: 0;
+}
+
+.sheet > * + * {
+  margin-top: var(--space-16);
+}
+
+.sheet > .sheet-notes {
+  margin-top: var(--space-24);
+}
+
+.sheet-single {
+  max-width: 46rem;
+}
+
+/* ---------- Less motion: every transition and animation gives way to its end state ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

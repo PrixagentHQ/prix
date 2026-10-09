@@ -1,0 +1,75 @@
+---
+// The strip of the league under the header: the time left until the next round, the league's
+// status in a few words, and that all of it is a paper trading simulation. docs/DESIGN.md
+// section 5.3. Prix is one continuous league (D-109), so the strip names no season, day or end.
+//
+// The next round is a time on the schedule (docs/CONTRACTS.md section 10): on the hour from
+// 15:00 to 19:00 UTC on trading days. The market is checked only when a round starts, so a check
+// from an earlier window of rounds is not repeated as if it were made now (clock.ts): between
+// rounds the strip says that no round is running and when the next is due. When that time
+// arrives on an open page, the countdown gives way to "Round due now" (board/island.ts) until
+// the page reads the league again, so it never stands at 00:00.
+import type { LeagueResponse } from '@prix/contracts';
+import { text } from '../../content/index.ts';
+import { marketStatusLabel } from '../../content/states.ts';
+import Countdown from '../../design/Countdown.astro';
+import SeasonBanner from '../../design/SeasonBanner.astro';
+import { leagueClock } from '../clock.ts';
+import { betweenLabel, leagueMoment, nextRoundShort, pageNow, stateText } from '../words.ts';
+
+interface Props {
+  league: LeagueResponse;
+}
+
+const { league } = Astro.props;
+
+const now = pageNow(Astro.url, leagueMoment(league));
+const clock = leagueClock(league, now);
+const next = clock.kind === 'open' || clock.kind === 'between' ? clock.next : null;
+const market =
+  clock.kind === 'round'
+    ? undefined
+    : clock.kind === 'between'
+      ? { label: betweenLabel(), open: false }
+      : league.market
+        ? { label: marketStatusLabel(league.market), open: league.market.open }
+        : undefined;
+// A refresh is due sooner while a round is being processed.
+const refreshSeconds = clock.kind === 'round' ? 60 : 300;
+---
+
+<div class="page" data-live="banner">
+  <SeasonBanner
+    label={text('league.stripLabel', 'The league now')}
+    season={text('league.stripName', 'The league')}
+    market={market}
+    note={text('common.simulationLabel', 'Paper trading simulation')}
+  >
+    {
+      next ? (
+        <Fragment slot="countdown">
+          <span class="round-wait" data-round-wait>
+            {text('league.nextRoundIn', 'Next round in')}
+            <Countdown to={next} now={new Date(now)} />
+          </span>
+          <span data-round-due hidden>
+            {text('league.roundDueNow', 'Round due now')}
+          </span>
+        </Fragment>
+      ) : (
+        (clock.kind === 'between' || clock.kind === 'open') && <Fragment slot="countdown">{nextRoundShort()}</Fragment>
+      )
+    }
+    {clock.kind === 'round' && <span data-round-now>{stateText('states.roundInProgress')}</span>}
+  </SeasonBanner>
+</div>
+<div data-live="clock" data-refresh={refreshSeconds} hidden></div>
+
+<style>
+  /* The words and the figures of the countdown, spaced as the banner spaces an item's parts. */
+  .round-wait {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+</style>

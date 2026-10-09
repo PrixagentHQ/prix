@@ -1,0 +1,233 @@
+---
+// The strategy profile (Strategy DNA, method dna-v1, docs/contracts/phase-6-social.md section 5.1):
+// one row per axis, with its label, its exact value as text, and a thin track on a fixed scale with
+// one neutral dot and plain words at both ends. No radar, no colour for good or bad, nothing that
+// ranks: the dot is ink on every axis and every agent. Below its minimum an axis says why it has
+// no value; a forming profile says how many days it has. The footer says what it is measured
+// from and what it is not.
+//
+// The fork builder of `web-account` may render it too: it takes the profile and nothing else.
+import type { DnaProfile } from '@prix/contracts';
+import { formatCount, formatDay } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import EmptyState from '../../design/EmptyState.astro';
+import { dnaFooter, dnaRows, profileMethodHref } from './words.ts';
+
+interface Props {
+  /** Null before the first computation. */
+  profile: DnaProfile | null;
+  /** The minimum of days, from the API's `dnaMinDays`. */
+  minDays: number;
+  /** Unique on the page. */
+  id: string;
+  /** The heading level of the profile's title. */
+  level?: 2 | 3;
+}
+
+const { profile, minDays, id, level = 2 } = Astro.props;
+const Heading = level === 2 ? 'h2' : 'h3';
+const rows = profile ? dnaRows(profile) : [];
+const title = text('social.dnaTitle', 'Strategy profile');
+const titleId = `${id}-title`;
+const asOf = profile
+  ? text('social.dnaAsOf', 'As of {day}. What the paper portfolio did, measured from its stored rows.', {
+      day: formatDay(profile.asOfDay),
+    })
+  : null;
+const forming =
+  profile && profile.status === 'forming'
+    ? text(
+        'social.dnaForming',
+        'Not enough history yet: {n} of {min} days. Each measure shows a value from {min} days.',
+        {
+          n: formatCount(profile.observedDays),
+          min: formatCount(minDays),
+        },
+      )
+    : null;
+// A position on the track, as an SVG attribute in percent (no style attribute: docs/DESIGN.md section 19).
+const percent = (share: number): string => `${Math.round(share * 1000) / 10}%`;
+---
+
+<section class="dna stack-16" id={id} aria-labelledby={titleId}>
+  <div>
+    <Heading class="title" id={titleId}>{title}</Heading>
+    {asOf && <p class="small">{asOf}</p>}
+  </div>
+  {
+    profile === null ? (
+      <EmptyState
+        title={text('social.dnaEmptyTitle', 'No profile yet')}
+        body={text(
+          'social.dnaEmptyBody',
+          'Prix measures it once a day from the agent’s stored end-of-day rows, two days after each day. It shows here after the first measurement.',
+        )}
+      />
+    ) : (
+      <>
+        {forming && <p class="dna-forming">{forming}</p>}
+        <ul class="dna-list" aria-label={title}>
+          {rows.map((row) => (
+            <li class="dna-row">
+              <div class="dna-head">
+                <span class="dna-label">{row.label}</span>
+                {row.value !== null ? (
+                  <span class="dna-value figures">{row.value}</span>
+                ) : (
+                  <span class="dna-value is-none">{text('social.dnaNoValue', 'No value yet')}</span>
+                )}
+              </div>
+              <div class="dna-scale" aria-hidden="true">
+                <svg class="dna-track" focusable="false">
+                  <line class="dna-rule" x1="0" x2="100%" y1="50%" y2="50%" />
+                  <line class="dna-tick" x1="0.5" x2="0.5" y1="15%" y2="85%" />
+                  <line class="dna-tick" x1="100%" x2="100%" y1="15%" y2="85%" />
+                  {row.position !== null && <circle class="dna-dot" cx={percent(row.position)} cy="50%" r="5" />}
+                </svg>
+                <span class="dna-ends">
+                  <span>{row.start}</span>
+                  <span>{row.end}</span>
+                </span>
+              </div>
+              <p class="small dna-about">
+                {row.note ?? row.about}
+                {row.beyond && <> {text('social.dnaBeyond', 'The value lies past the end of the scale.')}</>}
+              </p>
+              {row.extra && <p class="small dna-extra">{row.extra}</p>}
+            </li>
+          ))}
+        </ul>
+        <p class="small dna-foot">
+          {dnaFooter(profile)}{' '}
+          <a href={profileMethodHref(Astro.url)}>{text('social.dnaMethodLink', 'How a strategy profile is measured')}</a>
+        </p>
+      </>
+    )
+  }
+</section>
+
+<style>
+  .dna-forming {
+    max-width: var(--measure-small);
+    color: var(--ink);
+    font-weight: var(--weight-medium);
+  }
+
+  .dna-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  /*
+    One axis: the label and its value on a line, the track under them, then what it measures.
+    From 720 pixels the label and value stand in a column of their own beside the track.
+  */
+  .dna-row {
+    display: grid;
+    row-gap: var(--space-6);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .dna-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-12);
+  }
+
+  .dna-label {
+    font-weight: var(--weight-strong);
+  }
+
+  .dna-value {
+    font-weight: var(--weight-strong);
+  }
+
+  .dna-value.is-none {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  /* The dot is 10 pixels wide; the track keeps 6 pixels clear at each end so it is never cut. */
+  .dna-scale {
+    display: grid;
+    row-gap: var(--space-2);
+    padding-inline: var(--space-6);
+  }
+
+  .dna-track {
+    display: block;
+    width: 100%;
+    height: var(--space-16);
+    overflow: visible;
+  }
+
+  .dna-rule,
+  .dna-tick {
+    stroke: var(--grey);
+    stroke-width: var(--rule-hair);
+  }
+
+  .dna-dot {
+    fill: var(--ink);
+    stroke: var(--surface);
+    stroke-width: var(--rule);
+  }
+
+  .dna-ends {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-12);
+    margin-inline: calc(-1 * var(--space-6));
+    color: var(--grey);
+    font-size: var(--text-12);
+    line-height: var(--leading-12);
+    font-weight: var(--weight-medium);
+  }
+
+  .dna-ends > :last-child {
+    text-align: right;
+  }
+
+  .dna-about,
+  .dna-extra {
+    max-width: var(--measure-small);
+  }
+
+  .dna-extra {
+    color: var(--ink);
+  }
+
+  .dna-foot {
+    max-width: var(--measure);
+  }
+
+  @media (min-width: 45em) {
+    .dna-row {
+      grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+      column-gap: var(--space-24);
+      align-items: start;
+    }
+
+    .dna-head {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: var(--space-2);
+    }
+
+    .dna-scale {
+      padding-top: var(--space-2);
+    }
+
+    .dna-about,
+    .dna-extra {
+      grid-column: 2;
+    }
+  }
+</style>

@@ -1,0 +1,71 @@
+---
+// The search field: a form that asks the league for the agents whose name contains the text
+// (`GET /league?q=`). It works without script. The input carries `data-agent-search`, so the
+// league page can filter in place as a person types. With `shortcut`, that key puts the cursor
+// in the field, and the key is shown once the script that listens for it has run.
+interface Props {
+  /** The name of the field for assistive technology, and its placeholder: "Search agents". */
+  label: string;
+  action?: string;
+  name?: string;
+  /** What the field holds when the page is the answer to a search. */
+  value?: string;
+  id?: string;
+  /** One key, for example "/". */
+  shortcut?: string;
+  class?: string;
+}
+
+const { label, action = '/league', name = 'q', value, id = 'agent-search', shortcut, class: extra } = Astro.props;
+---
+
+<form class:list={['search', extra]} role="search" action={action} method="get">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+    <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"></circle>
+    <path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+  </svg>
+  <input
+    type="search"
+    id={id}
+    name={name}
+    value={value}
+    placeholder={label}
+    aria-label={label}
+    aria-keyshortcuts={shortcut}
+    autocomplete="off"
+    spellcheck="false"
+    maxlength="64"
+    data-agent-search
+    data-search-shortcut={shortcut}
+  />
+  {
+    shortcut && (
+      <kbd aria-hidden="true" hidden data-search-key>
+        {shortcut}
+      </kbd>
+    )
+  }
+</form>
+
+<script>
+  // The shortcut key puts the cursor in the field, unless the person is typing somewhere else.
+  const field = document.querySelector<HTMLInputElement>('[data-search-shortcut]');
+  const key = field?.dataset.searchShortcut;
+  if (field && key) {
+    const hint = field.parentElement?.querySelector<HTMLElement>('[data-search-key]');
+    if (hint) hint.hidden = false;
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== key || event.ctrlKey || event.metaKey || event.altKey) return;
+      const at = document.activeElement;
+      const typing =
+        at instanceof HTMLInputElement ||
+        at instanceof HTMLTextAreaElement ||
+        at instanceof HTMLSelectElement ||
+        (at instanceof HTMLElement && at.isContentEditable);
+      if (typing) return;
+      event.preventDefault();
+      field.focus();
+      field.select();
+    });
+  }
+</script>

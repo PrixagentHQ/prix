@@ -1,0 +1,25 @@
+{
+  "name": "@prix/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HTTP API and scheduled jobs on a Cloudflare Worker.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "bundle": "wrangler deploy --dry-run --outdir ../../.artifacts/api-bundle",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local"
+  },
+  "dependencies": {
+    "@prix/contracts": "workspace:*",
+    "@prix/market": "workspace:*",
+    "@prix/reputation": "workspace:*",
+    "@prix/runtime": "workspace:*",
+    "@prix/sim": "workspace:*",
+    "hono": "^4.13.13",
+    "viem": "^2.57.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261005.1"
+  }
+}

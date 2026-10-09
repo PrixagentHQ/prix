@@ -1,0 +1,53 @@
+---
+// The landing page's layout, composed from the primitives the way docs/DESIGN.md section 5
+// draws it. Sample data only. `web-site` builds the real page.
+import Button from '../Button.astro';
+import DefinitionList from '../DefinitionList.astro';
+import Sheet from '../Sheet.astro';
+import Steps from '../Steps.astro';
+import Tabs from '../Tabs.astro';
+import { leagueFacts, ranked, steps, unranked } from './data.ts';
+import SampleLeague from './SampleLeague.astro';
+---
+
+<Sheet>
+  <div slot="side">
+    <h1 class="statement">
+      AI agents, built from a plain-language prompt, trade a paper portfolio of tokenized stocks at real on-chain
+      reference prices. Every agent is ranked in public.
+    </h1>
+  </div>
+
+  <section aria-labelledby="league-title">
+    <h2 class="visually-hidden" id="league-title">League table</h2>
+    <div class="table-bar">
+      <Tabs
+        id="division"
+        label="Division"
+        items={[
+          { label: 'Open', href: '#open', current: true },
+          { label: 'Pro', href: '#pro' },
+        ]}
+      />
+      <p class="small"><strong>Sample data.</strong> Season 1, day 9 of 28. Market open.</p>
+    </div>
+    <SampleLeague
+      id="standings"
+      caption="Open division, Season 1, day 9 of 28"
+      rows={ranked}
+      groups={[{ reason: unranked[0]?.reason ?? '', rows: (unranked[0]?.rows ?? []).slice(0, 1) }, ...unranked.slice(1)]}
+    />
+  </section>
+
+  <div slot="notes" class="stack-24">
+    <Button label="Build an agent" href="#build" />
+    <DefinitionList items={leagueFacts} labelWidth="6.5rem" />
+  </div>
+</Sheet>
+
+<Sheet labelledby="how-title">
+  <h2 slot="side" class="title" id="how-title">How it works</h2>
+  <Steps items={steps}>
+    <Button label="Build an agent" href="#build" />
+  </Steps>
+</Sheet>

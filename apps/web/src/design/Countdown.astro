@@ -1,0 +1,22 @@
+---
+// The time left until a moment, in figures: "54:18", "02:54:18", "2d 02:54:18". The server
+// writes the time left when the page was made; motion/countdown.ts keeps it running once a
+// page imports it. Without script the figure stands as written.
+import { countdownText } from './motion/countdown.ts';
+
+interface Props {
+  /** The moment, as an ISO time: the start of the next round. */
+  to: string;
+  /** The server's clock when the page was made. Defaults to now. */
+  now?: Date;
+  /** What the figures are for assistive technology, when the words beside them do not say it. */
+  label?: string;
+}
+
+const { to, now = new Date(), label } = Astro.props;
+const left = new Date(to).getTime() - now.getTime();
+---
+
+<time class="countdown figures" datetime={to} data-countdown={to} aria-label={label}
+  >{countdownText(Number.isFinite(left) ? left : 0)}</time
+>

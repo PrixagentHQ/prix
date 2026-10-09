@@ -1,0 +1,43 @@
+---
+// An action that asks once before it runs. The first button opens the question; the
+// question states the consequence; the confirming button repeats the action's name.
+// The words do the warning: nothing here is red (docs/DESIGN.md section 8).
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+
+interface Props {
+  /** The action's name, on the button that opens the question and on the one that confirms. */
+  label: string;
+  busyLabel: string;
+  question: string;
+  consequence: string;
+  /** What the confirming button does: the `data-act` of actions.ts. */
+  act: { call: 'patch' | 'deleteKey' | 'release'; id: string; body?: Record<string, unknown>; done: string };
+  id: string;
+}
+
+const { label, busyLabel, question, consequence, act, id } = Astro.props;
+---
+
+<div data-confirm>
+  <Button label={label} variant="secondary" data-confirm-ask data-confirm-open />
+  <div class="stack-16" role="group" aria-labelledby={id} tabindex="-1" hidden data-confirm-panel>
+    <div class="stack-4">
+      <p class="body" id={id}><strong>{question}</strong></p>
+      <p class="body">{consequence}</p>
+    </div>
+    <p class="confirm-actions">
+      <Button label={label} busyLabel={busyLabel} variant="secondary" data-act={JSON.stringify(act)} />
+      <Button label={text('common.cancel', 'Cancel')} variant="quiet" data-confirm-cancel />
+    </p>
+  </div>
+</div>
+
+<style>
+  .confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8) var(--space-24);
+    align-items: center;
+  }
+</style>

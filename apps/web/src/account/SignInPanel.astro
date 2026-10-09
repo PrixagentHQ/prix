@@ -1,0 +1,189 @@
+---
+// The sign-in control: what the wallet will ask, the button, the wait in words, and a message
+// for every way it can end. The sign-in page shows it with its two steps; the builder, the
+// account page and the admin page show it in place for a visitor who is not signed in, so
+// the person signs in where they were heading and stays there.
+import { NONCE_TTL_SECONDS } from '@prix/contracts';
+import { inWords } from '../content/facts.ts';
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+import Notice from '../design/Notice.astro';
+import Steps from '../design/Steps.astro';
+import { errorSentences } from './session.ts';
+import './account.css';
+
+interface Props {
+  /** Where the person goes once signed in: a path on this site, already checked by `safeNext`. */
+  next: string;
+  /** The two steps, for the sign-in page. Elsewhere one sentence says the same. */
+  steps?: boolean;
+  /** The button fills the card, for the sign-in page's one action. */
+  wide?: boolean;
+  /** The heading level of each step: 2 under the page's name, 3 inside a card with its own heading. */
+  level?: 2 | 3;
+  /** Steps that follow signing in, numbered after its two. Shown only with `steps`. */
+  then?: Array<{ title: string; body: string }>;
+}
+
+const { next, steps = false, wide = false, level = 2, then = [] } = Astro.props;
+
+const signInFailed = text(
+  'errors.signInFailed',
+  'The signature could not be checked, so you are not signed in. Sign in again and sign the message with the same wallet.',
+);
+const contractHint = text(
+  'signIn.contractHint',
+  'A smart contract wallet, such as a multisig, cannot sign in to Prix yet.',
+);
+---
+
+<div class="stack-24" data-sign-in data-next={next}>
+  {
+    steps ? (
+      <Steps
+        level={level}
+        items={[
+          {
+            title: text('signIn.stepAccountTitle', 'Choose an account'),
+            body: text(
+              'signIn.stepAccountBody',
+              'Your wallet asks which account to share. Prix reads its address and nothing else in the wallet.',
+            ),
+          },
+          {
+            title: text('signIn.stepSignTitle', 'Sign the message'),
+            body: text(
+              'signIn.stepSignBody',
+              'Your wallet shows a short message that names Prix and this site. Signing it proves the account is yours. It is not a transaction.',
+            ),
+          },
+          ...then,
+        ]}
+      />
+    ) : (
+      <p class="body">
+        {text(
+          'legal.walletScope',
+          'Prix asks your wallet for one thing: a signature that signs you in. It sends no transaction, costs no gas, and never asks for an approval or a transfer.',
+        )}
+      </p>
+    )
+  }
+
+  <div class="stack-16">
+    <Button
+      label={text('nav.signIn', 'Sign in')}
+      busyLabel={text('signIn.busy', 'Signing in')}
+      size={wide ? 'lg' : 'md'}
+      wide={wide}
+      data-sign-in-button
+    />
+    <p
+      class="small"
+      role="status"
+      data-sign-in-status
+      data-account={text('signIn.waitAccount', 'Choose an account in your wallet.')}
+      data-sign={text('signIn.waitSignature', 'Sign the message in your wallet.')}
+      data-check={text('signIn.waitCheck', 'Checking the signature.')}
+    >
+    </p>
+    <div class="acct-outlet" data-outlet data-errors={errorSentences()}></div>
+    <noscript>
+      <Notice
+        tone="status"
+        title={text('signIn.noScriptTitle', 'JavaScript is off')}
+        body={text(
+          'signIn.noScriptBody',
+          'Signing in needs JavaScript, because this page has to ask your wallet for a signature. Turn it on and reload the page.',
+        )}
+      />
+    </noscript>
+  </div>
+
+  <template data-message="no-wallet">
+    <Notice
+      tone="status"
+      title={text('signIn.noWalletTitle', 'No wallet found in this browser')}
+      body={text(
+        'signIn.noWalletBody',
+        'Signing in needs a wallet. On a computer, add a wallet extension to this browser and reload the page. On a phone, open this site in the browser inside your wallet app.',
+      )}
+    />
+  </template>
+  <template data-message="account-declined">
+    <Notice
+      tone="error"
+      title={text('signIn.accountDeclinedTitle', 'No account was shared')}
+      body={text(
+        'signIn.accountDeclinedBody',
+        'Your wallet did not share an account, so you are not signed in. Sign in again and choose an account.',
+      )}
+    />
+  </template>
+  <template data-message="declined">
+    <Notice
+      tone="error"
+      title={text('signIn.declinedTitle', 'Signature declined')}
+      body={text(
+        'errors.signInDeclined',
+        'You declined the signature in your wallet, so you are not signed in. Sign in again when you are ready.',
+      )}
+    />
+  </template>
+  <template data-message="pending">
+    <Notice
+      tone="error"
+      title={text('signIn.pendingTitle', 'Your wallet is waiting for you')}
+      body={text(
+        'signIn.pendingBody',
+        'Your wallet already has a request open. Open the wallet, finish or dismiss that request, then sign in again.',
+      )}
+    />
+  </template>
+  <template data-message="wallet-error">
+    <Notice
+      tone="error"
+      title={text('signIn.walletErrorTitle', 'Your wallet did not answer')}
+      body={text(
+        'signIn.walletErrorBody',
+        'Your wallet returned an error instead of a signature. Check that it is unlocked, then sign in again.',
+      )}
+    />
+  </template>
+  <template data-message="expired">
+    <Notice
+      tone="error"
+      title={text('signIn.expiredTitle', 'The sign-in request expired')}
+      body={text(
+        'signIn.expiredBody',
+        'The message was signed more than {minutes} minutes after Prix issued it, so you are not signed in. Sign in again and sign the new message.',
+        { minutes: inWords(NONCE_TTL_SECONDS / 60) },
+      )}
+    />
+  </template>
+  <template data-message="contract-wallet">
+    <Notice
+      tone="error"
+      title={text('signIn.contractTitle', 'This wallet cannot sign in yet')}
+      body={text(
+        'signIn.contractBody',
+        'It answered with the kind of signature a smart contract wallet makes, such as a multisig. For now Prix signs in ordinary wallet accounts only. Sign in with one of those.',
+      )}
+    />
+  </template>
+  <template data-message="failed">
+    <Notice tone="error" title={text('signIn.failedTitle', 'Not signed in')} body={`${signInFailed} ${contractHint}`} />
+  </template>
+  <template data-message="start-failed">
+    <Notice tone="error" title={text('signIn.startFailedTitle', 'Sign-in could not start')} body="{message}" />
+  </template>
+  <template data-message="check-failed">
+    <Notice tone="error" title={text('signIn.failedTitle', 'Not signed in')} body="{message}" />
+  </template>
+</div>
+
+<script>
+  import { mountSignIn } from './sign-in.ts';
+
+  mountSignIn();
+</script>

@@ -1,0 +1,62 @@
+---
+// The head of a Phase 6 page: where it sits, its name, one or two sentences, and the line that
+// says it is a paper simulation. The default slot holds what stands under the lead (chips, a switch).
+import { paperLine } from './words.ts';
+
+interface Props {
+  title: string;
+  /** A few words over the title that say where the page sits: "Paper experiments". */
+  eyebrow?: string;
+  eyebrowHref?: string;
+  lead?: string;
+}
+
+const { title, eyebrow, eyebrowHref, lead } = Astro.props;
+---
+
+<section class="page section social-top">
+  {
+    eyebrow && (
+      <p class="small social-trail">{eyebrowHref ? <a href={eyebrowHref}>{eyebrow}</a> : eyebrow}</p>
+    )
+  }
+  <h1 class="display social-title">{title}</h1>
+  {lead && <p class="social-lead">{lead}</p>}
+  <slot />
+  <p class="small social-paper">{paperLine()}</p>
+</section>
+
+<style>
+  .social-top {
+    display: grid;
+    row-gap: var(--space-8);
+    justify-items: start;
+  }
+
+  /* A link that stands alone is a target of at least 24 pixels. */
+  .social-trail a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+
+  .social-trail a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  .social-title {
+    overflow-wrap: anywhere;
+  }
+
+  .social-lead {
+    max-width: var(--measure);
+    color: var(--grey);
+  }
+
+  .social-paper {
+    max-width: var(--measure);
+  }
+</style>

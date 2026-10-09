@@ -1,0 +1,148 @@
+---
+// The follow part of an agent's panel (docs/contracts/phase-3-follow.md sections 3, 5 and 6;
+// docs/DESIGN.md section 12.2): the follower count, then the panel's one primary action, full
+// width at 44 pixels: "Follow this agent" for a signed-in wallet that does not own the agent,
+// "Sign in to follow" for a person who is signed out. While the wallet follows, the same button
+// reads "Following" and a quiet button turns notes on or off. The default slot comes under the
+// action (the panel puts "Copy link" there), then the fine print and the preview or delay line.
+//
+// Whether the wallet owns the agent is decided by the page only to choose what to show. The API
+// decides it for real: a follow of one's own agent is a 403, which the script says in words.
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import FollowButton from '../../design/FollowButton.astro';
+import Notice from '../../design/Notice.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import { createFollowApi } from '../../lib/follow-api.ts';
+import { signInHere } from '../board/board.ts';
+
+interface Props {
+  agentId: string;
+  account: PageAccount | null;
+  /** True when the signed-in wallet owns this agent: it is offered no follow. */
+  owns: boolean;
+}
+
+const { agentId, account, owns } = Astro.props;
+
+const followApi = createFollowApi(Astro);
+const [feed, follows] = await Promise.all([
+  followApi.agentFeed(agentId, { limit: 1 }),
+  account ? followApi.follows() : Promise.resolve(null),
+]);
+
+const entry = follows?.ok ? (follows.data.follows.find((item) => item.agentId === agentId) ?? null) : null;
+const following = entry !== null;
+const notify = entry?.notify ?? false;
+// A signed-in wallet whose follows could not be read is not offered a button that might lie.
+const stateKnown = account === null || follows?.ok === true;
+
+let countLine = '';
+let previewLine = '';
+if (feed.ok) {
+  const count = feed.data.followerCount;
+  countLine =
+    count === 1
+      ? text('follow.countOne', '1 wallet follows this agent')
+      : text('follow.countOther', '{count} wallets follow this agent', { count: formatCount(count) });
+  const { gatingOn, seconds } = feed.data.delay;
+  previewLine = !gatingOn
+    ? text(
+        'follow.preview',
+        'Preview: every decision is shown the moment it is made. Delays start when the token does.',
+      )
+    : seconds > 0
+      ? text('follow.delayed', 'Decisions reach this wallet {hours} hours after they are made.', {
+          hours: formatCount(Math.round(seconds / 3600)),
+        })
+      : text('follow.live', 'This wallet sees every decision the moment it is made.');
+}
+
+const showButton = account !== null && !owns && stateKnown;
+const signIn = text('follow.signIn', 'Sign in to follow');
+// The button's name is its visible words (WCAG 2.5.3), so a person who speaks them reaches it;
+// the panel around it is named for the agent, and `aria-pressed` carries the state.
+const followThis = text('follow.label', 'Follow this agent');
+---
+
+<div class="follow stack-8" data-follow data-agent={agentId}>
+  {
+    feed.ok ? (
+      <p class="small follow-count figures">{countLine}</p>
+    ) : (
+      <Notice
+        tone="error"
+        title={text('follow.countFailedTitle', 'The follower count did not load')}
+        body={text('follow.countFailedBody', 'Reload the page in a minute.')}
+      />
+    )
+  }
+  {
+    account === null && (
+      <FollowButton form="action" label={signIn} pressedLabel={signIn} name={signIn} href={signInHere(Astro.url)} />
+    )
+  }
+  {
+    account !== null && !stateKnown && (
+      <Notice
+        tone="error"
+        title={text('follow.stateFailedTitle', 'Your follows did not load')}
+        body={text('follow.stateFailedBody', 'Reload the page to follow or unfollow this agent.')}
+      />
+    )
+  }
+  {
+    showButton && (
+      <div
+        class="follow-actions stack-8"
+        data-notify={notify ? 'true' : 'false'}
+        data-msg-limit={text(
+          'follow.limit',
+          'You follow as many agents as one wallet can. Unfollow one to follow another.',
+        )}
+        data-msg-unauthorized={text('follow.unauthorized', 'Your sign-in has ended. Sign in again to follow agents.')}
+        data-msg-forbidden={text('follow.forbidden', 'A wallet cannot follow its own agent.')}
+        data-msg-rate={text('follow.rateLimited', 'Too many changes in a short time. Try again in a minute.')}
+        data-msg-failed={text('follow.failed', 'The change was not saved. Try again.')}
+      >
+        <FollowButton
+          form="action"
+          label={followThis}
+          pressedLabel={text('league.followingLabel', 'Following')}
+          name={followThis}
+          pressed={following}
+          data-follow-toggle
+        />
+        {following && (
+          <Button
+            variant="quiet"
+            wide
+            label={notify ? text('follow.notesOff', 'Turn notes off') : text('follow.notesOn', 'Turn notes on')}
+            busyLabel={text('follow.busy', 'Saving')}
+            data-follow-notes
+          />
+        )}
+        <p class="small follow-message" role="alert" data-follow-message hidden />
+      </div>
+    )
+  }
+  <slot />
+  <p class="panel-fine">
+    {text('agent.followFine', 'Following puts this agent’s decisions in your feed. Nothing is traded for you.')}
+    {previewLine && ' '}
+    {previewLine}
+  </p>
+</div>
+
+<style>
+  .follow-count {
+    color: var(--ink);
+  }
+</style>
+
+<script>
+  import { mountFollowControl } from './follow-control.ts';
+
+  mountFollowControl();
+</script>

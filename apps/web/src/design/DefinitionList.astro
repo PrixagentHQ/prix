@@ -1,0 +1,33 @@
+---
+// Label and value pairs: the "key facts" of a record. Labels in graphite, values in ink.
+interface Props {
+  items: Array<{
+    term: string;
+    value: string;
+    /** Makes the value a link. */
+    href?: string;
+    /** A second line under the value, in the small size. */
+    detail?: string;
+  }>;
+  /** The width of the label column, for example "7rem". Maps to the nearest of 5.5, 7, 8.5, 10 or 12rem. Default 5.5rem. */
+  labelWidth?: string;
+}
+
+import { labelWidthClass } from './scale.ts';
+
+const { items, labelWidth } = Astro.props;
+---
+
+<dl class:list={['facts', labelWidthClass(labelWidth)]}>
+  {
+    items.map((item) => (
+      <>
+        <dt>{item.term}</dt>
+        <dd>
+          {item.href ? <a href={item.href}>{item.value}</a> : item.value}
+          {item.detail && <span class="facts-detail">{item.detail}</span>}
+        </dd>
+      </>
+    ))
+  }
+</dl>

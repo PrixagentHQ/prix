@@ -1,0 +1,21 @@
+---
+import { readSession } from '../../account/session.ts';
+import ManagersAccountPage from '../../account/social/ManagersAccountPage.astro';
+import { fetchMyManagers, socialIsOn } from '../../arena/social/client.ts';
+import { readAccount } from '../../lib/account.ts';
+import { statusForCode, statusOfRead } from '../../lib/status.ts';
+
+// While Phase 6 is switched off this page does not exist: it is the site's 404. Otherwise the
+// status is the API's: an account or a list of managers that could not be read is sent with that
+// status, never as 200. A visitor who is not signed in gets the sign-in, as 200.
+const social = await socialIsOn(Astro);
+if (social === 'off') return Astro.rewrite('/404');
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+if (social === 'failed') Astro.response.status = 503;
+else if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+else if (session.state === 'signed-in') Astro.response.status = statusOfRead(await fetchMyManagers(Astro));
+---
+
+<ManagersAccountPage account={account} session={session} />

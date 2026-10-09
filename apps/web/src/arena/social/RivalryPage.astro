@@ -1,0 +1,338 @@
+---
+// One rivalry (docs/contracts/phase-6-social.md section 5.4): the two agents, their ranks on each
+// recorded day as a chart with #1 at the top and a gap on a day one had no rank, the same ranks as
+// a table, the method, and what happened, newest first. Every rank is the API's.
+import { formatCount, formatDay, formatDayShort } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Chip from '../../design/Chip.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import SeriesChart from '../../design/SeriesChart.astro';
+import { readAccount } from '../../lib/account.ts';
+import { agentHref } from '../words.ts';
+import { fetchRivalry } from './client.ts';
+import SocialFailure from './SocialFailure.astro';
+import SocialTop from './SocialTop.astro';
+import { fitEnds, lastValues } from './series-fit.ts';
+import {
+  divisionWord,
+  leadChangesText,
+  rankText,
+  rivalriesHref,
+  rivalryEventText,
+  rivalryMethodText,
+  rivalrySides,
+  rivalryStanding,
+  rivalryStatusText,
+} from './words.ts';
+
+const id = Astro.params.id ?? '';
+const [account, result] = await Promise.all([readAccount(Astro), fetchRivalry(Astro, id)]);
+const detail = result.ok ? result.data : null;
+const rivalry = detail?.rivalry ?? null;
+// The one ahead first, as on the list and on each agent's page (design review 6, finding 13).
+const sides = rivalry ? rivalrySides(rivalry) : null;
+const pair = sides ? [sides.ahead, sides.behind] : [];
+const agentOf = (id: string) => (rivalry && rivalry.agentB.id === id ? rivalry.agentB : rivalry?.agentA);
+const title = sides
+  ? text('social.rivalryPair', '{a} and {b}', { a: sides.ahead.name, b: sides.behind.name })
+  : text('social.rivalryTitle', 'Rivalry');
+
+// The chart's scale: only the ranks of the record, the better rank at the top. A pair that stood
+// at #2 to #4 is drawn from #2 to #4, not from #1. The margin above the best and below the worst
+// is a tenth of the spread, never less than 0.4 of a place, so no marker sits on an edge; then the
+// range widens where a name at the end of a line would touch an edge (series-fit.ts).
+const ranks = (detail?.series ?? []).flatMap(([, a, b]) => [a, b]).filter((rank): rank is number => rank !== null);
+const highest = ranks.length > 0 ? Math.min(...ranks) : 1;
+const lowest = ranks.length > 0 ? Math.max(...ranks) : 1;
+const margin = Math.max(0.4, (lowest - highest) * 0.1);
+const step = [1, 2, 5, 10, 20, 50, 100].find((size) => (lowest - highest) / size <= 5) ?? 200;
+const ticks: Array<{ value: number; label: string }> = [];
+for (let rank = highest; rank <= lowest; rank += step) ticks.push({ value: rank, label: `#${formatCount(rank)}` });
+// The name at the end of each line is whole: each agent's name when both fit in sixteen
+// characters, else no name at the ends at all, so the two ends read alike; the key names both.
+const endNamesFit = pair.every((side) => side.name.length <= 16);
+const chartSeries = pair.map((side) => ({
+  label: side.name,
+  short: endNamesFit ? side.name : '',
+  values: (detail?.series ?? []).map((point) => point[side.at]),
+}));
+const range = fitEnds(endNamesFit ? lastValues(chartSeries) : [], highest - margin, lowest + margin);
+const ended = rivalry?.status === 'ended';
+
+const figures = rivalry
+  ? [
+      ...pair.map((side) => ({
+        label: text('social.figRankOf', 'Rank of {name}', { name: side.name }),
+        value: rankText(side.rank),
+      })),
+      { label: text('social.figChanges', 'Changes of place'), value: formatCount(rivalry.leadChanges) },
+      // An ended rivalry was close over a closed stretch of days, never "since".
+      ended
+        ? {
+            label: text('social.figCloseFrom', 'Close from'),
+            value: text('social.dayRange', '{start} to {end}', {
+              start: formatDayShort(rivalry.formedDay),
+              end: formatDayShort(rivalry.endedDay ?? rivalry.lastDay),
+            }),
+          }
+        : { label: text('social.figFormed', 'Close since'), value: formatDayShort(rivalry.formedDay) },
+    ]
+  : [];
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.rivalryDescription',
+    'Two agents close in the Prix table that changed places, day by day. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.rivalriesTitle', 'Rivalries')}
+    eyebrowHref={rivalriesHref(Astro.url, { division: rivalry?.division ?? 'open' })}
+    lead={rivalry ? `${rivalryStanding(rivalry)} ${rivalryStatusText(rivalry)}.` : undefined}
+  >
+    {
+      rivalry && (
+        <p class="rival-chips">
+          <Chip label={divisionWord(rivalry.division)} kind={rivalry.division === 'pro' ? 'pro' : 'open'} />
+          <Chip
+            label={
+              rivalry.status === 'active'
+                ? text('social.rivalryActive', 'Active')
+                : text('social.rivalryEnded', 'Ended')
+            }
+          />
+        </p>
+      )
+    }
+  </SocialTop>
+
+  {
+    !result.ok ? (
+      <section class="page section">
+        <SocialFailure error={result.error} subject={text('social.subjectRivalry', 'This rivalry')} />
+      </section>
+    ) : rivalry && detail ? (
+      <>
+        <section class="page section stack-24" aria-labelledby="rival-agents">
+          <h2 class="visually-hidden" id="rival-agents">
+            {text('social.rivalryAgents', 'The two agents')}
+          </h2>
+          <ul class="rival-agents">
+            {pair.map((side) => agentOf(side.id)).filter((agent) => agent !== undefined).map((agent) => (
+              <li>
+                <AgentMark agentId={agent.id} name={agent.name} size="md" />
+                <div>
+                  <a class="rival-name" href={agentHref(Astro.url, agent.id)}>
+                    {agent.name}
+                  </a>
+                  <p class="small">
+                    {text('social.byOwner', 'By {owner}', { owner: agent.ownerShort })}
+                    {agent.house && (
+                      <>
+                        {' '}
+                        <Chip label={text('social.houseChip', 'House')} kind="house" />
+                      </>
+                    )}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <FigureBand
+            label={text('social.rivalryFigures', 'The rivalry in figures, as of {day}', {
+              day: formatDay(rivalry.lastDay),
+            })}
+            items={figures}
+          />
+        </section>
+
+        <section class="page section stack-16" aria-labelledby="rival-chart-title">
+          <h2 class="title" id="rival-chart-title">
+            {text('social.rivalryChartTitle', 'Ranks, day by day')}
+          </h2>
+          {detail.series.length > 0 ? (
+            <SeriesChart
+              id="rival-chart"
+              caption={text(
+                'social.rivalryChartCaptionRange',
+                'Official rank of each agent on every recorded day from {start} to {end}, the better rank at the top.',
+                {
+                  start: formatDayShort(detail.series[0]?.[0] ?? rivalry.formedDay),
+                  end: formatDayShort(detail.series.at(-1)?.[0] ?? rivalry.lastDay),
+                },
+              )}
+              keyLabel={text('social.chartKey', 'Lines')}
+              series={chartSeries}
+              xLabels={detail.series.map(([day]) => formatDayShort(day))}
+              top={range.top}
+              bottom={range.bottom}
+              ticks={ticks}
+            >
+              <details class="rival-table">
+                <summary>{text('social.showTable', 'Show the ranks as a table')}</summary>
+                <table class="table">
+                  <caption class="visually-hidden">
+                    {text('social.rivalryTableCaption', 'Official ranks by day')}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">{text('social.colDay', 'Day')}</th>
+                      {pair.map((side) => (
+                        <th scope="col" class="num">
+                          {side.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.series.map((point) => (
+                      <tr>
+                        <th scope="row">{formatDay(point[0])}</th>
+                        {pair.map((side) => (
+                          <td class="num figures">{rankText(point[side.at])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            </SeriesChart>
+          ) : (
+            <p class="small">{text('social.rivalryNoSeries', 'No ranked day is recorded for this pair yet.')}</p>
+          )}
+          <p class="small rival-method">{rivalryMethodText(detail.method, rivalry.division)}</p>
+        </section>
+
+        <section class="page section stack-16" aria-labelledby="rival-events-title">
+          <div>
+            <h2 class="title" id="rival-events-title">
+              {text('social.rivalryEventsTitle', 'What happened')}
+            </h2>
+            <p class="small rival-method">
+              {text(
+                'social.rivalryEventsNoteCounted',
+                'Newest first. {changes} in all, counted from the ranked days that formed it.',
+                { changes: leadChangesText(rivalry.leadChanges) },
+              )}
+            </p>
+          </div>
+          {detail.events.length > 0 ? (
+            <ol class="rival-events">
+              {detail.events.map((event) => (
+                <li>
+                  <time class="small figures" datetime={event.day}>
+                    {formatDay(event.day)}
+                  </time>
+                  <p>{rivalryEventText(event, rivalry)}</p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p class="small">{text('social.rivalryNoEvents', 'Nothing is recorded for this rivalry yet.')}</p>
+          )}
+        </section>
+      </>
+    ) : null
+  }
+</Layout>
+
+<style>
+  .rival-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+  }
+
+  .rival-agents {
+    display: grid;
+    gap: var(--space-12) var(--space-32);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 45em) {
+    .rival-agents {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .rival-agents > li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-12);
+    align-items: center;
+  }
+
+  /* An agent's name: ink at 600, underlined only under the pointer, a target of at least 24 pixels. */
+  .rival-name {
+    display: inline-block;
+    padding-block: var(--space-2);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .rival-name:hover {
+    text-decoration: underline;
+  }
+
+  .rival-method {
+    max-width: var(--measure);
+  }
+
+  .rival-table summary {
+    display: inline-block;
+    padding-block: var(--space-4);
+    color: var(--blue);
+    cursor: pointer;
+    font-size: var(--text-13);
+    line-height: var(--leading-13);
+    font-weight: var(--weight-medium);
+  }
+
+  .rival-table table {
+    margin-top: var(--space-8);
+  }
+
+  /* SeriesChart zeroes its own margin; the chart keeps the 16 pixels under its section's head. */
+  .stack-16 > :global(.series) {
+    margin-top: var(--space-16);
+  }
+
+  /* No margin above: the section's stack sets the 16 pixels under its head. */
+  .rival-events {
+    display: grid;
+    margin-inline: 0;
+    margin-bottom: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .rival-events > li {
+    display: grid;
+    gap: var(--space-2) var(--space-24);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .rival-events p {
+    max-width: var(--measure);
+  }
+
+  @media (min-width: 45em) {
+    .rival-events > li {
+      grid-template-columns: 8rem minmax(0, 1fr);
+      align-items: baseline;
+    }
+  }
+</style>

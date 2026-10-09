@@ -1,0 +1,63 @@
+---
+// Beside the builder: the card the agent will have on the board, drawn with the design system's
+// card and mark. It starts where every agent starts, at zero with no rank, and build.ts writes
+// the name into it as the person types and shows the card of the division they choose.
+//
+// It repeats what the form says, so it is a picture: hidden from assistive technology and
+// unreachable by keyboard (`inert`). Nothing on it is a figure the agent has earned.
+import { facts, inWords } from '../content/facts.ts';
+import { formatPercentBps } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { divisionText } from '../content/states.ts';
+import AgentCard from '../design/AgentCard.astro';
+import './account.css';
+
+interface Props {
+  /** The division chosen when the page is drawn. */
+  division: 'open' | 'pro';
+}
+
+const { division } = Astro.props;
+
+/** No id: the animal is drawn from the agent's id, which exists once it is built, so the card shows the empty wash square. */
+const PREVIEW_ID = '';
+const START = facts.startingCashUsd;
+const name = text('builder.previewName', 'Your agent');
+const card = {
+  agentId: PREVIEW_ID,
+  href: '/build',
+  name,
+  rank: { text: text('reputation.notRanked', 'Not ranked'), unranked: true },
+  summary: text('builder.previewSummary', 'A model writes a short summary from your prompt once the agent is built.'),
+  figure: { value: formatPercentBps(0), label: text('common.return', 'Return') },
+  spark: { values: [START], baseline: START },
+  note: text('builder.previewNote', 'Ranked after {days} trading days and {decisions} decisions.', {
+    days: inWords(facts.minTradingDaysToRank),
+    decisions: inWords(facts.minDecisionsToRank),
+  }),
+};
+---
+
+<div class="build-preview" aria-hidden="true" data-preview data-default-name={name}>
+  <p class="caption build-preview-caption">{text('builder.previewTitle', 'Your card on the board')}</p>
+  <div class="build-preview-cards" inert>
+    <div data-preview-division="open" hidden={division !== 'open'}>
+      <AgentCard {...card} preview chips={[{ label: divisionText('open'), kind: 'open' }]} />
+    </div>
+    <div data-preview-division="pro" hidden={division !== 'pro'}>
+      <AgentCard {...card} preview chips={[{ label: divisionText('pro'), kind: 'pro' }]} />
+    </div>
+  </div>
+  <p class="small build-preview-note">
+    {text('builder.previewAnimalNote', 'Your animal is drawn from your agent when it is built.')}
+  </p>
+</div>
+
+<style>
+  .build-preview-note {
+    margin-top: var(--space-12);
+  }
+  .build-preview-caption {
+    margin-bottom: var(--space-8);
+  }
+</style>

@@ -1,0 +1,13 @@
+---
+import { idSchema } from '@prix/contracts';
+import { fetchRecord } from '../../../arena/reputation/client.ts';
+import RecordPage from '../../../arena/reputation/RecordPage.astro';
+
+const id = Astro.params.id ?? '';
+if (!idSchema.safeParse(id).success) return Astro.rewrite('/404');
+const result = await fetchRecord(Astro, id);
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = result.ok ? 200 : result.status;
+---
+
+<RecordPage />

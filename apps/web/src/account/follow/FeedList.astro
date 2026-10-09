@@ -1,0 +1,99 @@
+---
+// The feed of followed agents: FeedRows, newest first, and "Load more" while the API has a
+// cursor. The script adds later pages by filling a copy of a FeedRow rendered here in a
+// template, so every row has the design system's markup and the words of the deck.
+import type { FollowingFeedResponse } from '@prix/contracts';
+import { text } from '../../content/index.ts';
+import { divisionText } from '../../content/states.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Button from '../../design/Button.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import FeedRow from '../../design/FeedRow.astro';
+import Feedback from '../Feedback.astro';
+import FeedItem from './FeedItem.astro';
+import { feedWords } from './feed-words.ts';
+
+interface Props {
+  feed: FollowingFeedResponse;
+  /** True when the wallet follows nobody, so an empty feed has a reason. */
+  noFollows: boolean;
+  /** The agents the wallet follows: each gets its own mark in the template, for rows added later. */
+  agents?: Array<{ agentId: string; name: string }>;
+}
+
+const { feed, noFollows, agents = [] } = Astro.props;
+// One server-rendered mark per agent, keyed by id. The script clones the one that fits a row it
+// adds; an agent without one (unfollowed meanwhile) gets the initials of its name.
+const markIds = [...new Set([...agents.map((a) => a.agentId), ...feed.items.map((i) => i.agentId)])];
+const markName = (id: string) =>
+  agents.find((a) => a.agentId === id)?.name ?? feed.items.find((i) => i.agentId === id)?.agentName ?? '';
+const feedText = feedWords();
+const words = { ...feedText, open: divisionText('open'), pro: divisionText('pro') };
+---
+
+<div class="stack-16" data-scope>
+  {
+    feed.items.length === 0 ? (
+      <EmptyState
+        boxed
+        plain
+        title={text('follow.feedEmptyTitle', 'No decisions to show yet')}
+        body={
+          noFollows
+            ? text('follow.feedEmptyNoFollows', 'Follow an agent from its page and its decisions appear here.')
+            : text(
+                'follow.feedEmptyBody',
+                'The agents you follow have made no decision in the last three days. New decisions appear here after each round.',
+              )
+        }
+      >
+        {noFollows && <Button href="/league" label={text('follow.openLeague', 'Open the league')} />}
+      </EmptyState>
+    ) : (
+      <ol class="feed" role="list" data-feed data-words={JSON.stringify(words)}>
+        {feed.items.map((item) => (
+          <FeedItem item={item} />
+        ))}
+      </ol>
+    )
+  }
+  <template data-mark-templates>
+    {markIds.map((id) => (
+      <div data-mark-for={id}>
+        <AgentMark agentId={id} name={markName(id)} size="sm" />
+      </div>
+    ))}
+  </template>
+  <template data-feed-template>
+    <FeedRow
+      agent={{
+        id: 'aaaaaaaaaaaa',
+        name: '',
+        href: '/league',
+        chips: [
+          { label: words.open, kind: 'open' },
+          { label: feedText.house, kind: 'house' },
+        ],
+      }}
+      time={{ iso: '', label: '' }}
+      what=""
+      detail=" "
+      why=" "
+      tag={feedText.simulation}
+    />
+  </template>
+  {
+    feed.nextCursor && (
+      <p>
+        <Button
+          label={text('follow.loadMore', 'Load more')}
+          busyLabel={text('follow.loadingMore', 'Loading more')}
+          variant="secondary"
+          data-load-more
+          data-cursor={feed.nextCursor}
+        />
+      </p>
+    )
+  }
+  <Feedback failedTitle={text('follow.loadMoreFailedTitle', 'More decisions were not loaded')} />
+</div>

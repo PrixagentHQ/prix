@@ -1,0 +1,61 @@
+---
+// The league's key facts, for the margin beside the table (docs/DESIGN.md section 5.2): the
+// time the ranks are as of, the price source, the starting portfolio, the ranking rule and the
+// scoring method. Prix is one continuous league (D-109), so no fact names a season or its dates.
+import type { LeagueResponse } from '@prix/contracts';
+import { facts, inWords } from '../content/facts.ts';
+import { formatTick } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import DefinitionList from '../design/DefinitionList.astro';
+import { startingCash } from './words.ts';
+
+interface Props {
+  league: LeagueResponse;
+}
+
+const { league } = Astro.props;
+
+const items = [
+  {
+    term: text('league.factStandings', 'Standings'),
+    value: league.state
+      ? text('common.asOf', 'As of {time}', { time: formatTick(league.state.tickId) })
+      : text('league.factStandingsNoRound', 'No round yet'),
+  },
+  {
+    term: text('league.factPrices', 'Prices'),
+    value: text('league.factPricesValue', 'Chainlink reference prices on Robinhood Chain'),
+  },
+  {
+    term: text('league.factPortfolio', 'Portfolio'),
+    value: text('league.factPortfolioStart', '{amount} virtual USD to start', { amount: startingCash() }),
+  },
+  {
+    term: text('league.factRanked', 'Ranked'),
+    value: text('league.factRankedValue', 'After {days} trading days and {decisions} decisions', {
+      days: inWords(facts.minTradingDaysToRank),
+      decisions: inWords(facts.minDecisionsToRank),
+    }),
+  },
+  {
+    term: text('league.factMethod', 'Method'),
+    value: text('league.factMethodValue', 'Scoring {version}', {
+      version: league.state?.method ?? facts.scoringMethod,
+    }),
+    href: '/methodology',
+  },
+];
+---
+
+<div class="league-facts" data-live="facts">
+  <DefinitionList items={items} />
+</div>
+
+<style>
+  /* The label column is as wide as the longest term, "Standings". The list reads this property.
+     It is set here and not through the list's `labelWidth`, which writes a style attribute that
+     the site's Content-Security-Policy blocks. */
+  .league-facts {
+    --facts-label: 6.5rem;
+  }
+</style>

@@ -1,0 +1,296 @@
+---
+// The Model Wars admin page, for a wallet the API lists as an administrator: see the open war and
+// stop it, or create the next one from the models that passed the probe. Whether a wallet is an
+// administrator is the API's answer, and the API checks it again on every call this page makes
+// (an admin route answers the generic 404 to anyone else). Any other wallet is told the page is
+// not for it, and the route sends that with status 403.
+import {
+  ACTIVE_WARS_MAX,
+  PROMPT_MAX,
+  PROMPT_MIN,
+  WAR_ENTRANTS_MAX,
+  WAR_ENTRANTS_MIN,
+  WAR_TRADING_DAYS_DEFAULT,
+  WAR_TRADING_DAYS_MAX,
+  WAR_TRADING_DAYS_MIN,
+} from '@prix/contracts';
+import { chooseableModels, fetchWars } from '../../arena/social/client.ts';
+import { formatCount, formatDay } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { apiErrorText } from '../../content/states.ts';
+import Button from '../../design/Button.astro';
+import Chip from '../../design/Chip.astro';
+import Choice from '../../design/Choice.astro';
+import Choices from '../../design/Choices.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Select from '../../design/Select.astro';
+import Textarea from '../../design/Textarea.astro';
+import TextInput from '../../design/TextInput.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import AccountCard from '../AccountCard.astro';
+import Done from '../Done.astro';
+import Feedback from '../Feedback.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import type { Session } from '../session.ts';
+import { herePath, signInHref } from '../session.ts';
+import { goToAccountLabel, promptWords } from '../words.ts';
+import { noScript, warWords } from './words.ts';
+import '../account.css';
+import './social.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+}
+
+const { account, session } = Astro.props;
+const here = herePath(Astro.url);
+const words = warWords();
+const me = session.state === 'signed-in' ? session.me : null;
+const admin = me?.isAdmin === true;
+
+const [wars, models] = admin ? await Promise.all([fetchWars(Astro, 1), chooseableModels(Astro.url)]) : [null, []];
+const open = wars?.ok ? wars.data.wars.filter((war) => war.status === 'scheduled' || war.status === 'running') : [];
+// The public list is not mounted while Phase 6 is off: then the page cannot say which war is open.
+const listOff = wars !== null && !wars.ok && wars.status === 404;
+
+// The open war gets its own card only when there is one, or when the list could not be read.
+const showOpen = (wars !== null && !wars.ok) || open.length > 0;
+
+const title = words.title;
+const prompt = promptWords();
+
+// The first day a war may start on is today, in UTC; the server checks the day again.
+const today = new Date();
+const days = Array.from({ length: 14 }, (_, index) => {
+  const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + index));
+  return day.toISOString().slice(0, 10);
+});
+const lengths = Array.from(
+  { length: WAR_TRADING_DAYS_MAX - WAR_TRADING_DAYS_MIN + 1 },
+  (_, index) => WAR_TRADING_DAYS_MIN + index,
+);
+const providerLabel = (provider: string): string =>
+  provider === 'groq' ? words.providerGroq : words.providerWorkersAi;
+
+const scriptWords = {
+  ...words,
+  titleShort: words.titleShort.replace('{min}', '3'),
+  titleLong: words.titleLong.replace('{max}', '80'),
+  strategyShort: words.strategyShort.replace('{min}', String(PROMPT_MIN)),
+  strategyLong: words.strategyLong.replace('{max}', formatCount(PROMPT_MAX)),
+  modelsCount: words.modelsCount.replace('{min}', String(WAR_ENTRANTS_MIN)).replace('{max}', String(WAR_ENTRANTS_MAX)),
+};
+const limits = {
+  titleMin: 3,
+  titleMax: 80,
+  strategyMin: PROMPT_MIN,
+  strategyMax: PROMPT_MAX,
+  modelsMin: WAR_ENTRANTS_MIN,
+  modelsMax: WAR_ENTRANTS_MAX,
+};
+---
+
+<Layout
+  title={title}
+  description={text('social.adminWarsDescription', 'Create or stop a model war. For the people who run Prix.')}
+  account={account}
+  signInHref={signInHref(here)}
+  noindex
+>
+  <PageHead title={title} back={{ href: '/admin', label: words.back }} intro={admin ? words.intro : text('admin.intro', 'This page is for the people who run Prix.')} />
+
+  <div class="page section">
+    {
+      !admin ? (
+        <div class="acct-column">
+          {session.state !== 'signed-in' ? (
+            <AccountCard title={text('nav.signIn', 'Sign in')} headingId="wars-sign-in-heading">
+              <SessionGate session={session} steps />
+            </AccountCard>
+          ) : (
+            <AccountCard>
+              <Notice
+                tone="status"
+                title={text('admin.notAdminTitle', 'This wallet is not an administrator')}
+                body={text(
+                  'admin.notAdminBody',
+                  'Nothing on this page is available to the wallet you signed in with. Your agent and your model keys are on your account page.',
+                )}
+              >
+                <Button href="/account" label={goToAccountLabel()} variant="secondary" />
+              </Notice>
+            </AccountCard>
+          )}
+        </div>
+      ) : (
+        <div class="acct-cards">
+          <Done
+            items={[
+              {
+                name: 'war-created',
+                title: words.createdTitle,
+                body: words.createdBody,
+              },
+              { name: 'war-stopped', title: words.stoppedTitle, body: words.stoppedBody },
+            ]}
+          />
+
+          <div class:list={['war-admin', showOpen && 'war-admin--split']}>
+          <div class="war-admin-main">
+            {!showOpen && (
+              <p class="body war-none">{models.length < WAR_ENTRANTS_MIN ? `${words.openNone}.` : words.openNoneLine}</p>
+            )}
+            <AccountCard title={words.createTitle} headingId="war-create-heading" intro={words.createIntro}>
+              {
+                models.length < WAR_ENTRANTS_MIN ? (
+                  <Notice tone="empty" title={words.noModelsTitle} body={words.noModelsBody} />
+                ) : (
+                  <form
+                    class="stack-24 war-form"
+                    method="dialog"
+                    novalidate
+                    aria-labelledby="war-create-heading"
+                    data-war-form
+                    data-limits={JSON.stringify(limits)}
+                    data-words={JSON.stringify(scriptWords)}
+                  >
+                    <noscript>
+                      <Notice tone="status" title={noScript().title} body={noScript().body} />
+                    </noscript>
+                    {open.length >= ACTIVE_WARS_MAX && <p class="small">{words.warOpen}</p>}
+                    <TextInput label={words.titleLabel} name="title" required autocomplete="off" hint={words.titleHint} />
+                    <Textarea
+                      label={words.strategyLabel}
+                      name="strategy"
+                      required
+                      count={prompt.count}
+                      hint={words.strategyHint}
+                    />
+                    <Select
+                      label={words.startsLabel}
+                      name="startsOn"
+                      hint={words.startsHint}
+                      options={days.map((day) => ({ value: day, label: formatDay(day) }))}
+                    />
+                    <Select
+                      label={words.daysLabel}
+                      name="tradingDays"
+                      hint={words.daysHint}
+                      options={lengths.map((count) => ({
+                        value: String(count),
+                        label: String(count),
+                        selected: count === WAR_TRADING_DAYS_DEFAULT,
+                      }))}
+                    />
+                    <Choices id="models" role="group" legend={words.modelsLegend} hint={words.modelsHint}>
+                      {models.map((model) => (
+                        <Choice
+                          type="checkbox"
+                          name="models"
+                          value={model.id}
+                          label={model.label}
+                          hint={
+                            model.probe
+                              ? words.modelProbe
+                                  .replace('{maker}', model.maker)
+                                  .replace('{provider}', providerLabel(model.provider))
+                                  .replace('{on}', formatDay(model.probe.on))
+                                  .replace('{valid}', String(model.probe.valid))
+                                  .replace('{of}', String(model.probe.of))
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </Choices>
+                    <div class="stack-16">
+                      <Button type="submit" label={words.submit} busyLabel={words.busy} />
+                      <Feedback
+                        failedTitle={words.failedTitle}
+                        errors={{ forbidden: words.forbidden }}
+                      />
+                    </div>
+                  </form>
+                )
+              }
+            </AccountCard>
+          </div>
+
+          {showOpen && (
+            <AccountCard title={words.openTitle} headingId="war-open-heading" class="war-admin-open">
+              {
+                wars && !wars.ok ? (
+                  <Notice
+                    tone={listOff ? 'status' : 'error'}
+                    title={listOff ? words.listOffTitle : text('social.adminWarsUnreadableTitle', 'The model wars could not be read')}
+                    body={listOff ? words.listOffBody : `${apiErrorText(wars.error.code)} ${text('social.unreadableBody', 'Reload the page to try again. If it keeps failing, come back in a few minutes.')}`}
+                  >
+                    {!listOff && <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />}
+                  </Notice>
+                ) : (
+                  <ul class="acct-list">
+                    {open.map((war, index) => (
+                      <li data-scope class="war-open">
+                        <div class="mgr-head">
+                          <h3 class="headline">{war.title}</h3>
+                          <p class="cluster">
+                            <Chip label={war.status === 'running' ? words.statusRunning : words.statusScheduled} kind="open" />
+                          </p>
+                        </div>
+                        <p class="small">
+                          {words.openLine
+                            .replace('{startsOn}', formatDay(war.startsOn))
+                            .replace('{done}', String(war.daysDone))
+                            .replace('{days}', String(war.tradingDays))}
+                        </p>
+                        <ul class="war-entrants">
+                          {war.entrants.map((entrant) => (
+                            <li>
+                              <span class="war-slot">{entrant.slot}</span> {entrant.label}
+                              <span class="war-maker">{entrant.maker}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div class="acct-actions">
+                          <Button href={`/wars/${war.id}`} label={words.viewWar} variant="secondary" size="sm" />
+                          <div data-confirm>
+                            <Button label={words.stop} variant="secondary" size="sm" data-confirm-ask data-confirm-open />
+                            <div class="stack-16 mgr-confirm" role="group" aria-labelledby={`stop-${index}`} tabindex="-1" hidden data-confirm-panel>
+                              <div class="stack-4">
+                                <p class="body" id={`stop-${index}`}>
+                                  <strong>{words.stopQuestion.replace('{title}', war.title)}</strong>
+                                </p>
+                                <p class="body">{words.stopConsequence}</p>
+                              </div>
+                              <p class="acct-actions">
+                                <Button label={words.stop} busyLabel={words.stopBusy} variant="secondary" data-stop={war.id} />
+                                <Button label={text('common.cancel', 'Cancel')} variant="quiet" data-confirm-cancel />
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <Feedback
+                          failedTitle={words.stopFailed}
+                          errors={{ not_found: words.gone, forbidden: words.forbidden }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )
+              }
+            </AccountCard>
+          )}
+          </div>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<script>
+  import { mountWars } from './wars.ts';
+
+  mountWars();
+</script>

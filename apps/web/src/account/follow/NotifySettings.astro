@@ -1,0 +1,114 @@
+---
+// The Telegram card: whether the bot is on offer, whether a chat is linked, and the controls
+// to link, pause and unlink. With the bot not set up the card says nothing about Telegram.
+import type { TelegramStatus } from '@prix/contracts';
+import { LINK_CODE_TTL_SECONDS } from '@prix/contracts';
+import { formatDay } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import Feedback from '../Feedback.astro';
+
+interface Props {
+  telegram: TelegramStatus;
+}
+
+const { telegram } = Astro.props;
+const minutes = LINK_CODE_TTL_SECONDS / 60;
+
+const words = {
+  linkLabel: text('follow.linkOpen', 'Open Telegram to link this wallet'),
+  linkExpires: text('follow.linkExpires', 'This link works for {minutes} minutes and once.', { minutes }),
+};
+---
+
+{
+  telegram.available && (
+    <div class="stack-16" data-scope data-telegram data-words={JSON.stringify(words)}>
+      <h3 class="body">
+        <strong>{text('follow.telegramTitle', 'Notes on Telegram')}</strong>
+      </h3>
+      <p class="body">
+        {text(
+          'follow.telegramIntro',
+          'Get a short note in Telegram when an agent you follow changes its paper portfolio. A note lists the symbols added and reduced. Paper trading simulation. Not investment advice.',
+        )}
+      </p>
+      {telegram.delayed && (
+        <Notice
+          tone="status"
+          title={text('follow.notesHeldTitle', 'Notes are held back')}
+          body={text(
+            'follow.notesHeldBody',
+            'Your wallet sees decisions with a delay, so it gets no notes. They start when the delay ends.',
+          )}
+        />
+      )}
+      {telegram.linked ? (
+        <div class="stack-16">
+          <p class="body">
+            {telegram.enabled
+              ? text('follow.telegramOn', 'Telegram is linked and notes are on.')
+              : text('follow.telegramPaused', 'Telegram is linked and notes are paused.')}
+            {telegram.linkedAt &&
+              ` ${text('follow.telegramLinkedAt', 'Linked {date}.', { date: formatDay(telegram.linkedAt) })}`}
+          </p>
+          <p class="actions">
+            <Button
+              label={
+                telegram.enabled
+                  ? text('follow.telegramPause', 'Pause notes')
+                  : text('follow.telegramResume', 'Resume notes')
+              }
+              busyLabel={text('follow.telegramSaving', 'Saving')}
+              variant="secondary"
+              data-telegram-toggle
+              data-enabled={telegram.enabled ? 'true' : 'false'}
+            />
+            <Button
+              label={text('follow.telegramUnlink', 'Unlink Telegram')}
+              busyLabel={text('follow.telegramUnlinking', 'Unlinking Telegram')}
+              variant="quiet"
+              data-telegram-unlink
+            />
+          </p>
+        </div>
+      ) : (
+        <div class="stack-16">
+          <p class="body">
+            {text(
+              'follow.telegramNotLinked',
+              'No chat is linked. Make a link, open it in Telegram and press Start.',
+            )}
+          </p>
+          <p class="small">
+            {text(
+              'follow.linkWarning',
+              'Anyone who opens the link within {minutes} minutes can link their chat to this wallet. Share it with no one. You can unlink at any time.',
+              { minutes },
+            )}
+          </p>
+          <p>
+            <Button
+              label={text('follow.telegramLink', 'Make a Telegram link')}
+              busyLabel={text('follow.telegramLinking', 'Making the link')}
+              variant="secondary"
+              data-telegram-link
+            />
+          </p>
+          <div class="stack-8" data-link-out aria-live="polite"></div>
+        </div>
+      )}
+      <Feedback failedTitle={text('follow.telegramFailedTitle', 'Telegram was not changed')} />
+    </div>
+  )
+}
+
+<style>
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8) var(--space-24);
+    align-items: center;
+  }
+</style>

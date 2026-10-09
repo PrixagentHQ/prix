@@ -1,0 +1,17 @@
+{
+  "name": "@prix/reputation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Scoring, seasons and track records.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prix/contracts": "workspace:*"
+  }
+}

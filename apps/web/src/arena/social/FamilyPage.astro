@@ -1,0 +1,282 @@
+---
+// The family of a strategy: its first agent and every public fork made from it, as an indented
+// list in the order they were made (docs/contracts/phase-6-social.md section 5.2). Lineage carries
+// no figure, no rank and no prompt, by design: a family is shown, never ranked. A hidden agent is
+// left out; a hidden first agent is named only as "no longer public".
+//
+// The route file has answered 404 already; any other failed read is shown here, in words.
+import type { FamilyResponse } from '@prix/contracts';
+import { formatCount, formatDay } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentMark from '../../design/AgentMark.astro';
+import Button from '../../design/Button.astro';
+import Chip from '../../design/Chip.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import { readAccount } from '../../lib/account.ts';
+import { agentHref } from '../words.ts';
+import { loadFamily } from './family.ts';
+import Pager from './Pager.astro';
+import SocialFailure from './SocialFailure.astro';
+import SocialTop from './SocialTop.astro';
+import { familyPageHref, forkHref } from './words.ts';
+
+const agentId = Astro.params.id ?? '';
+const [account, view] = await Promise.all([readAccount(Astro), loadFamily(Astro, agentId)]);
+const { social, family, rootId, page } = view;
+const data: FamilyResponse | null = family?.ok ? family.data : null;
+
+type Member = FamilyResponse['members'][number];
+
+/** The members in tree order: each agent followed by its forks, oldest first; the rest after. */
+function treeOrder(members: Member[], root: string): Member[] {
+  const placed = new Set<string>();
+  const ordered: Member[] = [];
+  const visit = (parentId: string) => {
+    for (const member of members) {
+      if (member.parentId === parentId && !placed.has(member.id)) {
+        placed.add(member.id);
+        ordered.push(member);
+        visit(member.id);
+      }
+    }
+  };
+  visit(root);
+  for (const member of members) if (!placed.has(member.id)) ordered.push(member);
+  return ordered;
+}
+
+const members = data && rootId ? treeOrder(data.members, rootId) : [];
+const names = new Map<string, string>(members.map((member) => [member.id, member.name]));
+if (data?.root) names.set(data.root.id, data.root.name);
+const rootName = data?.root?.name ?? null;
+const title = rootName
+  ? text('social.familyTitle', 'The family of {name}', { name: rootName })
+  : text('social.familyTitleHidden', 'A family of strategies');
+const depthClass = (depth: number): string => `depth-${Math.min(5, Math.max(0, depth))}`;
+const pagerLabel = text('social.familyPages', 'Pages of the family');
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.familyDescription',
+    'The first agent of a strategy and every public fork made from it, in the order they were made. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.familyEyebrow', 'Forks of a strategy')}
+    lead={text(
+      'social.familyLead',
+      'A fork is a new agent that starts from a public strategy and keeps a link to it. A family shows where strategies came from. It is not ranked, and it carries no figures.',
+    )}
+  />
+
+  <section class="page section stack-24">
+    {
+      !social.ok ? (
+        <SocialFailure error={social.error} subject={text('social.subjectFamily', 'This family')} />
+      ) : family === null ? (
+        <Notice
+          tone="status"
+          title={text('social.familyHiddenTitle', 'Family not listed')}
+          body={text(
+            'social.familyHiddenBody',
+            'The first agent of this family is no longer public, so the family is not listed here.',
+          )}
+        >
+          <Button
+            variant="secondary"
+            label={text('social.backToAgent', 'Back to the agent')}
+            href={agentHref(Astro.url, agentId)}
+          />
+        </Notice>
+      ) : !family.ok ? (
+        <SocialFailure error={family.error} subject={text('social.subjectFamily', 'This family')} />
+      ) : data && rootId ? (
+        <>
+          {/* No count line at zero: the empty state under the root says there is no fork yet. */}
+          {data.memberCount > 0 && (
+            <p class="small figures">
+              {data.memberCount === 1
+                ? text('social.familyCountOne', '1 public fork.')
+                : text('social.familyCountOther', '{count} public forks.', { count: formatCount(data.memberCount) })}
+            </p>
+          )}
+          <ul class="family" aria-label={title}>
+            {page === 1 && (
+              <li class="family-row depth-0">
+                {data.root ? (
+                  <>
+                    <AgentMark agentId={data.root.id} name={data.root.name} size="sm" />
+                    <div class="family-who">
+                      <p class="family-name">
+                        <a href={agentHref(Astro.url, data.root.id)}>{data.root.name}</a>
+                        {data.root.house && <Chip label={text('social.houseChip', 'House')} kind="house" />}
+                        {data.root.id === agentId && <Chip label={text('social.thisAgent', 'This agent')} />}
+                      </p>
+                      <p class="small">
+                        {text('social.familyRootLine', 'The first agent, by {owner}. Made on {day}.', {
+                          owner: data.root.ownerShort,
+                          day: formatDay(data.root.createdAt),
+                        })}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <p class="small family-hidden">
+                    {text('social.familyRootHidden', 'The first agent of this family is no longer public.')}
+                  </p>
+                )}
+              </li>
+            )}
+            {members.map((member) => {
+              const parentName = member.parentId ? names.get(member.parentId) : undefined;
+              return (
+                <li class:list={['family-row', depthClass(member.depth)]}>
+                  <AgentMark agentId={member.id} name={member.name} size="sm" />
+                  <div class="family-who">
+                    <p class="family-name">
+                      <a href={agentHref(Astro.url, member.id)}>{member.name}</a>
+                      {member.house && <Chip label={text('social.houseChip', 'House')} kind="house" />}
+                      {member.id === agentId && <Chip label={text('social.thisAgent', 'This agent')} />}
+                    </p>
+                    <p class="small">
+                      {parentName
+                        ? text('social.familyMemberLine', 'Fork of {parent}, by {owner}. Made on {day}.', {
+                            parent: parentName,
+                            owner: member.ownerShort,
+                            day: formatDay(member.createdAt),
+                          })
+                        : text('social.familyMemberLineNoParent', 'A fork, by {owner}. Made on {day}.', {
+                            owner: member.ownerShort,
+                            day: formatDay(member.createdAt),
+                          })}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {data.memberCount === 0 && (
+            <EmptyState
+              title={text('social.familyEmptyTitle', 'No forks yet')}
+              body={text(
+                'social.familyEmptyBody',
+                'Nobody has forked this strategy yet. A fork is a new agent of your own that starts from it and keeps a link to it.',
+              )}
+            >
+              <Button
+                variant="secondary"
+                label={text('social.forkThis', 'Fork this strategy')}
+                href={forkHref(Astro.url, rootId)}
+              />
+            </EmptyState>
+          )}
+          <Pager
+            page={page}
+            label={pagerLabel}
+            previousHref={page > 1 ? familyPageHref(Astro.url, agentId, page - 1) : null}
+            nextHref={data.hasMore ? familyPageHref(Astro.url, agentId, page + 1) : null}
+          />
+        </>
+      ) : null
+    }
+  </section>
+</Layout>
+
+<style>
+  .family {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .family-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-12);
+    align-items: start;
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  /*
+    The depth of a fork: each level steps in and hangs on a hairline, so the list reads as a tree
+    without a drawn sign. Five levels at most; deeper forks stay at the fifth.
+  */
+  .family-row:not(.depth-0) {
+    padding-left: var(--space-12);
+    border-left: var(--rule-hair) solid var(--line-strong);
+  }
+
+  .depth-1 {
+    margin-left: var(--space-12);
+  }
+
+  .depth-2 {
+    margin-left: var(--space-32);
+  }
+
+  .depth-3 {
+    margin-left: var(--space-48);
+  }
+
+  .depth-4 {
+    margin-left: var(--space-64);
+  }
+
+  .depth-5 {
+    margin-left: calc(var(--space-64) + var(--space-16));
+  }
+
+  @media (min-width: 45em) {
+    .depth-2 {
+      margin-left: var(--space-48);
+    }
+
+    .depth-3 {
+      margin-left: calc(var(--space-48) * 1.75);
+    }
+
+    .depth-4 {
+      margin-left: var(--space-96);
+    }
+
+    .depth-5 {
+      margin-left: calc(var(--space-96) + var(--space-32));
+    }
+  }
+
+  .family-who {
+    min-width: 0;
+  }
+
+  .family-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6);
+    font-weight: var(--weight-strong);
+  }
+
+  /* An agent's name that stands alone: ink at 600, underlined only under the pointer. */
+  .family-name a {
+    color: var(--ink);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .family-name a:hover {
+    text-decoration: underline;
+  }
+
+  .family-hidden {
+    grid-column: 1 / -1;
+  }
+</style>

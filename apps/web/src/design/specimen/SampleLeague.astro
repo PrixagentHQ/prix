@@ -1,0 +1,104 @@
+---
+// The league table, written the way docs/DESIGN.md section 6 asks. Sample data only.
+import { sparkDomain, sparkSlots } from '../chart.ts';
+import Sparkline from '../Sparkline.astro';
+import Table from '../Table.astro';
+import { leagueColumns, type SampleRow } from './data.ts';
+
+interface Props {
+  id: string;
+  caption: string;
+  rows: SampleRow[];
+  groups?: Array<{ reason: string; rows: SampleRow[] }>;
+}
+
+const { id, caption, rows, groups = [] } = Astro.props;
+const all = [...rows, ...groups.flatMap((group) => group.rows)].map((row) => row.spark);
+const domain = sparkDomain(all);
+const slots = sparkSlots(all);
+const sparkLabel = (row: SampleRow) =>
+  row.spark.length > 1
+    ? `Indexed value from ${row.spark[0]?.toFixed(2)} to ${row.spark[row.spark.length - 1]?.toFixed(2)}`
+    : undefined;
+---
+
+<Table id={id} variant="league" caption={caption} columns={leagueColumns}>
+  <tbody role="rowgroup">
+    {
+      rows.map((row) => (
+        <tr role="row" class:list={[row.rank === '1' && 'is-leader']} data-agent={row.id}>
+          <td role="cell" class="c-rank">
+            {row.rank}
+          </td>
+          <th role="rowheader" scope="row" class="c-agent">
+            <a href={`#${row.id}`}>{row.name}</a>
+          </th>
+          <td role="cell" class:list={['c-return', row.tone]}>
+            {row.seasonReturn}
+          </td>
+          <td role="cell" class="c-dd">
+            <span class="cell-label" aria-hidden="true">
+              Max drawdown
+            </span>{' '}
+            {row.maxDrawdown}
+          </td>
+          <td role="cell" class="c-trades">
+            <span class="cell-label" aria-hidden="true">
+              Trades
+            </span>{' '}
+            {row.trades}
+          </td>
+          <td role="cell" class="c-spark">
+            <Sparkline values={row.spark} domain={domain} slots={slots} label={sparkLabel(row)} />
+          </td>
+        </tr>
+      ))
+    }
+  </tbody>
+  {
+    groups.map((group) => (
+      <tbody role="rowgroup" class="unranked">
+        <tr role="row" class="group-row">
+          <th role="rowheader" scope="rowgroup" colspan="6" class="group-head">
+            {group.reason}
+          </th>
+        </tr>
+        {group.rows.map((row) => (
+          <tr role="row" data-agent={row.id}>
+            <td role="cell" class="c-rank">
+              <span aria-hidden="true">–</span>
+              <span class="visually-hidden">Not ranked</span>
+            </td>
+            <th role="rowheader" scope="row" class="c-agent">
+              <a href={`#${row.id}`}>{row.name}</a>
+            </th>
+            <td role="cell" class:list={['c-return', row.tone]}>
+              {row.seasonReturn}
+            </td>
+            <td role="cell" class="c-dd">
+              <span class="cell-label" aria-hidden="true">
+                Max drawdown
+              </span>{' '}
+              {row.maxDrawdown}
+            </td>
+            <td role="cell" class="c-trades">
+              <span class="cell-label" aria-hidden="true">
+                Trades
+              </span>{' '}
+              {row.trades}
+            </td>
+            <td role="cell" class="c-spark">
+              <Sparkline
+                values={row.spark}
+                domain={domain}
+                slots={slots}
+                label={sparkLabel(row)}
+                emptyLabel="No trading days yet"
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    ))
+  }
+</Table>

@@ -1,0 +1,41 @@
+---
+// One line of text with its label, hint and error. The label is always visible.
+// The error element is always in the page, so a script can fill `[data-field-error]`.
+interface Props {
+  label: string;
+  name: string;
+  id?: string;
+  /** No other types: no field on the site accepts a web address. */
+  type?: 'text' | 'password';
+  value?: string;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+  minlength?: number;
+  maxlength?: number;
+  autocomplete?: string;
+  spellcheck?: boolean;
+}
+
+const { label, name, id = name, type = 'text', value, hint, error, spellcheck = false, ...rest } = Astro.props;
+const hintId = hint ? `${id}-hint` : undefined;
+const errorId = `${id}-error`;
+---
+
+<div class="field" data-field={name}>
+  <label class="field-label" for={id}>{label}</label>
+  {hint && <p class="field-hint" id={hintId}>{hint}</p>}
+  <input
+    class="input"
+    id={id}
+    name={name}
+    type={type}
+    value={type === 'password' ? undefined : value}
+    aria-describedby={[hintId, errorId].filter(Boolean).join(' ')}
+    aria-invalid={error ? 'true' : undefined}
+    spellcheck={spellcheck ? 'true' : 'false'}
+    {...rest}
+  />
+  <p class="field-error" id={errorId} role="alert" data-field-error hidden={!error}>{error}</p>
+</div>

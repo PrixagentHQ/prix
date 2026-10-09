@@ -1,0 +1,26 @@
+---
+// The price strip at the top of the board pages (docs/DESIGN.md sections 5.3 and 9,
+// docs/CONTRACTS.md sections 17.2 and 21): every symbol the agents trade, the Stock Tokens and then
+// the crypto assets, at the reference prices of the latest round, from GET /api/market/prices. The
+// strip shows the symbols the API sends, in its order, and never counts or sorts them itself. The page reads the prices once, on the server,
+// and hands the result here.
+//
+// It shows nothing when the read failed or no round has read prices yet: a strip of dashes says
+// nothing a reader can use. The wrapper is always there, empty or not, so an open page that reads
+// itself again (island.ts) finds the region and brings the strip in or out.
+import type { MarketPricesResponse } from '@prix/contracts';
+import TickerStrip from '../../design/TickerStrip.astro';
+import type { ApiResult } from '../../lib/api.ts';
+import { tickerOf } from './board.ts';
+
+interface Props {
+  result: ApiResult<MarketPricesResponse>;
+}
+
+const { result } = Astro.props;
+const ticker = tickerOf(result.ok ? result.data : null);
+---
+
+<div class="price-strip" data-live="prices">
+  {ticker && <TickerStrip items={ticker.items} asOf={ticker.asOf} label={ticker.label} />}
+</div>

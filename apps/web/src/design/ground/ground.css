@@ -1,0 +1,99 @@
+/*
+  The ground of the page head: the field of characters of the X banner, behind the top right of
+  every page (docs/DESIGN.md section 2.3). The layout prints it as the first thing in `main`, from
+  field.data.ts (drawn by field.ts when the code is written, so a request only copies 3 KB of
+  text); a page does nothing unless its head carries something right of 40rem (below).
+
+  It lies under everything in `main` and over the light of the page head: `main` is a stacking
+  context, the band of the page head and the hero's ground are at -2 (base.css), the field at -1.
+  A card, a panel, the tape and every raised band are opaque, so the field shows only on the
+  open ground. It is a picture: hidden from assistive technology, never selected, never moved.
+  One tone (--field-ink): never a second, brighter one.
+*/
+.ground {
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--field-ink);
+  font-family: "Prix ASCII", "Prix ASCII Fallback", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* A cell is 7.2 by 14 (field.ts, CELL): the face's advance is 0.6 of 12 pixels. */
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-ligatures: none;
+  line-height: 14px;
+  white-space: pre;
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+  Where the field ends (R11). It never reaches the footer: at most the height of `main` less 48
+  pixels, and its last 112 pixels fade to nothing, so it always ends in its own fade and never in
+  a cut line. ground/fit.ts sets its height to the head of the page: 48 pixels above the first
+  control, raised band, or word on the open ground in its reach, and no field where that leaves
+  under 232 pixels. Until that script has run the field is hidden, so a page never shows the
+  field cut and then fitted; without scripts the limit of `main` holds.
+*/
+.ground {
+  max-height: calc(100% - 48px);
+  mask-image: linear-gradient(#000 calc(100% - 112px), transparent);
+}
+
+@media (scripting: enabled) {
+  .ground:not([data-fit="fitted"]) {
+    visibility: hidden;
+  }
+}
+
+/*
+  Where the field stands. Its core is 411.6 pixels left of the grid's right edge, and it is
+  nothing from 830 pixels left of that edge (field.ts). Two rules, the stronger wins:
+
+  1. The core sits on the right edge of the content, so the field frames the head as the mark
+     frames the banner. In a wide window it stands in from the window's corner, never out in
+     the empty margin; in a narrow one the core is near the window's edge.
+  2. Never under the head's words: the field's nothing stays 24 pixels right of the head's
+     measure (--head-measure, from the left edge of the content). The 24 pixels hold a classic
+     scrollbar too, which 100vw includes and the page does not.
+
+  --field-left is the left edge of the content, and the content's right edge is 100vw less it.
+  On a phone rule 2 takes the field out of the window: a phone's head has no open right.
+*/
+.ground {
+  --field-left: calc(max(0px, (100vw - var(--page) - 2 * var(--margin)) / 2) + var(--margin));
+  transform: translateX(
+    max(411.6px - var(--field-left), 854px + var(--field-left) + var(--head-measure, 40rem) - 100vw)
+  );
+}
+
+/*
+  The heads whose words or controls reach right of 40rem, by the page. A head with a control on
+  its far right takes the whole width of the content, so the field only ever stands in the
+  margin right of it. The home page's tape, strip and cards cover its head, so the field there
+  takes the whole width too, and shows only where the window leaves an open margin of at least
+  about 150 pixels (100rem).
+*/
+main:has(.zone--hero) > .ground,
+main:has(.rep-intro) > .ground {
+  --head-measure: calc(100vw - 2 * var(--field-left));
+}
+
+main:has(.token-top) > .ground {
+  --head-measure: 60rem;
+}
+
+@media (max-width: 99.99rem) {
+  main:has(.zone--hero) > .ground {
+    display: none;
+  }
+}
+
+@media print {
+  .ground {
+    display: none;
+  }
+}

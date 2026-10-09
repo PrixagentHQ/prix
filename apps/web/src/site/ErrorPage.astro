@@ -1,0 +1,56 @@
+---
+// The frame of the two error pages: what happened as the page's name, what to do next in one
+// sentence, the one action that helps, and a quiet way to the two pages a visitor most often
+// wants instead. It has the site's header and footer, and it is kept out of search results.
+import { text } from '../content/index.ts';
+import Button from '../design/Button.astro';
+import Layout from '../design/Layout.astro';
+import { type PageAccount, readAccount } from '../lib/account.ts';
+import PageHead from './PageHead.astro';
+
+interface Props {
+  /** What happened, in a few words. */
+  title: string;
+  /** What it means and what to do next. */
+  body: string;
+  action: { label: string; href: string };
+}
+
+const { title, body, action } = Astro.props;
+
+// An error page must render whatever else has failed, so the header falls back to signed out.
+let account: PageAccount | null = null;
+try {
+  account = await readAccount(Astro);
+} catch {
+  account = null;
+}
+
+const others = [
+  { label: text('nav.league', 'League'), href: '/league' },
+  { label: text('nav.methodology', 'Methodology'), href: '/methodology' },
+].filter((link) => link.href !== action.href);
+---
+
+<Layout title={title} description={body} account={account} noindex>
+  <div class="page site-top error-page">
+    <PageHead title={title} lead={body} />
+    <div class="cluster error-actions">
+      <Button label={action.label} href={action.href} />
+      {others.map((link) => <Button label={link.label} href={link.href} variant="secondary" />)}
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* The page holds one statement, so it keeps its place on a tall screen instead of floating up. */
+  .error-page {
+    padding-top: var(--space-48);
+    padding-bottom: var(--space-96);
+  }
+
+  .error-actions {
+    margin-top: var(--space-24);
+    gap: var(--space-12);
+  }
+</style>

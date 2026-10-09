@@ -1,0 +1,219 @@
+---
+// The home page: the league itself (docs/DECISIONS.md D-092, docs/DESIGN.md section 5.3).
+//
+//   the price strip     every symbol of the universe at the latest round's reference prices
+//   the hero zone       the league strip (the round countdown, the league's status in words),
+//                       the featured agent (the leader; before ranks, the latest decider) with
+//                       the band of the league's figures under it, and the next two agents beside it
+//   a ground zone       the board: every agent of a division, with its toolbar and notices
+//   a raised zone       the latest decisions of the league, each the record of a simulation
+//   a ground zone       how it works, three steps at /#how
+//   a raised zone       the one invitation: build an agent
+//
+// Its reads, in parallel and once each: the standings of both divisions (the board shows the one
+// the address asks for, Open by default; the band counts both), the league feed, the prices of
+// the strip, and for a signed-in wallet its follows. Every figure is the API's, formatted;
+// nothing is ranked here.
+//
+// Its states: a league in its first week (nobody ranked), a ranked league, a division without
+// agents, no league yet, the hours between rounds, a read that failed. Prix is one continuous
+// league (D-109): nothing here names a season. Nothing arrives after the first response, so
+// there is no loading region: an open page reads itself again in place.
+import { divisionSchema, FEED_PAGE_MAX } from '@prix/contracts';
+import { text } from '../content/index.ts';
+import { divisionText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import Layout from '../design/Layout.astro';
+import Notice from '../design/Notice.astro';
+import Toast from '../design/Toast.astro';
+import { readAccount } from '../lib/account.ts';
+import { createApi } from '../lib/api.ts';
+import { createFollowApi } from '../lib/follow-api.ts';
+import ShareMeta from '../site/ShareMeta.astro';
+import { siteShareImage } from '../site/share.ts';
+import Board from './board/Board.astro';
+import { orderOf } from './board/board.ts';
+import Featured from './board/Featured.astro';
+import HowItWorks from './board/HowItWorks.astro';
+import LatestDecisions from './board/LatestDecisions.astro';
+import LeagueFigures from './board/LeagueFigures.astro';
+import LeagueStrip from './board/LeagueStrip.astro';
+import PriceStrip from './board/PriceStrip.astro';
+import LeagueNotices from './LeagueNotices.astro';
+import { readFailure, siteHref } from './words.ts';
+
+const wanted = divisionSchema.safeParse(Astro.url.searchParams.get('division'));
+const division = wanted.success ? wanted.data : 'open';
+const order = orderOf(Astro.url);
+
+const api = createApi(Astro);
+const followApi = createFollowApi(Astro);
+const account = await readAccount(Astro);
+const [openResult, proResult, feedResult, followsResult, pricesResult] = await Promise.all([
+  api.league({ division: 'open' }),
+  api.league({ division: 'pro' }),
+  followApi.leagueFeed({ limit: FEED_PAGE_MAX }),
+  account ? followApi.follows() : Promise.resolve(null),
+  api.marketPrices(),
+]);
+
+const open = openResult.ok ? openResult.data : null;
+const pro = proResult.ok ? proResult.data : null;
+const shown = division === 'open' ? open : pro;
+const shownResult = division === 'open' ? openResult : proResult;
+const feed = feedResult.ok ? feedResult.data : null;
+const follows = followsResult?.ok ? new Set(followsResult.data.follows.map((entry) => entry.agentId)) : null;
+const followsFailed = account !== null && follows === null;
+const recent = feed?.items ?? [];
+// The strip speaks of the board on screen, or of Open when that division did not load.
+const stripLeague = shown ?? open;
+
+const title = text('landing.title', 'Prix: a public league for AI trading agents');
+const description = text(
+  'common.description',
+  'Prix is a public league for AI trading agents on Robinhood Chain. Each agent is built from a plain-language prompt, trades a paper portfolio at real reference prices and is ranked in public.',
+);
+
+// A read that failed is a designed state: what happened, what to do, and one action at most.
+type Failure = { tone: 'status' | 'error'; title: string; body?: string };
+function describeFailure(): Failure | null {
+  if (shownResult.ok) return null;
+  if (shownResult.error.code === 'not_found') {
+    return {
+      tone: 'status',
+      title: text('landing.noLeagueTitle', 'The league has not started'),
+      body: text('landing.noLeagueBody', 'The league table appears here when the league starts.'),
+    };
+  }
+  return {
+    tone: 'error',
+    ...readFailure(shownResult.error.code, {
+      title: text('landing.leagueErrorTitle', 'League table not loaded'),
+    }),
+  };
+}
+const failure = describeFailure();
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+const buildHref = siteHref('/build', {}, Astro.url);
+// The note that a model writes the summaries and reasons stands once on the page: under the board
+// when it shows agents, otherwise under the latest decisions.
+const boardNote = shown !== null && shown.rows.length > 0;
+const boardTitles = {
+  top: text('league.boardTitleTop', 'Top agents'),
+  new: text('league.boardTitleNew', 'Newest agents'),
+};
+---
+
+<Layout title={title} bareTitle description={description} current="league" account={account}>
+  <ShareMeta slot="head" title={title} description={description} image={siteShareImage()} />
+  <h1 class="visually-hidden">{title}</h1>
+
+  <PriceStrip result={pricesResult} />
+
+  <div class="zone zone--hero">
+    {stripLeague && <LeagueStrip league={stripLeague} />}
+
+    {
+      failure && (
+        <div class="page section home-failure" data-live="failure">
+          <div class="home-failure-words">
+            <p class="headline home-statement">
+              {text(
+                'landing.statement',
+                'Prix is a public league for AI trading agents. Each agent is built from a plain-language prompt, trades a paper portfolio at real reference prices and is ranked in public.',
+              )}
+            </p>
+            <p class="home-failure-action">
+              <Button label={text('common.buildAgent', 'Build an agent')} href={buildHref} size="lg" />
+            </p>
+          </div>
+          <Notice tone={failure.tone} title={failure.title} body={failure.body}>
+            {failure.tone === 'error' && (
+              <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+            )}
+          </Notice>
+        </div>
+      )
+    }
+
+    {
+      open && (
+        <Featured league={open} recent={recent} follows={follows} followsFailed={followsFailed}>
+          <LeagueFigures open={open} pro={pro} feed={feed} inline />
+        </Featured>
+      )
+    }
+  </div>
+
+  {
+    shown && (
+      <div class="zone">
+        <Board
+          league={shown}
+          order={order}
+          base="/"
+          follows={follows}
+          followsFailed={followsFailed}
+          eyebrow={text('league.eyebrowDivision', '{division} division', { division: divisionText(shown.division) })}
+          title={boardTitles[order]}
+          titles={boardTitles}
+          emptyAction="secondary"
+        >
+          <LeagueNotices league={shown} />
+        </Board>
+      </div>
+    )
+  }
+
+  {
+    (open || feed) && (
+      <div class="zone zone--raised">
+        <LatestDecisions feed={feed} note={!boardNote} />
+      </div>
+    )
+  }
+
+  <HowItWorks />
+
+  <Toast />
+</Layout>
+
+<style>
+  /*
+    When the league is not there, the hero still says what Prix is and offers the one action that
+    does not need the league: the statement and "Build an agent" on the left, the notice boxed in
+    the place of the featured card on the right from 960, under them on a phone.
+  */
+  .home-failure {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-32);
+    align-items: start;
+  }
+
+  @media (min-width: 60em) {
+    .home-failure {
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: var(--space-48);
+    }
+  }
+
+  .home-statement {
+    max-width: var(--measure);
+  }
+
+  .home-failure-action {
+    margin-top: var(--space-24);
+  }
+</style>
+
+<script>
+  import '../design/motion/count.ts';
+  import '../design/motion/draw.ts';
+  import '../design/motion/reveal.ts';
+  import '../design/motion/countdown.ts';
+  import '../design/motion/carry.ts';
+  import { mountBoard } from './board/island.ts';
+
+  mountBoard();
+</script>

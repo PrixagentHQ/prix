@@ -1,0 +1,30 @@
+---
+// Steps that happen in order. The only place besides ranks where a numeral marks content.
+// The default slot holds one action under the steps.
+interface Props {
+  items: Array<{ title: string; body: string }>;
+  /** The heading level of each step's title. */
+  level?: 2 | 3 | 4;
+}
+
+const { items, level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3' | 'h4';
+---
+
+<ol class="steps" role="list">
+  {
+    items.map((item) => (
+      <li>
+        <Heading class="title">{item.title}</Heading>
+        <p class="prose">{item.body}</p>
+      </li>
+    ))
+  }
+</ol>
+{
+  Astro.slots.has('default') && (
+    <p class="steps-action">
+      <slot />
+    </p>
+  )
+}

@@ -1,0 +1,19 @@
+---
+import { idSchema } from '@prix/contracts';
+import AgentPage from '../../arena/AgentPage.astro';
+import { createApi } from '../../lib/api.ts';
+import { statusOfRead } from '../../lib/status.ts';
+
+// The status code is decided here, because a component cannot set it. An unknown or hidden
+// agent is a 404, and so is an address that cannot be an agent id: that one costs no API call.
+// AgentPage asks for the same agent with createApi(Astro).agent(Astro.params.id) and gets this
+// answer, because a read is made once per request.
+const id = Astro.params.id ?? '';
+if (!idSchema.safeParse(id).success) return Astro.rewrite('/404');
+const agent = await createApi(Astro).agent(id);
+if (!agent.ok && agent.status === 404) return Astro.rewrite('/404');
+// A record that could not be read (500, 503) is sent with that status, never as 200.
+Astro.response.status = statusOfRead(agent);
+---
+
+<AgentPage />

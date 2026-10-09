@@ -1,0 +1,17 @@
+---
+import { idSchema } from '@prix/contracts';
+import FamilyPage from '../../../arena/social/FamilyPage.astro';
+import { familyStatus, loadFamily } from '../../../arena/social/family.ts';
+
+// The status is the API's: an unknown or hidden agent, or the switch off, is a 404, and a read
+// that failed is sent with its own status, never as 200. FamilyPage makes the same reads again
+// and gets these answers, because a read is made once per request.
+const id = Astro.params.id ?? '';
+if (!idSchema.safeParse(id).success) return Astro.rewrite('/404');
+const view = await loadFamily(Astro, id);
+if (!view.social.ok && view.social.status === 404) return Astro.rewrite('/404');
+if (view.family && !view.family.ok && view.family.status === 404) return Astro.rewrite('/404');
+Astro.response.status = familyStatus(view);
+---
+
+<FamilyPage />

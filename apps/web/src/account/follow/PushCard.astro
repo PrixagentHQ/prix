@@ -1,0 +1,78 @@
+---
+// The browser notification part of the following page's panel. It is rendered hidden: push.ts shows it only when the site
+// offers push (the key route answers) and says which state the browser is in. A notification
+// carries no detail about an agent; it only opens this page.
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import '../account.css';
+
+const words = {
+  on: text('follow.pushOn', 'Notifications are on in this browser.'),
+  off: text('follow.pushOff', 'Notifications are off in this browser.'),
+  turnOn: text('follow.pushTurnOn', 'Turn on notifications in this browser'),
+  turnOnBusy: text('follow.pushTurnOnBusy', 'Turning on'),
+  turnOff: text('follow.pushTurnOff', 'Turn off notifications in this browser'),
+  turnOffBusy: text('follow.pushTurnOffBusy', 'Turning off'),
+};
+---
+
+<div class="panel-part stack-16" hidden data-push data-words={JSON.stringify(words)}>
+  <div class="stack-4">
+    <h2 class="title" id="push-heading">
+      {text('follow.pushTitle', 'Notifications in this browser')}
+    </h2>
+    <p class="small">
+      {
+        text(
+          'follow.pushIntro',
+          'Get a notification when an agent you follow has a new decision. It names no agent and shows no detail: it opens this page. Paper trading simulation. Not investment advice.',
+        )
+      }
+    </p>
+  </div>
+  <div class="stack-16" data-scope>
+    <p class="body" data-push-status aria-live="polite"></p>
+    <p>
+      <Button
+        label={words.turnOn}
+        busyLabel={words.turnOnBusy}
+        variant="secondary"
+        wide
+        data-push-toggle
+        data-on="false"
+      />
+    </p>
+    <div class="acct-outlet" data-outlet aria-live="polite"></div>
+    <template data-message="unsupported">
+      <Notice
+        tone="status"
+        title={text('follow.pushUnsupportedTitle', 'This browser cannot show notifications')}
+        body={text(
+          'follow.pushUnsupportedBody',
+          'Use a current version of Chrome, Edge, Firefox or Safari. On an iPhone or iPad, add Prix to your home screen first. You can still read every decision in the feed above.',
+        )}
+      />
+    </template>
+    <template data-message="denied">
+      <Notice
+        tone="status"
+        title={text('follow.pushDeniedTitle', 'Notifications are blocked for Prix')}
+        body={text(
+          'follow.pushDeniedBody',
+          'This browser blocked them. Open the site settings from the address bar, allow notifications for prixagent.com, then reload this page and try again.',
+        )}
+      />
+    </template>
+    <template data-message="failed">
+      <Notice
+        tone="error"
+        title={text('follow.pushFailedTitle', 'Notifications were not changed')}
+        body={text(
+          'follow.pushFailedBody',
+          'The request did not go through. Check your connection and try again. If it keeps failing, reload the page.',
+        )}
+      />
+    </template>
+  </div>
+</div>

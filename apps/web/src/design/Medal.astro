@@ -1,0 +1,16 @@
+---
+// The medal of rank one, two or three: gold, silver, bronze, with the numeral on it. The
+// numeral carries the rank; the metal repeats it. A rank past three is plain figures.
+interface Props {
+  rank: 1 | 2 | 3;
+  /** The rank in words for assistive technology, for example "Rank 1". */
+  label: string;
+  size?: 'md' | 'lg';
+}
+
+const { rank, label, size = 'md' } = Astro.props;
+---
+
+<span class:list={['medal', `medal--${rank}`, size === 'lg' && 'medal--lg']} role="img" aria-label={label}>
+  <span aria-hidden="true">{rank}</span>
+</span>

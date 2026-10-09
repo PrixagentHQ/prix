@@ -1,0 +1,14 @@
+---
+import { readSession } from '../../account/session.ts';
+import TokenPage from '../../account/token/TokenPage.astro';
+import { readAccount } from '../../lib/account.ts';
+import { statusForCode } from '../../lib/status.ts';
+
+// Read once and handed down. A page that could not read the account is sent with the API's
+// status, never as 200.
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+---
+
+<TokenPage account={account} session={session} />

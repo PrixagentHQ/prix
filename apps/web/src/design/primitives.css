@@ -1,0 +1,1638 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: the file is ordered by component and then by breakpoint, not by specificity. */
+
+/*
+  The layout and the primitives that pages have used since Phase 1. One block per component in
+  this folder. The classes are global on purpose: a table's rows and a form's fields are written
+  by the page that owns them, and must pick up these rules without importing anything.
+  The primitives of the board look are in board.css; every transition is in motion.css.
+*/
+
+/* ---------- Header (Layout): a row of 68, a row of tabs of 48, a hairline under both ---------- */
+
+.top {
+  --surface: var(--header);
+  border-bottom: var(--rule-hair) solid var(--line);
+  background: var(--header);
+}
+
+.top-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 37.5rem) 1fr;
+  column-gap: var(--space-24);
+  align-items: center;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  color: var(--ink);
+  font-size: 1.375rem;
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-20);
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+/* The square of the mark is about 1.35 times the cap height of the word beside it, as in the drawn
+   lockup (D-111), at an even size so that it centres on whole pixels. */
+.wordmark .prix-mark {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.top .wordmark {
+  grid-area: 1 / 1;
+  height: 4.25rem;
+}
+
+.top-search {
+  grid-area: 1 / 2;
+}
+
+.top-acts {
+  grid-area: 1 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+}
+
+/* The signed-in wallet: where the account is. */
+.top-wallet {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-sm);
+  padding-inline: var(--space-12);
+  border-radius: var(--radius-control);
+  background: var(--wash);
+  color: var(--ink);
+  font-size: var(--text-13);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/*
+  On an account page the wallet is marked as a tab is: a 2 pixel ink line under its words.
+  Not a ring, which would read as the focus ring.
+*/
+.top-wallet[aria-current]::after {
+  position: absolute;
+  right: var(--space-12);
+  bottom: var(--space-4);
+  left: var(--space-12);
+  height: var(--rule);
+  background: var(--ink);
+  content: "";
+}
+
+.top-tabs {
+  grid-area: 2 / 1 / 3 / -1;
+  min-width: 0;
+}
+
+.top-tabs ul {
+  display: flex;
+  gap: var(--space-24);
+  height: 3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.top-tabs ul::-webkit-scrollbar {
+  display: none;
+}
+
+.top-tabs li {
+  flex: none;
+  display: flex;
+}
+
+.top-tabs a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: var(--grey);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.top-tabs a:focus-visible {
+  outline-offset: -2px;
+}
+
+.top-tabs a:hover,
+.top-tabs a[aria-current] {
+  color: var(--ink);
+}
+
+/* The current section: an ink line under its tab. Between two pages the line travels (motion.css). */
+.top-tabs a[aria-current]::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--rule);
+  background: var(--ink);
+  content: "";
+}
+
+@media (max-width: 44.9375em) {
+  .top {
+    border-bottom: 0;
+  }
+
+  .top-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--space-12);
+  }
+
+  .top .wordmark {
+    height: 3.5rem;
+  }
+
+  /* Under 400 px the actions need the room: the mark alone stands for the wordmark in the header,
+     and the link keeps its name through its label. */
+  @media (max-width: 24.9375em) {
+    .top .wordmark > span {
+      display: none;
+    }
+  }
+
+  .top-acts {
+    grid-area: 1 / 2;
+  }
+
+  /* The tabs scroll sideways inside their row, edge to edge, and the hairline runs under them. */
+  .top-tabs {
+    margin-inline: calc(-1 * var(--margin));
+    box-shadow: inset 0 -1px var(--line);
+  }
+
+  .top-tabs ul {
+    padding-inline: var(--margin);
+  }
+
+  /* The search folds under the two rows. */
+  .top-search {
+    grid-area: 3 / 1 / 4 / -1;
+    margin-top: var(--space-12);
+  }
+
+  .top-acts .top-how,
+  .top-search kbd {
+    display: none;
+  }
+}
+
+/*
+  The theme control: an icon button in the header. It shows the sun while the page is dark
+  (it turns the light on) and the moon while it is light. Hidden until its script runs, so it
+  is never a button that does nothing.
+*/
+.theme-toggle {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+}
+
+.theme-toggle:hover {
+  background: var(--wash);
+}
+
+.theme-toggle svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.theme-toggle .theme-moon,
+:root[data-theme="light"] .theme-toggle .theme-sun {
+  display: none;
+}
+
+:root[data-theme="light"] .theme-toggle .theme-moon {
+  display: block;
+}
+
+@media (pointer: coarse) {
+  .theme-toggle {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+/*
+  The link to Prix on X: an icon link beside the theme control, drawn as that control is, with
+  the X mark filled instead of stroked. The footer carries the same link as text.
+*/
+.top-x {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+}
+
+.top-x:hover {
+  background: var(--wash);
+}
+
+.top-x svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+@media (pointer: coarse) {
+  .top-x {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+/* ---------- Footer (Layout) ---------- */
+
+/* The footer's band is drawn by base.css (`body > footer`). */
+.foot {
+  display: grid;
+  gap: var(--space-12) var(--space-32);
+  padding-block: var(--space-24) var(--space-32);
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+.foot .wordmark {
+  font-size: var(--text-16);
+  line-height: var(--leading-16);
+}
+
+.foot .wordmark .prix-mark {
+  width: 1rem;
+  height: 1rem;
+}
+
+.foot-words > * + * {
+  margin-top: var(--space-4);
+}
+
+.foot-words .small {
+  max-width: none;
+}
+
+.foot-disclaimer {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.foot-words a:not(.wordmark) {
+  color: inherit;
+}
+
+.foot-list {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-16);
+}
+
+.foot-list a {
+  display: block;
+  padding-block: var(--space-4);
+  color: var(--grey);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.foot-list a:hover,
+.foot-list a[aria-current] {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-hair);
+  text-underline-offset: 0.2em;
+}
+
+.token-line {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 45em) {
+  .foot {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+}
+
+/* ---------- Button: 32 in a bar, 40 in a form, 44 for the one action of a panel ---------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  min-height: var(--control);
+  padding: var(--space-8) var(--space-16);
+  border-radius: var(--radius-control);
+  background: var(--blue-fill);
+  color: var(--on-blue);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-14);
+  text-align: center;
+  text-decoration: none;
+}
+
+.button:hover {
+  box-shadow: inset 0 0 0 99rem var(--press);
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.button--sm {
+  min-height: var(--control-sm);
+  padding: var(--space-6) var(--space-12);
+  white-space: nowrap;
+}
+
+.button--lg {
+  min-height: var(--control-lg);
+  font-size: var(--text-16);
+  line-height: var(--leading-16);
+  box-shadow: var(--edge);
+}
+
+.button--lg:hover {
+  box-shadow:
+    var(--edge),
+    inset 0 0 0 99rem var(--press);
+}
+
+.button--wide {
+  width: 100%;
+}
+
+/* A secondary button is the surface it stands on with a ring; its label is ink. */
+.button--secondary {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.button--secondary:hover {
+  background: var(--wash);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* A quiet button is words until the pointer is on it: "Sign out", "How it works". */
+.button--quiet {
+  padding-inline: var(--space-12);
+  background: none;
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.button--quiet:hover {
+  background: var(--wash);
+  box-shadow: none;
+}
+
+/* A button that holds a state, such as "Following": the tint, and blue words. */
+.button[aria-pressed="true"] {
+  background: var(--tint);
+  color: var(--blue);
+  box-shadow: none;
+}
+
+/*
+  A button that cannot be pressed yet: grey words on the quiet fill. In dark that is black with a
+  hairline ring, never a grey slab (R9, R10); in light it is the wash, as before.
+*/
+.button:disabled,
+.button[aria-disabled="true"] {
+  background: var(--quiet-fill);
+  color: var(--grey);
+  box-shadow: var(--quiet-ring);
+  cursor: default;
+  transform: none;
+}
+
+.button--quiet:disabled,
+.button--quiet[aria-disabled="true"] {
+  background: none;
+}
+
+@media (pointer: coarse) {
+  .button--sm {
+    min-height: 2.25rem;
+  }
+}
+
+/* ---------- Fields: TextInput, Textarea, Select ---------- */
+
+.field {
+  display: grid;
+  row-gap: var(--space-4);
+  max-width: var(--measure-small);
+}
+
+/* The hint sits close to its label; the control and the error keep their distance. */
+.field > :is(.input, .select, .field-count, .field-error) {
+  margin-top: var(--space-4);
+}
+
+.field-label {
+  font-weight: var(--weight-strong);
+}
+
+.field-hint,
+.field-count,
+.field-error,
+.choice-hint {
+  max-width: var(--measure-small);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+.field-hint,
+.field-count {
+  color: var(--grey);
+}
+
+.field-count {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* An error is ink, heavier, and in words. The red is for figures only. */
+.field-error {
+  font-weight: var(--weight-strong);
+}
+
+/* The edge of a field is the grey, so it is seen at 3 to 1 against the ground. */
+.input {
+  display: block;
+  width: 100%;
+  min-height: var(--control);
+  padding: calc(var(--space-8) + 1px) var(--space-12);
+  border: var(--rule-hair) solid var(--grey);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  line-height: var(--leading-14);
+  appearance: none;
+}
+
+.input:hover {
+  border-color: var(--ink);
+}
+
+.input:focus-visible {
+  border-color: var(--blue);
+  outline-offset: 0;
+}
+
+.input::placeholder {
+  color: var(--grey);
+  opacity: 1;
+}
+
+textarea.input {
+  min-height: 10.5rem;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.input[aria-invalid="true"] {
+  padding: var(--space-8) calc(var(--space-12) - 1px);
+  border-width: var(--rule);
+  border-color: var(--ink);
+}
+
+.input:disabled {
+  border-color: var(--line-strong);
+  background: var(--wash);
+  color: var(--grey);
+}
+
+.select {
+  position: relative;
+  display: block;
+}
+
+.select .input {
+  padding-right: var(--space-32);
+  text-overflow: ellipsis;
+}
+
+/* The caret of a select, drawn with two borders. Not an image. */
+.select::after {
+  position: absolute;
+  top: 50%;
+  right: var(--space-16);
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-top: -0.3125rem;
+  border-right: var(--line-spark) solid var(--ink);
+  border-bottom: var(--line-spark) solid var(--ink);
+  content: "";
+  pointer-events: none;
+  transform: rotate(45deg);
+}
+
+/* ---------- Choice: radio buttons and checkboxes ---------- */
+
+.choices {
+  max-width: var(--measure-small);
+}
+
+.choices-legend {
+  font-weight: var(--weight-strong);
+}
+
+.choices .field-hint {
+  margin-top: var(--space-4);
+}
+
+.choices-list {
+  display: grid;
+  row-gap: var(--space-12);
+  margin-top: var(--space-12);
+}
+
+.choices .field-error {
+  margin-top: var(--space-12);
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  column-gap: var(--space-12);
+  cursor: pointer;
+}
+
+.choice input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  border: var(--rule-hair) solid var(--grey);
+  border-radius: var(--radius-pill);
+  background: var(--field);
+  cursor: pointer;
+  appearance: none;
+}
+
+.choice input[type="radio"] {
+  border-radius: 50%;
+}
+
+/* Checked: an ink centre inside a ring of the ground, the same for both kinds. */
+.choice input:checked {
+  border-color: var(--ink);
+  background: var(--ink);
+  box-shadow: inset 0 0 0 0.1875rem var(--field);
+}
+
+.choice input:disabled {
+  border-color: var(--line-strong);
+  background: var(--wash);
+  cursor: default;
+}
+
+/*
+  Cards: the options side by side, each a box with a hairline ring that the whole box answers.
+  The chosen one takes a 2 pixel ink ring (ink is what is chosen); focus is the blue ring
+  around the box. They stack when the column is narrow.
+*/
+.choices--cards {
+  max-width: none;
+}
+
+.choices--cards .choices-list {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-12);
+}
+
+.choices--cards .choice {
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-control);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.choices--cards .choice:hover {
+  background: var(--wash);
+}
+
+.choices--cards .choice:has(input:checked) {
+  box-shadow: inset 0 0 0 var(--rule) var(--ink);
+}
+
+.choices--cards .choice:has(input:focus-visible) {
+  outline: var(--rule) solid var(--blue);
+  outline-offset: var(--focus-offset);
+}
+
+.choices--cards .choice input:focus-visible {
+  outline: 0;
+}
+
+.choices--cards .choice:has(input:disabled) {
+  background: var(--wash);
+  box-shadow: none;
+}
+
+/* A choice that cannot be made says why in its hint, and its label steps back to grey. */
+.choice:has(input:disabled) {
+  cursor: default;
+}
+
+.choice:has(input:disabled) .choice-label {
+  color: var(--grey);
+}
+
+.choice-label {
+  display: block;
+  font-weight: var(--weight-strong);
+}
+
+.choice-hint {
+  display: block;
+  color: var(--grey);
+}
+
+/* ---------- Tabs: links that switch between views of one page ---------- */
+
+.tabs-list {
+  display: flex;
+  gap: var(--space-24);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs-list a {
+  display: block;
+  color: var(--grey);
+  font-weight: var(--weight-strong);
+  line-height: var(--control);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tabs-list a:hover {
+  color: var(--ink);
+}
+
+.tabs-list a[aria-current] {
+  color: var(--ink);
+  box-shadow: inset 0 -2px var(--ink);
+}
+
+.tabs-list a:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ---------- Notice: a state in words ---------- */
+
+.notice {
+  max-width: var(--measure-small);
+}
+
+.notice-title {
+  font-weight: var(--weight-strong);
+}
+
+.notice-body {
+  margin-top: var(--space-2);
+  color: var(--grey);
+}
+
+.notice-action {
+  margin-top: var(--space-12);
+}
+
+/* An error is set on the wash. Its words say what happened; no colour does. */
+.notice--error {
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-box);
+  background: var(--wash);
+}
+
+.notice--error .notice-body {
+  color: var(--ink);
+}
+
+/* ---------- DefinitionList ---------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: var(--facts-label, 5.5rem) minmax(0, 1fr);
+  gap: var(--space-8) var(--space-16);
+  max-width: var(--measure-small);
+  /* Words never take tabular figures (DESIGN.md): a value's figures align through .figures. */
+  font-variant-numeric: lining-nums;
+}
+
+.facts dt {
+  color: var(--grey);
+}
+
+.facts dd {
+  font-weight: var(--weight-medium);
+}
+
+.facts a {
+  display: inline-block;
+  min-height: 1.5rem;
+  line-height: 1.5rem;
+}
+
+.facts-detail {
+  display: block;
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-13);
+}
+
+/* ---------- Fixed sets that replace style attributes (design/scale.ts maps a prop to one) ---------- */
+
+.facts--label-7 {
+  grid-template-columns: 7rem minmax(0, 1fr);
+}
+
+.facts--label-8-5 {
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+}
+
+.facts--label-10 {
+  grid-template-columns: 10rem minmax(0, 1fr);
+}
+
+.facts--label-12 {
+  grid-template-columns: 12rem minmax(0, 1fr);
+}
+
+.notice--h-8 {
+  min-height: 8rem;
+}
+
+.notice--h-12 {
+  min-height: 12rem;
+}
+
+.notice--h-16 {
+  min-height: 16rem;
+}
+
+.notice--h-20 {
+  min-height: 20rem;
+}
+
+.notice--h-24 {
+  min-height: 24rem;
+}
+
+.notice--h-32 {
+  min-height: 32rem;
+}
+
+.table--min-28 {
+  --table-min: 28rem;
+}
+
+.table--min-32 {
+  --table-min: 32rem;
+}
+
+.table--min-36 {
+  --table-min: 36rem;
+}
+
+.table--min-40 {
+  --table-min: 40rem;
+}
+
+.table--min-48 {
+  --table-min: 48rem;
+}
+
+.table--min-56 {
+  --table-min: 56rem;
+}
+
+.table th.w-8 {
+  width: 8%;
+}
+
+.table th.w-10 {
+  width: 10%;
+}
+
+.table th.w-12 {
+  width: 12%;
+}
+
+.table th.w-15 {
+  width: 15%;
+}
+
+.table th.w-16 {
+  width: 16%;
+}
+
+.table th.w-20 {
+  width: 20%;
+}
+
+.table th.w-25 {
+  width: 25%;
+}
+
+.table th.w-30 {
+  width: 30%;
+}
+
+.table th.w-35 {
+  width: 35%;
+}
+
+.table th.w-40 {
+  width: 40%;
+}
+
+.table th.w-50 {
+  width: 50%;
+}
+
+/* ---------- Steps: a sequence, so numbers are allowed ---------- */
+
+.steps {
+  display: grid;
+  row-gap: var(--space-16);
+  counter-reset: step;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  column-gap: var(--space-12);
+  align-items: baseline;
+  counter-increment: step;
+}
+
+/*
+  The numeral is plain text in a column of fixed width, on the baseline of the step's title:
+  no disc and no wash. Only a medal is a disc with a numeral (docs/DESIGN.md section 7).
+*/
+.steps li::before {
+  color: var(--ink);
+  content: counter(step);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: var(--leading-14);
+}
+
+.steps .prose {
+  grid-column: 2;
+  margin-top: var(--space-2);
+  color: var(--grey);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+}
+
+.steps-action {
+  margin-top: var(--space-16);
+  padding-left: 1.75rem;
+}
+
+/* ---------- Table: a hairline under the header and between the rows ---------- */
+
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+.table caption {
+  padding-bottom: var(--space-8);
+  text-align: left;
+}
+
+.table {
+  width: 100%;
+}
+
+/*
+  Tabular figures on figure cells only: a body cell marked `num` and a `figures` span. A header
+  cell or a name keeps proportional text, so a hyphen in "GLM-4.7-Flash" stays a hyphen and
+  does not take the width of a figure.
+*/
+.table td.num,
+.table tbody th.num,
+.table tfoot :is(th, td).num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.table thead th {
+  padding-bottom: var(--space-8);
+  border-bottom: var(--rule-hair) solid var(--line);
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-12);
+  vertical-align: bottom;
+}
+
+.table tbody th,
+.table tbody td {
+  padding-block: var(--space-12);
+  border-bottom: var(--rule-hair) solid var(--line);
+}
+
+.table tbody th,
+.table tfoot th {
+  font-weight: var(--weight-strong);
+}
+
+.table tfoot th,
+.table tfoot td {
+  padding-block: var(--space-12);
+  font-weight: var(--weight-strong);
+}
+
+.table :is(th, td) + :is(th, td) {
+  padding-left: var(--space-16);
+}
+
+.table .num {
+  text-align: right;
+}
+
+.table .na {
+  color: var(--grey);
+}
+
+/* A second line inside a cell, such as the time under a date. */
+.cell-detail {
+  display: block;
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-13);
+}
+
+.table tbody a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.table tbody a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-hair);
+}
+
+/* A sentence that heads a group of rows, such as the reason agents are not ranked. */
+.table .group-head {
+  padding-top: var(--space-24);
+  padding-bottom: var(--space-8);
+  border-bottom: var(--rule-hair) solid var(--line);
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-13);
+}
+
+.table--scroll {
+  min-width: var(--table-min, 36rem);
+}
+
+/* The line above a table: tabs on the left, the status in words on the right. */
+.table-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: var(--space-24);
+  margin-bottom: var(--space-12);
+}
+
+/* ---------- League table (the table form that pages of Phase 1 still render) ---------- */
+
+.table--league .unranked .c-rank {
+  color: var(--grey);
+}
+
+.table--league .c-rank {
+  font-weight: var(--weight-strong);
+}
+
+.table--league .c-agent {
+  overflow-wrap: anywhere;
+}
+
+.table--league .c-return {
+  font-weight: var(--weight-strong);
+}
+
+/* ---------- Sparkline: a line of one and a half pixels, three to one ---------- */
+
+.spark {
+  display: inline-block;
+  width: 7.5rem;
+  height: 2.5rem;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.spark--sm {
+  width: 4.5rem;
+  height: 1.5rem;
+}
+
+.spark--lg {
+  width: 15rem;
+  height: 5rem;
+}
+
+.spark svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.spark polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--line-spark);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The dot on the latest value: a line of no length with round ends, so it is five pixels at every size. */
+.spark .spark-dot {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 5px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The dashed line at the value the season started with. */
+/* The value the season started with: grey, so the dashes pass 3:1 on the ground (WCAG 1.4.11), and thin, so the line stays on top. */
+.spark .spark-base {
+  stroke: var(--grey);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---------- StatRow: the performance summary ---------- */
+
+.stat-row thead th {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.stat-row tbody td {
+  padding-block: var(--space-2) 0;
+  border-bottom: 0;
+  font-size: var(--text-20);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-20);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.stat-row .stat-text {
+  font-size: var(--text-14);
+  letter-spacing: 0;
+}
+
+.stat-suffix {
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+}
+
+/* Rank one of a StatRow: the gold of the first medal, as a rule under the figure. */
+.first-mark {
+  display: inline-block;
+  box-shadow: 0 2px var(--gold-rim);
+}
+
+/* ---------- EquityCurve: the static curve with three direct labels ---------- */
+
+.plot {
+  position: relative;
+  height: 13.75rem;
+}
+
+.plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.plot .marks {
+  pointer-events: none;
+}
+
+/* The wash marks the days the market was closed. */
+.plot .closed {
+  fill: var(--wash);
+}
+
+.plot .start {
+  fill: none;
+  stroke: var(--grey);
+  stroke-width: 1px;
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.plot .curve {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: var(--line-curve);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.plot--gain .curve {
+  stroke: var(--green);
+}
+
+.plot--loss .curve {
+  stroke: var(--red);
+}
+
+/* Labels are svg text: colour is fill, and the edge of the text box is the anchor. */
+.plot-label {
+  fill: var(--grey);
+  font-family: inherit;
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.plot-label-strong {
+  fill: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+.plot-label .gain {
+  fill: var(--green);
+  font-weight: var(--weight-strong);
+}
+
+.plot-label .loss {
+  fill: var(--red);
+  font-weight: var(--weight-strong);
+}
+
+.plot-label-end {
+  dominant-baseline: text-after-edge;
+  text-anchor: end;
+}
+
+.plot-label-start {
+  text-anchor: start;
+}
+
+.plot-label-over {
+  dominant-baseline: text-after-edge;
+}
+
+.plot-label-under {
+  dominant-baseline: text-before-edge;
+}
+
+.plot-label-low.plot-label-left {
+  text-anchor: start;
+}
+
+.plot-label-low.plot-label-right {
+  text-anchor: end;
+}
+
+.days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  margin-top: var(--space-8);
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: var(--leading-12);
+}
+
+/* A label is centred on its day, also when it is wider than the day. */
+.days li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: calc(3 * var(--leading-12));
+  white-space: nowrap;
+}
+
+/* ---------- Decisions (the table form) ---------- */
+
+.decisions-wide {
+  --decision-date: 5.5rem;
+}
+
+.table--decisions .c-date {
+  color: var(--grey);
+}
+
+.table--decisions tbody .c-reason {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Narrow screens: tables restack, nothing scrolls sideways ---------- */
+
+@media screen and (max-width: 39.9375em) {
+  /* League table: two lines per agent. */
+  .table--league,
+  .table--league thead,
+  .table--league tbody {
+    display: block;
+  }
+
+  .table--league tr {
+    display: grid;
+    grid-template-columns: 2.25rem auto minmax(0, 1fr) auto;
+    align-items: baseline;
+  }
+
+  .table--league th,
+  .table--league td {
+    display: block;
+  }
+
+  .table--league :is(th, td) + :is(th, td) {
+    padding-left: 0;
+  }
+
+  .table--league thead tr {
+    padding-bottom: var(--space-8);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .table--league thead th {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .table--league thead :is(.c-dd, .c-trades, .c-spark) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .table--league tbody tr {
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .table--league tbody :is(th, td) {
+    padding-block: 0;
+    border-bottom: 0;
+  }
+
+  .table--league .c-rank {
+    grid-area: 1 / 1;
+  }
+
+  .table--league .c-agent {
+    grid-area: 1 / 2 / auto / span 2;
+    padding-right: var(--space-12);
+  }
+
+  .table--league .c-return {
+    grid-area: 1 / 4;
+    text-align: right;
+  }
+
+  .table--league tbody :is(.c-dd, .c-trades) {
+    color: var(--grey);
+    font-size: var(--text-13);
+    line-height: var(--leading-14);
+  }
+
+  .table--league tbody .c-dd {
+    grid-area: 2 / 2;
+    padding-right: var(--space-16);
+  }
+
+  .table--league tbody .c-trades {
+    grid-area: 2 / 3;
+  }
+
+  .table--league tbody .c-spark {
+    grid-area: 2 / 4;
+    align-self: center;
+  }
+
+  .table--league .spark {
+    width: 4.5rem;
+    height: 1.5rem;
+  }
+
+  .table--league .group-row {
+    display: block;
+    padding-block: 0;
+    border-bottom: 0;
+  }
+
+  .table--league tbody .group-head {
+    padding-top: var(--space-16);
+    padding-bottom: var(--space-8);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  /* StatRow: one line per figure. */
+  .stat-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    row-gap: var(--space-8);
+  }
+
+  .stat-row thead,
+  .stat-row tbody,
+  .stat-row tr {
+    display: contents;
+  }
+
+  .stat-row th,
+  .stat-row td {
+    display: block;
+    grid-column: 2;
+    text-align: right;
+  }
+
+  .stat-row tbody td {
+    padding-block: 0;
+  }
+
+  .stat-row :is(th, td) + :is(th, td) {
+    padding-left: var(--space-16);
+  }
+
+  .stat-row thead th {
+    grid-column: 1;
+    padding-left: 0;
+    font-size: var(--text-14);
+    line-height: var(--leading-20);
+    text-align: left;
+  }
+
+  .stat-row :is(th, td):nth-child(1) {
+    grid-row: 1;
+  }
+  .stat-row :is(th, td):nth-child(2) {
+    grid-row: 2;
+  }
+  .stat-row :is(th, td):nth-child(3) {
+    grid-row: 3;
+  }
+  .stat-row :is(th, td):nth-child(4) {
+    grid-row: 4;
+  }
+  .stat-row :is(th, td):nth-child(5) {
+    grid-row: 5;
+  }
+  .stat-row :is(th, td):nth-child(6) {
+    grid-row: 6;
+  }
+
+  /* Decisions: date and change on one line, the reason beneath. */
+  .table--decisions,
+  .table--decisions tbody {
+    display: block;
+  }
+
+  .table--decisions thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .table--decisions tbody tr {
+    display: grid;
+    grid-template-columns: var(--decision-date, 4.5rem) minmax(0, 1fr);
+    align-items: baseline;
+    row-gap: var(--space-4);
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .table--decisions th,
+  .table--decisions td {
+    display: block;
+  }
+
+  .table--decisions tbody :is(th, td) {
+    padding-block: 0;
+    border-bottom: 0;
+  }
+
+  .table--decisions :is(th, td) + :is(th, td) {
+    padding-left: 0;
+  }
+
+  .table--decisions .c-reason {
+    grid-column: 2;
+  }
+}
+
+/* ---------- From 640: tables are tables ---------- */
+
+@media (min-width: 40em), print {
+  .table {
+    table-layout: fixed;
+  }
+
+  .table--scroll {
+    table-layout: auto;
+  }
+
+  .cell-label {
+    display: none;
+  }
+
+  .table--league .c-rank {
+    width: 2.75rem;
+  }
+
+  .table--league .c-return {
+    width: 6.5rem;
+    text-align: right;
+  }
+
+  .table--league .c-dd {
+    width: 7.5rem;
+    text-align: right;
+  }
+
+  .table--league .c-trades {
+    width: 4.5rem;
+    text-align: right;
+  }
+
+  .table--league .c-spark {
+    width: 9rem;
+    padding-left: var(--space-24);
+  }
+
+  .table--league tbody .c-spark {
+    padding-block: 0;
+    vertical-align: middle;
+  }
+
+  .table--league .spark {
+    width: 6rem;
+    height: 2rem;
+  }
+
+  /* The columns take the width their figures need, so "1 of 10 ranked agents" stays on one line. */
+  .stat-row {
+    table-layout: auto;
+  }
+
+  .table--decisions .c-date {
+    width: var(--decision-date, 4.5rem);
+  }
+
+  .table--decisions .c-change {
+    width: 14rem;
+    padding-right: var(--space-8);
+  }
+
+  .plot {
+    height: 15rem;
+  }
+}
+
+/* ---------- Code, Address and CopyButton ---------- */
+
+/*
+  The one monospace in the system is a developer's code sample (Code.astro): commands and JSON.
+  Everything else that a browser would set in its default monospace is Inter with tabular
+  figures: a wallet address, a key prefix, an endpoint, a signature.
+*/
+code,
+kbd,
+samp {
+  font-family: var(--sans);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.code-sample {
+  margin: 0;
+}
+
+.code-sample pre {
+  margin: var(--space-8) 0 0;
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-box);
+  background: var(--wash);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code-sample pre code {
+  font-family: inherit;
+  font-size: inherit;
+  font-variant-numeric: normal;
+}
+
+.code-sample .copy {
+  margin-top: var(--space-12);
+}
+
+.copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-16);
+}
+
+.copy-status {
+  min-height: var(--leading-13);
+  margin: 0;
+}
+
+/* A copy button the width of its column (a panel's "Copy link"): the status line centred under it. */
+.copy--wide {
+  display: grid;
+}
+
+/* The line keeps no room while it is empty, so the panel's parts stay evenly apart; a copy opens it. */
+.copy--wide .copy-status {
+  min-height: 0;
+  text-align: center;
+}
+
+.copy--wide .copy-status:not(:empty) {
+  margin-top: var(--space-4);
+}
+
+/* A contract or payment address: the page's key fact. Two even lines on a phone. */
+.address {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-16);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-16);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.address > span {
+  display: block;
+}
+
+.address-block > .copy {
+  margin-top: var(--space-12);
+}
+
+@media (min-width: 40em) {
+  .address {
+    font-size: var(--text-20);
+    line-height: var(--leading-20);
+  }
+
+  .address > span {
+    display: inline;
+  }
+}

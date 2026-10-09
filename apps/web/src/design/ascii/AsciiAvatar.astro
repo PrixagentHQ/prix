@@ -1,0 +1,59 @@
+---
+// The character of an agent: its animal printed in characters, in the ink and greys of the
+// theme (animal.ts). The animal and every detail come from the id and from nothing else, so one
+// agent looks the same on every page. 40 and 64 pixels print the 20 by 16 grid, from the plates
+// (avatar.ts), exactly as AgentMark does; 128 and 192 the 40 by 32 grid, drawn from the shapes,
+// which holds the finer strokes.
+//
+// With `label` the avatar is an image named by it (the agent's name). Without, it is a picture
+// beside the name and hidden from assistive technology, as AgentMark is.
+// No style attribute and no script: the size and each tone are classes (ascii.css).
+import './ascii.css';
+import AsciiPicture from './AsciiPicture.astro';
+import { asciiAnimal } from './animal.ts';
+import { agentAvatar } from './avatar.ts';
+
+interface Props {
+  /** The agent's id. The animal is drawn from it and from nothing else. */
+  id: string;
+  /** 40, 64, 128 or 192 pixels. */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** The accessible name, for example the agent's name. Leave it out when the name is printed beside. */
+  label?: string;
+  /** On the agent's own page: the avatar a card's avatar travels to (motion/carry.ts). */
+  carry?: boolean;
+  class?: string;
+}
+
+const { id, size = 'md', label, carry = false, class: extra } = Astro.props;
+const large = size === 'lg' || size === 'xl';
+const named = Boolean(label?.trim());
+const small = large ? null : agentAvatar(id, size === 'sm' ? 'mark' : 'small');
+const animal = large ? asciiAnimal(id, 'large') : null;
+---
+
+{
+  small ? (
+    <span
+      class:list={['ascii', `ascii--${size}`, extra]}
+      role={named ? 'img' : undefined}
+      aria-label={named ? label : undefined}
+      aria-hidden={named ? undefined : 'true'}
+      data-species={small.species}
+      data-carry={carry ? 'mark' : undefined}
+      data-carry-source={carry ? undefined : 'mark'}
+      set:html={small.html}
+    />
+  ) : (
+    animal && (
+      <AsciiPicture
+        grid={animal}
+        size={size}
+        label={label}
+        species={animal.species}
+        carry={carry}
+        class={extra}
+      />
+    )
+  )
+}

@@ -1,0 +1,60 @@
+# Runs on every push and every pull request. Any failing step fails the run.
+# It needs no secret and touches no Cloudflare resource: the Worker is only bundled, never deployed.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, types, tests, builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Reads the pnpm version from "packageManager" in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install, lockfile frozen
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      # The TypeScript packages, the API Worker and the tests.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # The site: Astro files and the TypeScript they import. `pnpm typecheck` does not cover it.
+      - name: Check the site
+        run: pnpm --filter @prix/web run check
+
+      - name: Test
+        run: pnpm test
+
+      # The D1 store against a local D1 database, in the Workers runtime.
+      - name: Test in the Workers runtime
+        run: pnpm test:workers
+
+      - name: Build the site
+        run: pnpm --filter @prix/web run build
+
+      - name: Bundle the API Worker, dry run
+        run: pnpm --filter @prix/api run bundle

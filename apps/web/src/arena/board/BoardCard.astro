@@ -1,0 +1,81 @@
+---
+// One league row as a card of the board, with its follow control. Board and Featured both use
+// it, so an agent looks the same wherever it shows. Every value comes from `cardOf`, which
+// formats the API's.
+//
+// The footer holds a few words only when they say something the board's head does not: why this
+// agent has no rank when its neighbours' states differ (board.ts, `boardNotes`), or, on the
+// featured block, that Prix runs a house agent as an example (docs/DECISIONS.md D-103).
+import { STARTING_CASH_MICRO } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import AgentCard from '../../design/AgentCard.astro';
+import FollowButton from '../../design/FollowButton.astro';
+import { type cardOf, followName, houseExampleNote } from './board.ts';
+
+interface Props {
+  card: ReturnType<typeof cardOf>;
+  /** The card of the featured block, with the words over the name. */
+  featured?: { eyebrow: string; tradingDays: number };
+  /** The agents the signed-in wallet follows; null when nobody is signed in. */
+  follows: ReadonlySet<string> | null;
+  followsFailed: boolean;
+  /** Where a person who is signed out goes to sign in and come back. */
+  signIn: string;
+  /** Hidden by a filter that may show it again (the board's search). */
+  hidden?: boolean;
+  /** Extra attributes for the scripts that move cards: `data-name`, `data-place`, … */
+  marks?: Record<`data-${string}`, string | undefined>;
+}
+
+const { card, featured, follows, followsFailed, signIn, hidden = false, marks = {} } = Astro.props;
+const follow = text('follow.follow', 'Follow');
+const following = text('league.followingLabel', 'Following');
+const name = followName(card.name);
+const foot = featured ? (card.house ? houseExampleNote() : card.note) : card.note;
+const facts = featured
+  ? [...card.facts, { label: text('common.tradingDays', 'Trading days'), value: formatCount(featured.tradingDays) }]
+  : card.facts;
+const form = featured ? ('chip' as const) : ('icon' as const);
+const signedOut = follows === null && !followsFailed;
+const pressed = follows?.has(card.agentId) ?? false;
+---
+
+<AgentCard
+  href={card.href}
+  agentId={card.agentId}
+  name={card.name}
+  rank={card.rank}
+  chips={card.chips}
+  summary={card.summary}
+  figure={card.figure}
+  spark={{ ...card.spark, baseline: STARTING_CASH_MICRO }}
+  facts={facts}
+  holdings={card.holdings}
+  cash={card.cash}
+  holdingsLabel={card.holdingsLabel}
+  form={featured ? 'featured' : 'card'}
+  eyebrow={featured?.eyebrow}
+  level={3}
+  animate
+  hidden={hidden}
+  {...marks}
+>
+  {
+    signedOut ? (
+      <FollowButton slot="action" form={form} label={follow} pressedLabel={following} name={name} href={signIn} />
+    ) : follows !== null ? (
+      <FollowButton
+        slot="action"
+        form={form}
+        label={follow}
+        pressedLabel={following}
+        name={name}
+        pressed={pressed}
+        data-follow-agent={card.agentId}
+        data-follow-name={card.name}
+      />
+    ) : null
+  }
+  {foot && <p slot="footer">{foot}</p>}
+</AgentCard>

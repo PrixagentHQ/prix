@@ -1,0 +1,38 @@
+---
+// A grid of characters in a square: what AsciiAvatar (40 by 32, 128 and 192 pixels) and
+// AsciiLogo print. Pages use those two; this one takes a grid that is already drawn. It holds
+// two prints of the picture, one for each ground (`glow` for dark, `print` for light), and the
+// theme shows one. Monochrome unless `hue` names one (the mascot's `prix`).
+import './ascii.css';
+import { type Grid, gridMarkup } from './render.ts';
+
+interface Props {
+  /** The grid for the dark ground, carrying the grid for the light ground as `print`. */
+  grid: Grid & { print: Grid };
+  /** `prix` for the mascot studies. Left out, the tones are the ink and greys of the theme. */
+  hue?: 'prix';
+  /** 40, 64, 128 or 192 pixels. 128 and 192 expect the 40 by 32 grid, 40 and 64 the 20 by 16. */
+  size: 'sm' | 'md' | 'lg' | 'xl';
+  /** The accessible name. Without it the picture is hidden from assistive technology. */
+  label?: string;
+  species?: string;
+  carry?: boolean;
+  class?: string;
+}
+
+const { grid, hue, size, label, species, carry = false, class: extra } = Astro.props;
+const named = Boolean(label?.trim());
+---
+
+<span
+  class:list={['ascii', `ascii--${size}`, hue && `ascii--${hue}`, extra]}
+  role={named ? 'img' : undefined}
+  aria-label={named ? label : undefined}
+  aria-hidden={named ? undefined : 'true'}
+  data-species={species}
+  data-carry={carry ? 'mark' : undefined}
+  data-carry-source={carry ? undefined : 'mark'}><span class="ascii-grid ascii-glow" set:html={gridMarkup(grid)} /><span
+    class="ascii-grid ascii-print"
+    set:html={gridMarkup(grid.print)}
+  /></span
+>

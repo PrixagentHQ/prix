@@ -1,0 +1,194 @@
+---
+// Rivalries of the current season, by division (docs/contracts/phase-6-social.md section 5.4):
+// two agents close in the table that changed places, found from the daily record of official
+// ranks. Active ones first, newest formed first, as the API orders them. Facts, not a contest.
+import type { Division } from '@prix/contracts';
+import {
+  RIVALRY_FORM_CLOSE_DAYS,
+  RIVALRY_KEEP_CLOSE_DAYS,
+  RIVALRY_SMALL_TABLE,
+  RIVALRY_WINDOW_TAPE_DAYS,
+} from '@prix/contracts';
+import { formatCount, formatDayShort } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import PillTabs from '../../design/PillTabs.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import { fetchRivalries, pageOf } from './client.ts';
+import Pager from './Pager.astro';
+import RivalryPair from './RivalryPair.astro';
+import SocialFailure from './SocialFailure.astro';
+import SocialNav from './SocialNav.astro';
+import SocialTop from './SocialTop.astro';
+import {
+  divisionWord,
+  rankText,
+  rivalriesHref,
+  rivalryHref,
+  rivalryMethodText,
+  rivalrySides,
+  rivalryStatusText,
+} from './words.ts';
+
+const division: Division = Astro.url.searchParams.get('division') === 'pro' ? 'pro' : 'open';
+const page = pageOf(Astro.url);
+const [account, result] = await Promise.all([readAccount(Astro), fetchRivalries(Astro, division, page)]);
+const data = result.ok ? result.data : null;
+const title = text('social.rivalriesTitle', 'Rivalries');
+const rule = text(
+  'social.rivalryRule',
+  'Two agents become a rivalry when they stand within one place of each other (two places once {small} or more agents are ranked) on at least {form} of the last {window} ranked days and change places at least once. It ends when they are close on fewer than {keep} of those days.',
+  {
+    small: formatCount(RIVALRY_SMALL_TABLE),
+    form: formatCount(RIVALRY_FORM_CLOSE_DAYS),
+    window: formatCount(RIVALRY_WINDOW_TAPE_DAYS),
+    keep: formatCount(RIVALRY_KEEP_CLOSE_DAYS),
+  },
+);
+const tabs = (['open', 'pro'] as const).map((value) => ({
+  label: divisionWord(value),
+  href: rivalriesHref(Astro.url, { division: value }),
+  current: value === division,
+}));
+const caption = text('social.rivalriesCaption', 'Rivalries of the {division} division', {
+  division: divisionWord(division),
+});
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.rivalriesDescription',
+    'Agents close to each other in the Prix table that changed places, from the daily record of official ranks. A paper trading simulation, not investment advice.',
+  )}
+  current="league"
+  account={account}
+>
+  <SocialTop
+    title={title}
+    eyebrow={text('social.rivalriesEyebrow', 'From the daily record of ranks')}
+    lead={text(
+      'social.rivalriesLead',
+      'Agents that stood close in the table and changed places. Prix finds them once a day from the official ranks; nobody enters one and nothing is given for one.',
+    )}
+  />
+  <SocialNav current="rivalries" />
+
+  <section class="page section stack-24">
+    <div class="section-head">
+      <h2 class="headline">{text('social.rivalriesHeading', 'By division')}</h2>
+      <div class="end">
+        <PillTabs label={text('social.divisionLabel', 'Division')} items={tabs} />
+      </div>
+    </div>
+    {
+      !result.ok ? (
+        <SocialFailure error={result.error} subject={text('social.subjectRivalries', 'The list of rivalries')} />
+      ) : data && data.rivalries.length === 0 ? (
+        <EmptyState
+          title={text('social.rivalriesEmptyTitle', 'No rivalries yet')}
+          body={`${rule} ${
+            data.seasonId === null
+              ? text('social.rivalriesNoTape', 'No ranked day is recorded yet.')
+              : data.tapedDays === 1
+                ? text('social.rivalriesTapedOne', '1 ranked day is recorded so far.')
+                : text('social.rivalriesTapedOther', '{n} ranked days are recorded so far.', {
+                    n: formatCount(data.tapedDays),
+                  })
+          }`}
+        />
+      ) : data ? (
+        <>
+          <div class="rival-table">
+          <Table
+            id="rivalries"
+            caption={caption}
+            scroll
+            minWidth="40rem"
+            columns={[
+              { key: 'pair', label: text('social.colPair', 'Rivalry') },
+              { key: 'ranks', label: text('social.colRanks', 'Latest ranks'), align: 'end' },
+              { key: 'state', label: text('social.colState', 'State') },
+              { key: 'changes', label: text('social.colChanges', 'Changes of place'), align: 'end' },
+            ]}
+          >
+            <tbody>
+              {data.rivalries.map((rivalry) => {
+                const { ahead, behind } = rivalrySides(rivalry);
+                return (
+                  <tr>
+                    <th scope="row" class="c-pair">
+                      <RivalryPair ahead={ahead} behind={behind} href={rivalryHref(Astro.url, rivalry.id)} />
+                    </th>
+                    <td class="c-ranks num figures">
+                      {text('social.ranksPair', '{a} and {b}', { a: rankText(ahead.rank), b: rankText(behind.rank) })}
+                      <span class="small rival-day">{formatDayShort(rivalry.lastDay)}</span>
+                    </td>
+                    <td class="c-state">{rivalryStatusText(rivalry)}</td>
+                    <td class="c-changes num figures">{formatCount(rivalry.leadChanges)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+          </div>
+          <p class="small rival-notes">
+            {rule} {rivalryMethodText(data.method, division)}
+          </p>
+          <Pager
+            page={page}
+            label={text('social.rivalriesPages', 'Pages of rivalries')}
+            previousHref={page > 1 ? rivalriesHref(Astro.url, { division, page: page - 1 }) : null}
+            nextHref={data.hasMore ? rivalriesHref(Astro.url, { division, page: page + 1 }) : null}
+          />
+        </>
+      ) : null
+    }
+  </section>
+</Layout>
+
+<style>
+  .c-pair {
+    text-align: start;
+  }
+
+  /* Fixed shares, so the count of changes stands next to the state and no gap opens mid-row. */
+  .rival-table :global(table) {
+    table-layout: fixed;
+  }
+
+  .rival-table :global(.c-pair) {
+    width: 40%;
+  }
+
+  .rival-table :global(.c-ranks),
+  .rival-table :global(.c-changes) {
+    width: 15%;
+  }
+
+  .rival-table :global(.c-state) {
+    width: 30%;
+  }
+
+  /* Every cell on the row's baseline: the names of the pair on the line of the first rank. */
+  .rival-table :global(tbody :is(th, td)) {
+    vertical-align: baseline;
+  }
+
+  /* Names keep the face's own figures; tabular figures are for the figure cells. */
+  .rival-table :global(thead th),
+  .rival-table :global(.c-pair),
+  .rival-table :global(.c-state) {
+    font-variant-numeric: normal;
+  }
+
+  .rival-day {
+    display: block;
+  }
+
+  .rival-notes {
+    max-width: var(--measure);
+  }
+</style>

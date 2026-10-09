@@ -1,0 +1,21 @@
+---
+// The three developer pages as one row of tabs.
+import Tabs from '../../design/Tabs.astro';
+import { developersWords as words } from './words.ts';
+
+interface Props {
+  current: 'overview' | 'reference' | 'terms';
+}
+
+const { current } = Astro.props;
+---
+
+<Tabs
+  label={words.tabsLabel}
+  id="dev-tabs"
+  items={[
+    { label: words.tabOverview, href: '/developers', current: current === 'overview' },
+    { label: words.tabReference, href: '/developers/reference', current: current === 'reference' },
+    { label: words.tabTerms, href: '/developers/terms', current: current === 'terms' },
+  ]}
+/>

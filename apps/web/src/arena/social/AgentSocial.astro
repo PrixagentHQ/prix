@@ -1,0 +1,214 @@
+---
+// Phase 6 on an agent's page (docs/contracts/phase-6-social.md sections 4.1 and 5): where the
+// strategy comes from (its lineage), a link to fork it, its strategy profile, and its active
+// rivalries. The one component AgentPage mounts for Phase 6.
+//
+// It reads GET /api/social/agents/:id only while the cached probe says the switch is on, and
+// renders nothing at all when the switch is off or the read is not 200. A hidden agent is a 404,
+// so no figure of a hidden agent can reach the page. A hidden parent or root arrives as
+// `{shown: false}` and is named only as "an agent that is no longer public".
+import type { LineageRef } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import { agentHref } from '../words.ts';
+import { fetchAgentSocial, fetchFamily, socialIsOn } from './client.ts';
+import DnaPanel from './DnaPanel.astro';
+import RivalryPair from './RivalryPair.astro';
+import Sentence from './Sentence.astro';
+import {
+  familyHref,
+  forkHref,
+  leadChangesText,
+  type Part,
+  parts,
+  rivalryHref,
+  rivalrySides,
+  rivalryStanding,
+  rivalryStatusText,
+} from './words.ts';
+
+interface Props {
+  agentId: string;
+}
+
+const { agentId } = Astro.props;
+// Asked only while the probe says the switch is on: while it is off the read would be a 404 that
+// is never cached, one more API call on every agent page for nothing.
+const result = (await socialIsOn(Astro)) === 'on' ? await fetchAgentSocial(Astro, agentId) : null;
+const social = result?.ok ? result.data : null;
+const lineage = social?.lineage ?? null;
+
+const shown = (ref: LineageRef | null) => (ref !== null && 'id' in ref ? ref : null);
+const parent = shown(lineage?.parent ?? null);
+const root = shown(lineage?.root ?? null);
+const isFork = lineage !== null && lineage.depth > 0;
+// The family is read only for an agent that has one, and only for its count: a fork whose first
+// agent is public, or a first agent with forks. If that read fails, the sentence leaves the count out.
+const rootId = isFork ? (root?.id ?? null) : lineage && lineage.childCount > 0 ? agentId : null;
+const family = social && rootId ? await fetchFamily(Astro, rootId) : null;
+const familyCount = family?.ok ? family.data.memberCount : null;
+const familyLink: Part | null = rootId
+  ? { text: text('social.familyLink', 'its family'), href: familyHref(Astro.url, rootId) }
+  : null;
+
+function lineageParts(): Part[] | null {
+  if (!lineage) return null;
+  if (isFork) {
+    const lead: Part[] = parent
+      ? parts(text('social.forkOf', 'Fork of {parent} by {owner}.'), {
+          parent: { text: parent.name, href: agentHref(Astro.url, parent.id) },
+          owner: parent.ownerShort,
+        })
+      : parts(text('social.forkOfHidden', 'Fork of an agent that is no longer public.'), {});
+    if (!familyLink) return lead;
+    const tail =
+      familyCount !== null
+        ? familyCount === 1
+          ? parts(text('social.forkFamilyOne', 'The only fork in {family}.'), { family: familyLink })
+          : parts(text('social.forkFamilyOther', 'One of {count} forks in {family}.'), {
+              count: formatCount(familyCount),
+              family: familyLink,
+            })
+        : parts(text('social.forkFamilyNoCount', 'See {family}.'), { family: familyLink });
+    return [...lead, ' ', ...tail];
+  }
+  if (lineage.childCount > 0 && familyLink) {
+    return lineage.childCount === 1
+      ? parts(text('social.forkedOne', 'Forked once. See {family}.'), { family: familyLink })
+      : parts(text('social.forkedOther', 'Forked {count} times. See {family}.'), {
+          count: formatCount(lineage.childCount),
+          family: familyLink,
+        });
+  }
+  return null;
+}
+
+const lineageLine = lineageParts();
+const rivalries = social?.rivalries ?? [];
+---
+
+{
+  social && (
+    <section class="social-panel" aria-labelledby="social-panel-title">
+      <header class="section-head">
+        <h2 class="section-title" id="social-panel-title">
+          {text('social.agentPanelTitle', 'Its strategy')}
+        </h2>
+      </header>
+
+      <section class="social-block stack-16" aria-labelledby="social-fork-title">
+        <div class="social-fork">
+          <div>
+            <h3 class="title" id="social-fork-title">
+              {text('social.strategyTitle', 'This strategy')}
+            </h3>
+            <p class="small">
+              {lineageLine ? (
+                <Sentence parts={lineageLine} />
+              ) : (
+                text('social.notAFork', 'An original strategy: it is not a fork of another agent.')
+              )}
+            </p>
+          </div>
+          <Button
+            label={text('social.forkThis', 'Fork this strategy')}
+            href={forkHref(Astro.url, agentId)}
+            variant="secondary"
+            size="sm"
+          />
+        </div>
+        <p class="small social-fork-note">
+          {text(
+            'social.forkNote',
+            'A fork is a new agent of your own, linked to this one. It starts with no record and trades its own paper portfolio.',
+          )}
+        </p>
+      </section>
+
+      <div class="social-block">
+        <DnaPanel profile={social.dna} minDays={social.dnaMinDays} id="social-profile" level={3} />
+      </div>
+
+      {rivalries.length > 0 && (
+        <section class="social-block stack-16" aria-labelledby="social-rivals-title">
+          <div>
+            <h3 class="title" id="social-rivals-title">
+              {text('social.agentRivalriesTitle', 'Rivalries')}
+            </h3>
+            <p class="small">
+              {text(
+                'social.agentRivalriesNote',
+                'Agents close to this one in the table that changed places with it, from the daily record of official ranks.',
+              )}
+            </p>
+          </div>
+          <ul class="social-rivals">
+            {rivalries.map((rivalry) => {
+              const { ahead, behind } = rivalrySides(rivalry);
+              return (
+                <li>
+                  <RivalryPair ahead={ahead} behind={behind} href={rivalryHref(Astro.url, rivalry.id)} />
+                  <p class="small">
+                    {rivalryStanding(rivalry)} {rivalryStatusText(rivalry)}, {leadChangesText(rivalry.leadChanges)}.
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </section>
+  )
+}
+
+<style>
+  /*
+    Its own block under "About this agent", after a hairline: the strategy, its profile and its
+    rivalries, 32 pixels apart, each opened by a hairline, as the record's blocks are (DESIGN section 4).
+  */
+  .social-panel {
+    margin-top: var(--section-gap);
+    padding-top: var(--section-gap);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .social-block + .social-block {
+    margin-top: var(--section-gap);
+    padding-top: var(--space-24);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .social-fork {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-12) var(--space-24);
+  }
+
+  .social-fork > div {
+    min-width: 0;
+    max-width: var(--measure);
+  }
+
+  .social-fork-note {
+    max-width: var(--measure-small);
+  }
+
+  .social-rivals {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .social-rivals > li {
+    display: grid;
+    row-gap: var(--space-4);
+    justify-items: start;
+    padding-block: var(--space-12);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+</style>

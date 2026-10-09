@@ -1,0 +1,96 @@
+---
+// What the league has to say in full sentences when something is not ordinary: no round is
+// running, the market is closed, the league is paused, a symbol is not trading, no round has run
+// yet, a round is still running. The strip above says each of these in a few words; this says
+// why and what it means. It takes no room when there is nothing to say.
+//
+// The market is checked only when a round starts. A check from an earlier window of rounds is
+// not repeated as if it were made now (clock.ts): at night the notice says that no round is
+// running and when the next is due, never that prices cannot be read right now.
+import type { LeagueResponse } from '@prix/contracts';
+import { formatCount } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import Notice from '../design/Notice.astro';
+import { leagueClock } from './clock.ts';
+import {
+  betweenSentence,
+  betweenTitle,
+  closedLabel,
+  closedSentence,
+  haltedSentence,
+  leagueMoment,
+  pageNow,
+  stateText,
+} from './words.ts';
+
+interface Props {
+  league: LeagueResponse;
+}
+
+const { league } = Astro.props;
+const { market, round } = league;
+const clock = leagueClock(league, pageNow(Astro.url, leagueMoment(league)));
+
+const notices: Array<{ title: string; body: string }> = [];
+if (clock.kind === 'between') {
+  notices.push({ title: betweenTitle(), body: betweenSentence(clock) });
+} else if (clock.kind === 'closed' && market) {
+  notices.push({ title: closedLabel(market.closedReason), body: closedSentence(market.closedReason) });
+} else if (clock.kind === 'open' && market && market.halted.length > 0) {
+  notices.push({
+    title:
+      market.halted.length === 1
+        ? text('league.haltedTitleOne', 'One symbol is not trading')
+        : text('league.haltedTitleOther', '{count} symbols are not trading', {
+            count: formatCount(market.halted.length),
+          }),
+    body: haltedSentence(market.halted),
+  });
+}
+// Before the first round the table has no ranks. Say when rounds start, unless the notice
+// between rounds already says it.
+if (!league.state && clock.kind === 'open') {
+  notices.push({
+    title: text('league.noRoundTitle', 'No round yet'),
+    body: text(
+      'methodology.roundHours',
+      'Rounds start on the hour from 15:00 UTC to 19:00 UTC on days the market is open, at most five a day.',
+    ),
+  });
+}
+if (round) {
+  notices.push({
+    title: text('league.roundTitle', 'Round in progress'),
+    body:
+      round.pending === 0
+        ? text(
+            'league.roundRanking',
+            'Every agent has had its turn. The new ranks appear here when they are worked out.',
+          )
+        : round.pending === 1
+          ? stateText('states.roundRunningOne')
+          : stateText('states.roundRunningOther', {
+              count: formatCount(round.pending),
+            }),
+  });
+}
+---
+
+<div class="league-notices" data-live="notices">
+  {
+    notices.length > 0 && (
+      <div class="stack-24">
+        {notices.map((notice) => (
+          <Notice tone="status" title={notice.title} body={notice.body} />
+        ))}
+      </div>
+    )
+  }
+</div>
+
+<style>
+  /* An ordinary day has no notice, and then this takes no room in the column. */
+  .league-notices:not(:has(*)) {
+    display: none;
+  }
+</style>

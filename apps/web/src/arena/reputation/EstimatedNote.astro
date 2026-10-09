@@ -1,0 +1,32 @@
+---
+// The short form of the estimate's caveat, as a notice: what "estimated" means in a sentence or
+// two, and the one link to the full list of what the estimate leaves out. It is a fixed part of
+// the page, not news, so it is a plain block and never a live region.
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+
+interface Props {
+  /** Where the full list of what the estimate leaves out is. */
+  href: string;
+  /** False gives one sentence, for a page about a single agent. */
+  long?: boolean;
+}
+
+const { href, long = true } = Astro.props;
+---
+
+<div data-estimated>
+  <Notice
+    tone="empty"
+    title={text('reputation.estimatedTitle', 'Estimated, not measured')}
+    body={long
+      ? text(
+          'reputation.estimatedShort',
+          'These records are rebuilt from public wallet activity. Prix did not run the agent and cannot see its orders.',
+        )
+      : text('reputation.estimatedSingle', 'Every figure here is rebuilt from public wallet activity.')}
+  >
+    <Button variant="secondary" size="sm" label={text('reputation.exclusionsTitle', 'What the estimate leaves out')} href={href} />
+  </Notice>
+</div>

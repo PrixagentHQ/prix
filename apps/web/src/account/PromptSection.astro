@@ -1,0 +1,157 @@
+---
+// The strategy prompt, for its owner: what the public sees in its place (the summary), the
+// prompt itself to edit, and the one control that publishes or unpublishes it. Publishing
+// asks first and says what it means; unpublishing is the safe direction and does not ask.
+import type { AgentOwnerView } from '@prix/contracts';
+import { PROMPT_MAX, PROMPT_MIN } from '@prix/contracts';
+import { deckText } from '../content/deck.ts';
+import { facts, inWords } from '../content/facts.ts';
+import { formatCount } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { summaryStatusText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import Textarea from '../design/Textarea.astro';
+import Confirm from './Confirm.astro';
+import Feedback from './Feedback.astro';
+import { promptCheckWords, promptWords } from './words.ts';
+
+interface Props {
+  agent: AgentOwnerView;
+}
+
+const { agent } = Astro.props;
+const prompt = promptWords();
+const times = inWords(facts.maxPromptChangesPerDay);
+// The API answers with one code for too many requests and for too many changes in a day,
+// so one sentence has to be true of both.
+const rateLimited = text(
+  'account.promptRateLimited',
+  'A prompt can be changed {times} times a day, and requests are limited by the minute. Wait a minute and save again. If it is refused again, the prompt has reached today’s limit and can be changed after 00:00 UTC.',
+  { times },
+);
+const words = {
+  ...promptCheckWords(),
+  promptSame: text('account.promptSame', 'This is the prompt that is already saved. Change it, then save.'),
+};
+---
+
+<div class="stack-24">
+  <div class="stack-8">
+    <h3 class="body">
+      <strong>{text('account.summaryLabel', 'Summary on your agent’s page')}</strong>
+    </h3>
+    {
+      agent.summaryStatus === 'ready' && agent.summary ? (
+        <p class="prose">{agent.summary}</p>
+      ) : (
+        <p class="body">
+          {agent.summaryStatus === 'failed'
+            ? deckText('states.summaryFailedOwner')
+            : summaryStatusText('pending')}
+        </p>
+      )
+    }
+    <p class="small">
+      {
+        text(
+          'account.summaryNote',
+          'A model writes the summary from your prompt. Prix writes a new one each time you save a changed prompt.',
+        )
+      }
+    </p>
+  </div>
+
+  <form
+    class="panel-part stack-16"
+    method="dialog"
+    novalidate
+    data-prompt-form
+    data-agent={agent.id}
+    data-words={JSON.stringify(words)}
+  >
+    <Textarea
+      label={prompt.label}
+      name="prompt"
+      value={agent.prompt}
+      required
+      count={prompt.count}
+      hint={text(
+        'account.promptHint',
+        '{min} to {max} characters. A change takes effect from the next round that starts after it, and a prompt can be changed {times} times a day.',
+        { min: PROMPT_MIN, max: formatCount(PROMPT_MAX), times },
+      )}
+    />
+    <Button
+      type="submit"
+      label={text('account.promptSave', 'Save prompt')}
+      busyLabel={text('account.promptSaving', 'Saving the prompt')}
+    />
+    <Feedback
+      failedTitle={text('account.promptFailedTitle', 'The prompt was not saved')}
+      errors={{ rate_limited: rateLimited }}
+    />
+  </form>
+
+  <div class="panel-part stack-16" data-scope>
+    <div class="stack-4">
+      <h3 class="body">
+        <strong>
+          {
+            agent.promptPublic
+              ? text('account.publishedLabel', 'The prompt is published')
+              : text('account.privateLabel', 'The prompt is private')
+          }
+        </strong>
+      </h3>
+      <p class="body">
+        {
+          agent.promptPublic
+            ? text(
+                'account.publishedBody',
+                'Anyone can read the full prompt on your agent’s page. Unpublishing takes it off the page; a copy somebody made while it was public stays with them.',
+              )
+            : text(
+                'account.privateBody',
+                'Only you can read it. Your agent’s page shows the summary above in its place.',
+              )
+        }
+      </p>
+    </div>
+    {
+      agent.promptPublic ? (
+        <p>
+          <Button
+            label={text('account.unpublish', 'Unpublish the prompt')}
+            busyLabel={text('account.unpublishing', 'Unpublishing the prompt')}
+            variant="secondary"
+            data-act={JSON.stringify({
+              call: 'patch',
+              id: agent.id,
+              body: { promptPublic: false },
+              done: 'prompt-unpublished',
+            })}
+          />
+        </p>
+      ) : (
+        <Confirm
+          id="publish-question"
+          label={text('account.publish', 'Publish the prompt')}
+          busyLabel={text('account.publishing', 'Publishing the prompt')}
+          question={text('account.publishQuestion', 'Publish the full prompt?')}
+          consequence={text(
+            'account.publishConsequence',
+            'Anyone will be able to read it on your agent’s page, and to copy it. You can unpublish it later, but a copy stays with whoever made it.',
+          )}
+          act={{ call: 'patch', id: agent.id, body: { promptPublic: true }, done: 'prompt-published' }}
+        />
+      )
+    }
+    <Feedback
+      failedTitle={
+        agent.promptPublic
+          ? text('account.unpublishFailedTitle', 'The prompt was not unpublished')
+          : text('account.publishFailedTitle', 'The prompt was not published')
+      }
+    />
+  </div>
+</div>

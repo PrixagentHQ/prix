@@ -1,0 +1,141 @@
+---
+// The wallet's tier as the server read it: the tier, its holding as a share of the supply, the
+// agent slots used, the next tier and what it needs. "Check again" asks the server to read the
+// balance once more. Nothing here is computed in the page: every figure is the API's answer.
+import type { TokenInfoResponse, TokenMeResponse } from '@prix/contracts';
+import { formatAddress, formatDateTimeUtc } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import DefinitionList from '../../design/DefinitionList.astro';
+import Notice from '../../design/Notice.astro';
+import Feedback from '../Feedback.astro';
+import { formatHolding, formatThreshold, formatUnits } from './format.ts';
+
+interface Props {
+  me: TokenMeResponse;
+  info?: TokenInfoResponse | null;
+}
+
+const { me, info } = Astro.props;
+
+const items = [
+  ...(me.gatingOn
+    ? [{ term: text('token.tierLabel', 'Tier'), value: text('token.tierName', 'Tier {tier}', { tier: me.tier }) }]
+    : []),
+  ...(me.holdingPpm !== null
+    ? [
+        {
+          term: text('token.holdingLabel', 'Holding'),
+          value: text('token.holdingValue', '{share} of the supply', { share: formatHolding(me.holdingPpm) }),
+          detail:
+            me.balance !== null && me.decimals !== null
+              ? text('token.balanceDetail', '{amount} tokens', { amount: formatUnits(me.balance, me.decimals) })
+              : undefined,
+        },
+      ]
+    : []),
+  {
+    term: text('token.slotsLabel', 'Agent slots'),
+    value: text('token.slotsValue', '{used} of {max} used', { used: me.slots.used, max: me.slots.max }),
+    detail:
+      me.slots.pausedForSlots > 0
+        ? text(
+            'token.slotsPaused',
+            '{count} paused because there are not enough slots. They resume when slots return.',
+            { count: me.slots.pausedForSlots },
+          )
+        : undefined,
+  },
+  ...(me.nextTier
+    ? [
+        {
+          term: text('token.nextLabel', 'Next tier'),
+          value: text('token.nextValue', 'Tier {tier}, from {share}', {
+            tier: me.nextTier.tier,
+            share: formatThreshold(me.nextTier.thresholdPpm),
+          }),
+          detail: text('token.nextDetail', 'A further {share} of the supply is needed.', {
+            share: formatThreshold(me.nextTier.missingPpm),
+          }),
+        },
+      ]
+    : []),
+  ...(me.checkedAt ? [{ term: text('token.checkedLabel', 'Last read'), value: formatDateTimeUtc(me.checkedAt) }] : []),
+  ...(me.gatingOn && info?.gatingOn && info.tokenAddress
+    ? [
+        {
+          term: text('token.contractLabel', 'Token contract'),
+          value: formatAddress(info.tokenAddress),
+          href: info.explorerUrl ?? undefined,
+        },
+      ]
+    : []),
+  ...(me.gatingOn && info?.gatingOn && info.buyUrl
+    ? [
+        {
+          term: text('token.tierBuyLabel', 'Buy'),
+          value: text('token.buyLink', 'Open the token on Pons'),
+          href: info.buyUrl,
+        },
+      ]
+    : []),
+];
+---
+
+<div class="stack-24" data-scope>
+  {
+    !me.gatingOn ? (
+      <Notice
+        tone="status"
+        title={text('token.previewTitle', 'Preview: everyone has the open allowance')}
+        body={text(
+          'token.previewBody',
+          'Tiers do not apply yet, so every wallet has the same allowance. They start to count once the token is live and Prix switches them on.',
+        )}
+      />
+    ) : (
+      me.stale && (
+        <Notice
+          tone="status"
+          title={text('token.staleTitle', 'Showing an older read')}
+          body={text(
+            'token.staleBody',
+            'The last attempt to read your balance failed, so this is the previous read. Check again in a few minutes.',
+          )}
+        />
+      )
+    )
+  }
+  <DefinitionList items={items} labelWidth="8.5rem" />
+  {
+    me.gatingOn && (
+      <div class="stack-16">
+        <div class="stack-4">
+          <p>
+            <Button
+              variant="secondary"
+              label={text('token.checkAgain', 'Check again')}
+              busyLabel={text('token.checking', 'Reading your balance')}
+              data-token-check
+            />
+          </p>
+          <p class="small">
+            {text(
+              'token.checkNote',
+              'Prix reads your balance from the chain. If you changed your holding, check again to see the tier it gives.',
+            )}
+          </p>
+        </div>
+        <Feedback
+          failedTitle={text('token.checkFailedTitle', 'The balance was not read')}
+          errors={{
+            rate_limited: text(
+              'token.checkTooSoon',
+              'Your balance was read a moment ago. Wait half a minute and check again.',
+            ),
+          }}
+        />
+      </div>
+    )
+  }
+</div>

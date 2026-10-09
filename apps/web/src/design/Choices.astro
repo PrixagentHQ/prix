@@ -1,0 +1,32 @@
+---
+// A named group of radio buttons or checkboxes: a fieldset with its legend, hint and error.
+// `form="cards"` sets the options side by side as bordered cards (two or three short choices
+// with a hint each, such as a division); `list` (the default) is one under another.
+interface Props {
+  legend: string;
+  hint?: string;
+  error?: string;
+  id: string;
+  role?: 'radiogroup' | 'group';
+  form?: 'list' | 'cards';
+}
+
+const { legend, hint, error, id, role = 'radiogroup', form = 'list' } = Astro.props;
+const hintId = hint ? `${id}-hint` : undefined;
+const errorId = `${id}-error`;
+---
+
+<fieldset
+  class:list={['choices', form === 'cards' && 'choices--cards']}
+  id={id}
+  role={role}
+  aria-describedby={[hintId, errorId].filter(Boolean).join(' ')}
+  aria-invalid={error ? 'true' : undefined}
+>
+  <legend class="choices-legend">{legend}</legend>
+  {hint && <p class="field-hint" id={hintId}>{hint}</p>}
+  <div class="choices-list">
+    <slot />
+  </div>
+  <p class="field-error" id={errorId} role="alert" data-field-error hidden={!error}>{error}</p>
+</fieldset>

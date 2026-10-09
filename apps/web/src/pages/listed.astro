@@ -1,0 +1,10 @@
+---
+import { fetchListings } from '../arena/reputation/client.ts';
+import ListedPage from '../arena/reputation/ListedPage.astro';
+import { readPage } from '../arena/reputation/view.ts';
+
+const result = await fetchListings(Astro, readPage(Astro.url));
+Astro.response.status = result.ok ? 200 : result.status;
+---
+
+<ListedPage />

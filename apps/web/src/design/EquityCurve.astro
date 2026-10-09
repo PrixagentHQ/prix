@@ -1,0 +1,133 @@
+---
+// The equity curve: one line in the colour of its latest change, a dotted baseline at the starting value, the wash over the days
+// the market was closed, and three direct labels (start, lowest, latest). No axis lines, no
+// grid, no fill, no hover. The same values are in a table for assistive technology.
+// The page gives every label already formatted. Do not render it for an agent with no days:
+// show a Notice instead.
+import { CURVE, curveGeometry } from './chart.ts';
+
+interface Day {
+  /** The portfolio value at the end of the day, as a number, for the geometry only. */
+  value: number;
+  /** True for a day the market was closed. */
+  closed?: boolean;
+  /** Up to three short lines under the day, for example ["Mon", "28", "Sep"]. Omit to leave the day unlabelled. */
+  tick?: string[];
+  /** The day in full for the data table, for example "Mon 28 Sep". */
+  label: string;
+  /** The value formatted for the data table, for example "10,042.10". */
+  valueLabel: string;
+  /** A note for the data table, for example "Market closed". */
+  note?: string;
+}
+
+interface Props {
+  /** The value every agent starts the season with. */
+  start: { value: number; label: string };
+  days: Day[];
+  /** The text alternative: first, latest, highest and lowest value in a sentence or two. */
+  alt: string;
+  /** The label at the latest value. `change` is a signed figure and takes `tone`. */
+  end: { value: string; change?: string; tone?: 'gain' | 'loss' };
+  /** The label under the lowest point. `index` counts days from 1. Leave out when the latest day is the lowest. */
+  low?: { index: number; value: string; note?: string };
+  /** The headings of the data table. */
+  table: { caption: string; date: string; value: string; note: string };
+}
+
+const { start, days, alt, end, low, table } = Astro.props;
+const geometry = curveGeometry(start.value, days);
+const percent = (units: number, of: number) => `${Math.round((units / of) * 10000) / 100}%`;
+
+// A label never sits on the line. A label is at most a third of the plot wide, so each one
+// looks at the third of the curve it shares the plot with.
+const reach = Math.max(1, Math.ceil(days.length * 0.3));
+const ys = Array.from({ length: days.length + 1 }, (_, index) => geometry.at(index).y);
+const head = ys.slice(0, 1 + reach);
+const tail = ys.slice(Math.max(0, ys.length - 1 - reach));
+const base = geometry.startY;
+
+// Every label is a `text` of an outer svg, positioned in percent of the plot. The svg has no
+// viewBox, so x and y are percentages of the plot's own box. Offsets are in em of the label.
+// The latest value: at the right end, above the highest point of the last third.
+const endY = percent(Math.min(...tail), CURVE.height);
+
+// The starting value: at the left end, on the baseline, on the side the line is not. When the
+// first third runs on both sides of the baseline, it goes under the lowest point of that third.
+const above = head.some((y) => y < base);
+const below = head.some((y) => y > base);
+const startAt = above ? 'under' : 'over';
+const startY = percent(above && below ? Math.max(...head) : base, CURVE.height);
+
+// The lowest value sits under its point. When that point is just above the baseline, the label
+// drops under the baseline so the dotted line does not run through it.
+const lowPoint = low && low.index < days.length ? geometry.at(low.index) : undefined;
+const lowLeft = lowPoint ? lowPoint.x / CURVE.width < 0.3 : false;
+const lowY = lowPoint
+  ? lowPoint.y <= geometry.startY && geometry.startY - lowPoint.y < 150
+    ? geometry.startY
+    : lowPoint.y
+  : 0;
+---
+
+<figure class="chart">
+  <div class:list={['plot', end.tone && `plot--${end.tone}`]}>
+    <svg viewBox={`0 0 ${CURVE.width} ${CURVE.height}`} preserveAspectRatio="none" role="img" aria-label={alt}>
+      {geometry.bands.map((band) => <rect class="closed" x={band.x} y="0" width={band.width} height={CURVE.height} />)}
+      <line class="start" x1="0" y1={geometry.startY} x2={CURVE.width} y2={geometry.startY}></line>
+      <polyline class="curve" points={geometry.points}></polyline>
+    </svg>
+    <svg class="marks" role="presentation" aria-hidden="true">
+      <text class="plot-label plot-label-end" x="100%" y={endY} dy="-0.6em">
+        <tspan class="plot-label-strong">{end.value}</tspan>
+        {end.change && <tspan class={end.tone} dx="0.5em">{end.change}</tspan>}
+      </text>
+      <text class={`plot-label plot-label-start plot-label-${startAt}`} x="0" y={startY} dy={startAt === 'under' ? '0.3em' : '-0.3em'}>
+        {start.label}
+      </text>
+      {
+        low && lowPoint && (
+          <text
+            class={`plot-label plot-label-low plot-label-under ${lowLeft ? 'plot-label-left' : 'plot-label-right'}`}
+            x={percent(lowPoint.x, CURVE.width)}
+            y={percent(lowY, CURVE.height)}
+            dy="0.45em"
+          >
+            <tspan class="plot-label-strong">{low.value}</tspan>
+            {low.note && (
+              <tspan x={percent(lowPoint.x, CURVE.width)} dy="1.25em">
+                {low.note}
+              </tspan>
+            )}
+          </text>
+        )
+      }
+    </svg>
+  </div>
+  <ol class="days" role="list" aria-hidden="true">
+    {days.map((day) => <li>{(day.tick ?? []).map((line) => <span>{line}</span>)}</li>)}
+  </ol>
+  <div class="visually-hidden">
+    <table>
+      <caption>{table.caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{table.date}</th>
+          <th scope="col">{table.value}</th>
+          <th scope="col">{table.note}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          days.map((day) => (
+            <tr>
+              <th scope="row">{day.label}</th>
+              <td>{day.valueLabel}</td>
+              <td>{day.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</figure>

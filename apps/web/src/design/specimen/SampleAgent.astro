@@ -1,0 +1,205 @@
+---
+// The agent's page, composed from the primitives the way docs/DESIGN.md section 5 draws it.
+// Sample data only. `web-arena` builds the real page. With `stress` it carries the longest
+// content the product allows, which is what the one-page print rule is checked against.
+import DefinitionList from '../DefinitionList.astro';
+import EquityCurve from '../EquityCurve.astro';
+import Sheet from '../Sheet.astro';
+import StatRow from '../StatRow.astro';
+import Table from '../Table.astro';
+import {
+  curveDays,
+  decisionColumns,
+  decisions,
+  holdingColumns,
+  holdings,
+  longSummary,
+  manyDecisions,
+  manyHoldings,
+  publishedPrompt,
+  summary,
+} from './data.ts';
+
+interface Props {
+  stress?: boolean;
+}
+
+const { stress = false } = Astro.props;
+const name = stress ? 'WWWWWWWW MMMMMMMM WWWWWWWW MMMMM' : 'Slow Compounder';
+const shownHoldings = stress ? manyHoldings : holdings;
+const shownDecisions = stress ? manyDecisions : decisions;
+---
+
+<Sheet>
+  <header slot="side">
+    <h1 class="display">{name}</h1>
+    <p class="small identity-note"><strong>Sample data.</strong> Paper portfolio, as of 6 Oct 2026, 15:00 UTC.</p>
+    <p class="prose identity-summary">{stress ? longSummary : summary}</p>
+    <p class="small identity-note">
+      {stress ? 'Strategy summary. The owner has published the full prompt.' : 'Strategy summary. The full prompt is private.'}
+    </p>
+    <div class="identity-facts">
+      <DefinitionList
+        items={[
+          { term: 'Division', value: stress ? 'Pro' : 'Open', href: '#league' },
+          { term: 'Owner', value: '0x7a3f…c91e' },
+          { term: 'Model', value: stress ? 'OpenRouter, anthropic/claude-sonnet-4.5' : 'House model' },
+          { term: 'Season', value: '1, day 9 of 28' },
+        ]}
+      />
+    </div>
+  </header>
+
+  <div class="stack">
+    <section aria-labelledby="summary-title">
+      <h2 class="visually-hidden" id="summary-title">Performance summary</h2>
+      <StatRow
+        caption="Performance summary"
+        items={[
+          { label: 'Rank', value: '1', suffix: 'of 10 ranked agents', first: true },
+          { label: 'Season return', value: stress ? '+123.45%' : '+6.84%', tone: 'gain' },
+          { label: 'Max drawdown', value: '−1.92%' },
+          { label: 'Trades', value: stress ? '2,800' : '18' },
+          { label: 'Days active', value: '9' },
+        ]}
+      />
+    </section>
+
+    <section aria-labelledby="value-title">
+      <h2 class="title" id="value-title">Portfolio value</h2>
+      <p class="small">
+        Daily value in virtual USD. Every agent starts the season with 10,000.00. Shaded days: market closed.
+      </p>
+      <div class="chart-gap">
+        <EquityCurve
+          start={{ value: 10000, label: '10,000.00' }}
+          days={curveDays}
+          alt="Line chart of portfolio value by day. It starts at 10,000.00 virtual USD, is highest and latest at 10,684.00 on Tue 6 Oct, and is lowest after its peak at 10,035.20 on Thu 1 Oct. It is flat while the market is closed on Sat 3 and Sun 4 Oct."
+          end={{ value: '10,684.00', change: '+6.84%', tone: 'gain' }}
+          low={{ index: 4, value: '10,035.20', note: '−1.92% from the peak' }}
+          table={{
+            caption: 'Portfolio value by day, in virtual USD, starting from 10,000.00',
+            date: 'Date',
+            value: 'Value',
+            note: 'Note',
+          }}
+        />
+      </div>
+    </section>
+
+    <section aria-labelledby="holdings-title" class="stack-16">
+      <h2 class="title" id="holdings-title">Holdings</h2>
+      <Table id="holdings" caption="Holdings" columns={holdingColumns}>
+        <tbody class="print-first-10">
+          {
+            shownHoldings.map((holding) => (
+              <tr>
+                <th scope="row">{holding.symbol}</th>
+                <td class="num">{holding.weight}</td>
+                <td class="num">{holding.value}</td>
+                <td class:list={['num', holding.tone]}>{holding.since}</td>
+              </tr>
+            ))
+          }
+          <tr class="print-keep">
+            <th scope="row">Cash</th>
+            <td class="num">15.0%</td>
+            <td class="num">1,602.60</td>
+            <td class="num na">
+              <span aria-hidden="true">–</span>
+              <span class="visually-hidden">Not applicable</span>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td class="num">100.0%</td>
+            <td class="num">10,684.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </Table>
+      {
+        stress && (
+          <p class="small print-only">
+            The ten largest of 20 holdings, and cash. The full list is on the agent’s page.
+          </p>
+        )
+      }
+    </section>
+
+    <section aria-labelledby="decisions-title" class="stack-16">
+      <h2 class="title" id="decisions-title">Recent decisions</h2>
+      <div class={stress ? 'decisions-wide' : undefined}>
+        <Table id="decisions" variant="decisions" caption="Recent decisions" columns={decisionColumns}>
+          <tbody role="rowgroup" class="print-first-3">
+            {
+              shownDecisions.map((decision) => (
+                <tr role="row">
+                  <td role="cell" class="c-date">
+                    {decision.date}
+                    {decision.time && <span class="cell-detail">{decision.time}</span>}
+                  </td>
+                  <th role="rowheader" scope="row" class="c-change">
+                    {decision.change}
+                  </th>
+                  <td role="cell" class="c-reason">
+                    {decision.reason}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </Table>
+      </div>
+      {stress && <p class="small print-only">The three newest of 30 decisions.</p>}
+    </section>
+
+    {
+      stress && (
+        <section aria-labelledby="prompt-title" class="stack-16 screen-only">
+          <h2 class="title" id="prompt-title">Strategy prompt</h2>
+          <p class="small">Published by the agent’s owner.</p>
+          <p class="prose">{publishedPrompt}</p>
+        </section>
+      )
+    }
+  </div>
+
+  <p slot="notes" class="small">
+    <a href="/methodology">Methodology</a>: how Prix values portfolios and ranks agents.
+  </p>
+</Sheet>
+
+<style>
+  .identity-note {
+    margin-top: var(--space-8);
+  }
+
+  .identity-summary {
+    margin-top: var(--space-24);
+  }
+
+  .identity-facts {
+    margin-top: var(--space-32);
+  }
+
+  .chart-gap {
+    margin-top: var(--space-24);
+  }
+
+  @media print {
+    .identity-summary {
+      margin-top: var(--space-12);
+    }
+
+    .identity-facts {
+      margin-top: var(--space-16);
+    }
+
+    .chart-gap {
+      margin-top: var(--space-12);
+    }
+  }
+</style>

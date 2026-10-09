@@ -1,0 +1,90 @@
+---
+// The tape of the symbols the agents trade (the universe: twenty Stock Tokens, then the crypto
+// assets, docs/CONTRACTS.md section 21): each with its price and its change on the day, in one
+// strip across the top of the board. Every figure is a prop, formatted by the page;
+// the strip computes nothing and says nothing about any symbol but its figures.
+//
+// It moves slowly to the left and comes round again (motion.css), at one speed whatever the
+// length of the list: the time of one pass is set here from the length of what it carries (see
+// `tapeSeconds`). It stops in place while the
+// pointer is on it. Under `prefers-reduced-motion` it stands still and scrolls by hand. The
+// strip is one tab stop: with the keyboard on it, it stops, goes back to the first symbol and
+// scrolls with the arrow keys. The second copy that makes the loop seamless is hidden from
+// assistive technology, which reads the list once.
+interface Item {
+  symbol: string;
+  /** The company's name: the strip shows it when the pointer rests on the symbol, and reads it out. */
+  name: string;
+  /** "$181.20". */
+  price: string;
+  /** "+1.42%", with its sign. Null when there is no change yet: an en dash in grey stands there. */
+  change: string | null;
+  tone: 'gain' | 'loss' | 'flat';
+  /**
+   * What the symbol is: a Stock Token or a crypto asset. Optional; where the kind changes from one
+   * item to the next, a hairline stands between them, so the two groups read apart without colour.
+   */
+  kind?: 'stock' | 'crypto';
+}
+
+interface Props {
+  items: Item[];
+  /** When the prices are from, in words: "Prices at 19:00 UTC". */
+  asOf: string;
+  /** The name of the strip for assistive technology: "Prices of the symbols in the league". */
+  label?: string;
+  id?: string;
+}
+
+const { items, asOf, label, id } = Astro.props;
+
+/*
+  The time of one pass, in seconds, proportional to the width of one copy of the list, so the tape
+  keeps one speed at 20, 22 or any number of symbols. The width is estimated in characters: each
+  item's symbol, price and change, plus 6 for the gaps around and inside it, plus 4 for the list's
+  padding, plus 4 for each hairline between kinds. 0.2 seconds a character is the speed the
+  founder approved: 90 seconds for the twenty-symbol sample (docs/DESIGN.md section 9).
+  The policy of the site blocks style attributes, so the time goes out as a class in steps of
+  10 seconds from 40 to 180 (motion.css): `tape-100` is 100 seconds.
+*/
+const SECONDS_PER_CHARACTER = 0.2;
+const startsGroup = (index: number) => {
+  const kind = items[index]?.kind;
+  const before = items[index - 1]?.kind;
+  return index > 0 && kind !== undefined && before !== undefined && kind !== before;
+};
+const characters = items.reduce(
+  (sum, item, index) =>
+    sum + item.symbol.length + item.price.length + (item.change ?? '–').length + 6 + (startsGroup(index) ? 4 : 0),
+  4,
+);
+const tapeSeconds = Math.min(180, Math.max(40, Math.round((characters * SECONDS_PER_CHARACTER) / 10) * 10));
+---
+
+{
+  items.length > 0 && (
+    <section class="ticker" id={id} aria-label={label}>
+      <p class="ticker-asof">{asOf}</p>
+      <div class="ticker-view" tabindex="0" role="region" aria-label={label ?? asOf}>
+        <div class={`ticker-track tape-${tapeSeconds}`}>
+          {[0, 1].map((copy) => (
+            <ul class:list={['ticker-list', copy === 1 && 'ticker-copy']} role="list" aria-hidden={copy === 1 ? 'true' : undefined}>
+              {items.map((item, index) => (
+                <li class:list={['ticker-item', startsGroup(index) && 'is-group-start']}>
+                  <abbr class="ticker-symbol" title={item.name}>
+                    {item.symbol}
+                  </abbr>
+                  {copy === 0 && <span class="visually-hidden">{item.name}</span>}
+                  <span class="ticker-price">{item.price}</span>
+                  <span class:list={['ticker-change', item.tone !== 'flat' && item.tone, item.change === null && 'is-none']}>
+                    {item.change ?? '–'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}

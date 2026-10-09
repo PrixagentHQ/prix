@@ -1,0 +1,282 @@
+---
+// The public token page. It shows what GET /api/token returned and nothing else: the address,
+// the configured tiers and the links all come from the API. Not launched is a state of its own:
+// no address, no link, one plain sentence. docs/contracts/phase-4-token.md rule 13.
+//
+// The head says what the token is and, in a chip, whether it exists yet. Beside it a panel holds
+// the one thing a visitor can do with it: read or copy the address. Under them the tiers stand
+// as one table, so a person compares what each share of the supply unlocks. The page
+// ends with what the token is not and its risks, in the same sentences as before.
+import { text } from '../../content/index.ts';
+import Address from '../../design/Address.astro';
+import Chip from '../../design/Chip.astro';
+import FigureBand from '../../design/FigureBand.astro';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import Panel from '../../design/Panel.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import PageHead from '../PageHead.astro';
+import ShareMeta from '../ShareMeta.astro';
+import { siteShareImage } from '../share.ts';
+import { formatFeedDelay } from './feed-delay.ts';
+import { readTokenResult } from './read-token.ts';
+
+const account = await readAccount(Astro);
+const result = await readTokenResult(Astro);
+const info = result.ok ? result.info : null;
+
+const title = text('token.sitePageTitle', 'The Prix token');
+const lead = text(
+  'token.lead',
+  'A token on Robinhood Chain that sets how many agents a wallet can run and how soon it sees the live feed.',
+);
+
+// Formatting only: the thresholds are the API's own numbers, shown as a share of the supply.
+const percent = (ppm: number): string => `${Number((ppm / 10_000).toFixed(4))}%`;
+const whole = (value: number): string => value.toLocaleString('en-US');
+
+const yes = text('token.yes', 'Yes');
+const no = text('token.no', 'No');
+const columns = [
+  { key: 'tier', label: text('token.colTier', 'Tier') },
+  { key: 'hold', label: text('token.siteColHold', 'Holding, share of supply'), align: 'end' as const },
+  { key: 'agents', label: text('token.siteColAgents', 'Agents'), align: 'end' as const },
+  { key: 'feed', label: text('token.siteColFeed', 'Feed') },
+  { key: 'badge', label: text('token.siteColBadge', 'Badge') },
+  { key: 'api', label: text('token.siteColApi', 'Free API calls a day'), align: 'end' as const },
+];
+const tiers = info?.tiers ?? [];
+
+const launched = Boolean(info?.tokenAddress);
+const stateLabel = launched
+  ? text('token.siteStateLaunched', 'Launched on Pons')
+  : text('token.siteStateNotLaunched', 'Not launched');
+
+const noPromise = text(
+  'token.notAPromise',
+  'Holding the token is not a promise of return, profit or gain of any kind, and it is not an investment.',
+);
+const notAdvice = text(
+  'token.notAdvice',
+  'What an agent decides is the record of a simulation. It is not advice, and no real orders are placed.',
+);
+const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robinhood.com/rhj');
+---
+
+<Layout title={title} description={lead} current="token" account={account}>
+  <ShareMeta slot="head" title={title} description={lead} image={siteShareImage()} />
+
+  <div class="page site-top with-panel token-top">
+    <PageHead title={title} lead={lead}>
+      {info && <Chip label={stateLabel} kind="neutral" />}
+    </PageHead>
+
+    {
+      info ? (
+        <Panel title={text('token.addressTitle', 'Contract address')} id="token-address">
+          {info.tokenAddress ? (
+            <div class="stack-8">
+              <Address
+                value={info.tokenAddress}
+                copyLabel={text('token.siteCopyAddress', 'Copy address')}
+                copiedLabel={text('token.siteCopied', 'Address copied.')}
+                failedLabel={text('token.siteCopyFailed', 'Copying was blocked. Select the address and copy it by hand.')}
+              />
+              <p class="small">
+                {text(
+                  'token.notPrize',
+                  'Names on Pons are not unique: this address is the only one that counts.',
+                )}
+              </p>
+            </div>
+          ) : (
+            <p class="body">
+              {text(
+                'token.notLaunched',
+                'The Prix token has not launched. No address exists yet, and any token that claims to be it is not.',
+              )}
+            </p>
+          )}
+          {(info.explorerUrl || info.buyUrl) && (
+            <ul class="panel-part token-links" role="list">
+              {info.explorerUrl && (
+                <li>
+                  <a href={info.explorerUrl} rel="noopener noreferrer" target="_blank">
+                    {text('token.explorerLink', 'View the token on the explorer')}
+                  </a>
+                </li>
+              )}
+              {info.buyUrl && (
+                <li>
+                  <a href={info.buyUrl} rel="noopener noreferrer" target="_blank">
+                    {text('token.siteBuyLink', 'Open the token on Pons')}
+                  </a>
+                </li>
+              )}
+            </ul>
+          )}
+          <div class="panel-part">
+            <FigureBand
+              plain
+              label={text('token.siteStateLabel', 'The token today')}
+              items={[
+                {
+                  label: text('token.siteStateTiers', 'Tiers'),
+                  value: info.gatingOn
+                    ? text('token.siteStateTiersOn', 'Switched on')
+                    : text('token.siteStateTiersOff', 'Switched off'),
+                },
+                {
+                  label: text('token.siteStateTicker', 'Ticker'),
+                  value: text('token.siteStateTickerName', '$PRIX'),
+                },
+              ]}
+            />
+          </div>
+        </Panel>
+      ) : (
+        <Notice
+          tone="error"
+          title={text('token.errorTitle', 'The token details could not be loaded')}
+          body={text('token.errorBody', 'Nothing here has changed. Reload the page in a minute.')}
+        />
+      )
+    }
+
+    <div class="token-about">
+      <section class="stack-8" aria-labelledby="token-for-title">
+        <h2 class="title" id="token-for-title">{text('token.forTitle', 'What it is for')}</h2>
+        <p class="prose">
+          {text(
+            'token.forBody',
+            'It is a key to features: more agent slots, the live feed without the delay, a verified badge and a larger data quota. It is not needed to watch the league.',
+          )}
+        </p>
+      </section>
+
+      <section class="stack-8" aria-labelledby="token-not-title">
+        <h2 class="title" id="token-not-title">{text('token.notTitle', 'What it is not')}</h2>
+        <p class="prose">{noPromise}</p>
+        <ul class="token-list" role="list">
+          <li>{text('token.notRights', 'It gives no rights to Prix: no ownership, no vote, no claim on anything the site makes.')}</li>
+          <li>{text('token.notShare', 'It gives no share of revenue. Prix pays holders nothing.')}</li>
+          <li>{text('token.notLink', 'It has no link to any agent’s decisions. An agent doing well or badly changes nothing about the token.')}</li>
+        </ul>
+        <p class="prose">{notAdvice}</p>
+      </section>
+    </div>
+  </div>
+
+  {
+    info && tiers.length > 0 && (
+      <div class="zone zone--raised"><section class="page section" aria-labelledby="token-tiers-title">
+        <div class="section-head">
+          <h2 class="headline" id="token-tiers-title">
+            {text('token.siteTiersTitle', 'What each tier unlocks')}
+          </h2>
+          <p class="small">
+            {info.gatingOn
+              ? text(
+                  'token.siteUnlocksOn',
+                  'Your tier follows the share of the supply your signed-in wallet holds. Prix reads the balance from the chain.',
+                )
+              : text(
+                  'token.unlocksOff',
+                  'Tiers are not switched on. Every wallet has the same access today. When they are switched on, this table says what each share of the supply unlocks.',
+                )}
+          </p>
+        </div>
+        <Table id="tiers-table" caption={text('token.tiersCaption', 'Tiers and what each unlocks')} columns={columns} scroll minWidth="40rem">
+          <tbody>
+            {tiers.map((rule) => (
+              <tr>
+                <th scope="row">{text('token.siteTierRow', 'Tier {tier}', { tier: rule.tier })}</th>
+                <td class="num">{rule.tier === 0 ? text('token.siteHoldNone', 'None') : percent(rule.thresholdPpm)}</td>
+                <td class="num">{whole(rule.maxAgents)}</td>
+                <td>
+                  {rule.realtimeFeed
+                    ? text('token.siteFeedLive', 'Live')
+                    : text('token.siteFeedLate', '{delay} late', { delay: formatFeedDelay(info?.feedDelaySeconds ?? 0) })}
+                </td>
+                <td>{rule.verifiedBadge ? yes : no}</td>
+                <td class="num">{whole(rule.apiDailyQuota)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </section></div>
+    )
+  }
+
+  <section class="page section token-risks" aria-labelledby="token-risk-title">
+    <h2 class="headline" id="token-risk-title">{text('token.riskTitle', 'Risks')}</h2>
+    <ul class="token-list" role="list">
+      <li>{text('token.riskAll', 'It can lose all of its value.')}</li>
+      <li>{text('token.riskThin', 'Liquidity may be thin, so it may be hard to sell at any price, or at all.')}</li>
+      <li>{text('token.riskMarket', 'Its price is set by a market that Prix does not control.')}</li>
+    </ul>
+    <p class="small">
+      {text('token.siteDisclosureLead', 'Stock Tokens have their own risks.')}{' '}
+      <a href={disclosureUrl} rel="noopener noreferrer" target="_blank">
+        {text('token.siteDisclosureLink', 'Read Robinhood’s disclosure.')}
+      </a>
+    </p>
+  </section>
+</Layout>
+
+<style>
+  /*
+    The panel of .with-panel spans nine rows, and the empty rows would each add a row gap under
+    a page with two blocks on the left. This page has two, so its panel spans two.
+  */
+  @media (min-width: 60em) {
+    .token-top > :global(.panel) {
+      grid-row: 1 / span 2;
+    }
+
+    /* The head keeps its own height; what the panel adds below it goes to the second row. */
+    .token-top {
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  .token-about {
+    display: grid;
+    gap: var(--space-24);
+  }
+
+  @media (min-width: 60em) {
+    .token-about {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: var(--space-32);
+    }
+  }
+
+  /* A plain list of statements: reading text, one line each, no rule and no bar. */
+  .token-list {
+    display: grid;
+    gap: var(--space-8);
+    max-width: var(--measure);
+    font-size: var(--text-16);
+    line-height: var(--leading-16);
+  }
+
+  .token-links {
+    display: grid;
+    gap: var(--space-8);
+  }
+
+  .token-links a {
+    display: inline-block;
+    padding-block: var(--space-2);
+  }
+
+  .token-risks {
+    padding-bottom: var(--space-48);
+  }
+
+  .token-risks > * + * {
+    margin-top: var(--space-16);
+  }
+</style>

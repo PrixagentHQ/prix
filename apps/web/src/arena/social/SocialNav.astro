@@ -1,0 +1,39 @@
+---
+// The row of links between the three Social list pages: Rivalries, Model wars, Paper managers,
+// the current one marked `aria-current`. Built on the Tabs primitive, under each list page's head.
+// Like the header's Social tab, it renders only while the probe of SOCIAL_ENABLED answers on.
+import { text } from '../../content/index.ts';
+import Tabs from '../../design/Tabs.astro';
+import { socialIsOn } from './client.ts';
+import { listHref, rivalriesHref } from './words.ts';
+
+interface Props {
+  current: 'rivalries' | 'wars' | 'managers';
+}
+
+const { current } = Astro.props;
+const on = (await socialIsOn(Astro)) === 'on';
+const items = [
+  { key: 'rivalries', label: text('social.rivalriesTitle', 'Rivalries'), href: rivalriesHref(Astro.url) },
+  { key: 'wars', label: text('social.warsTitle', 'Model wars'), href: listHref(Astro.url, '/wars', 1) },
+  { key: 'managers', label: text('social.managersTitle', 'Paper managers'), href: listHref(Astro.url, '/managers', 1) },
+].map((item) => ({ label: item.label, href: item.href, current: item.key === current }));
+---
+
+{
+  on && (
+    <div class="page social-nav">
+      <Tabs label={text('nav.social', 'Social')} id="social-pages" items={items} />
+    </div>
+  )
+}
+
+<style>
+  /*
+    The row sits under the head with no hairline of its own: the band of the first block draws
+    the next one, and the current page is the underlined tab.
+  */
+  .social-nav {
+    margin-top: var(--space-24);
+  }
+</style>

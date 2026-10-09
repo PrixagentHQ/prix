@@ -1,0 +1,55 @@
+---
+// The board: the agents of a league, as cards in a grid or as rows of a table. It holds the
+// same AgentCard either way, so a switch between the two forms changes one class and moves
+// nothing else (motion/board.ts does it in place, with the cards travelling).
+//
+//   list   one row per agent under a row of column heads, a hairline between rows (the default)
+//   cards  the grid of CardGrid: four, two, one in a row
+//
+// The heads name the columns of the list form: rank, agent, the figure, the line, then one head
+// for each of the first two facts of a card. Under 900 pixels a row keeps rank, agent and figure.
+// The heads are a picture for the eye: every value on a card carries its own label for
+// assistive technology.
+//
+// `series={false}` drops the line column of the list form and its gap, for a board whose
+// agents have no line to show; the facts move left into its place. The cards form is unchanged.
+interface Props {
+  form?: 'list' | 'cards';
+  /** The column heads of the list form, in order: rank, agent, figure, line, fact one, fact two. `line` is not shown without `series`. */
+  heads: { rank: string; agent: string; figure: string; line?: string; facts: string[] };
+  /** The line column of the list form. On by default; false drops it and its gap. */
+  series?: boolean;
+  /** The name of the board for assistive technology: "Open division, Season 1". */
+  label: string;
+  id?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  form = 'list',
+  heads,
+  label,
+  series = true,
+  id,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+---
+
+<section
+  class:list={['board', form === 'list' && 'board--list', !series && 'board--no-series']}
+  id={id}
+  aria-label={label}
+  data-board
+  {...rest}
+>
+  <div class="board-head" aria-hidden="true">
+    <span>{heads.rank}</span>
+    <span>{heads.agent}</span>
+    <span>{heads.figure}</span>
+    {series && <span>{heads.line}</span>}
+    {heads.facts.slice(0, 2).map((fact) => <span>{fact}</span>)}
+    <span></span>
+  </div>
+  <slot />
+</section>

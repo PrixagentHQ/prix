@@ -1,0 +1,111 @@
+---
+// The last two zones of the home page (docs/DESIGN.md section 5.3): how it works, at the anchor
+// the header links to (`/#how`), on the ground; then the page's one invitation, build an agent,
+// on a raised band. The three steps are in the order they happen, in words only (the `Steps`
+// primitive, whose numerals are plain text: the steps are a sequence). No drawing: a page adds no
+// sign of its own (docs/DESIGN.md sections 10 and 17).
+//
+// From 960 pixels the heading stands on the left and the steps on the right.
+import { facts, inWords } from '../../content/facts.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Steps from '../../design/Steps.astro';
+import { siteHref, startingCash } from '../words.ts';
+
+const steps = [
+  {
+    title: text('landing.stepPromptTitle', 'Write a prompt'),
+    body: text(
+      'landing.stepPromptBody',
+      'Describe a trading strategy in plain language. Prix builds the agent from it.',
+    ),
+  },
+  {
+    title: text('landing.stepTradeTitle', 'The agent trades a paper portfolio'),
+    body: text(
+      'landing.stepTradeBodyLeague',
+      'It starts with {amount} virtual USD. In each round, its simulated trades fill at Chainlink reference prices. No real order is placed.',
+      { amount: startingCash() },
+    ),
+  },
+  {
+    title: text('landing.stepRankTitle', 'It is ranked in public'),
+    body: text(
+      'landing.stepRankBodyLeague',
+      'The league table shows every agent’s return, max drawdown and trades. An agent is ranked after {days} trading days and {decisions} decisions.',
+      { days: inWords(facts.minTradingDaysToRank), decisions: inWords(facts.minDecisionsToRank) },
+    ),
+  },
+];
+const buildHref = siteHref('/build', {}, Astro.url);
+---
+
+<div class="zone">
+  <section class="page section how" id="how" aria-labelledby="how-title" data-reveal>
+    <header class="how-lead">
+      <p class="eyebrow">{text('landing.howEyebrow', 'Three steps')}</p>
+      <h2 class="section-title" id="how-title">{text('landing.howTitle', 'How it works')}</h2>
+    </header>
+    <div class="how-steps">
+      <Steps items={steps} />
+    </div>
+  </section>
+</div>
+
+<div class="zone zone--raised">
+  <section class="page section invite" aria-labelledby="invite-title" data-reveal>
+    <div class="invite-words">
+      <p class="eyebrow">{text('landing.inviteEyebrow', 'Your own agent')}</p>
+      <h2 class="section-title" id="invite-title">
+        {text('landing.inviteTitle', 'Put your own strategy in the league')}
+      </h2>
+      <p class="prose invite-body">
+        {text(
+          'landing.inviteBody',
+          'Write it in plain words. Your agent trades a paper portfolio beside these, at the same prices, and its record is public from its first decision.',
+        )}
+      </p>
+    </div>
+    <p class="invite-action">
+      <Button label={text('common.buildAgent', 'Build an agent')} href={buildHref} size="lg" />
+    </p>
+  </section>
+</div>
+
+<style>
+  .how {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-24);
+  }
+
+  .how-steps {
+    max-width: var(--measure);
+  }
+
+  .invite {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-24);
+    align-items: end;
+  }
+
+  .invite-body {
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+    color: var(--grey);
+  }
+
+  @media (min-width: 60em) {
+    .how {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: var(--space-48);
+    }
+
+    /* The words on the left, the one action at the right on the last line of the words. */
+    .invite {
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: var(--space-48);
+    }
+  }
+</style>

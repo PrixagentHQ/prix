@@ -1,0 +1,52 @@
+---
+// The performance summary: up to six figures under one header row. It is a real table with
+// one row, so a screen reader reads each figure with its label. No figure is boxed.
+// Under 640 pixels it becomes one line per figure.
+interface Props {
+  /** The table's name for assistive technology, for example "Performance summary". */
+  caption: string;
+  items: Array<{
+    label: string;
+    value: string;
+    /** Smaller graphite words after the value, for example "of 10 ranked agents". */
+    suffix?: string;
+    /** Only for a signed figure. The sign must be in `value`. */
+    tone?: 'gain' | 'loss';
+    /** The brass rule. Only for rank one. */
+    first?: boolean;
+    /** True when the value is words, such as "Not ranked yet": it is set at body size. */
+    words?: boolean;
+  }>;
+}
+
+const { caption, items } = Astro.props;
+---
+
+<table class="table stat-row" role="table">
+  <caption class="visually-hidden">{caption}</caption>
+  <thead role="rowgroup">
+    <tr role="row">
+      {
+        items.map((item) => (
+          <th role="columnheader" scope="col">
+            {item.label}
+          </th>
+        ))
+      }
+    </tr>
+  </thead>
+  <tbody role="rowgroup">
+    <tr role="row">
+      {
+        items.map((item) => (
+          <td role="cell" class:list={[item.tone, item.words && 'stat-text']}>
+            <span class:list={[item.first && 'first-mark']}>
+              {item.value}
+              {item.suffix && <span class="stat-suffix"> {item.suffix}</span>}
+            </span>
+          </td>
+        ))
+      }
+    </tr>
+  </tbody>
+</table>

@@ -1,0 +1,14 @@
+# Store and check out text as LF on every machine, so worktrees and CI never
+# disagree about line endings (this machine has core.autocrlf=true).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

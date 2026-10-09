@@ -1,0 +1,26 @@
+---
+// One radio button or checkbox with its label and the terms it stands for.
+// The whole label is the target. Use it inside Choices.
+interface Props {
+  type: 'radio' | 'checkbox';
+  name: string;
+  value: string;
+  label: string;
+  hint?: string;
+  id?: string;
+  checked?: boolean;
+  disabled?: boolean;
+  required?: boolean;
+}
+
+const { type, name, value, label, hint, id = `${name}-${value}`, ...rest } = Astro.props;
+const hintId = hint ? `${id}-hint` : undefined;
+---
+
+<label class="choice" for={id}>
+  <input id={id} type={type} name={name} value={value} aria-describedby={hintId} {...rest} />
+  <span>
+    <span class="choice-label">{label}</span>
+    {hint && <span class="choice-hint" id={hintId}>{hint}</span>}
+  </span>
+</label>

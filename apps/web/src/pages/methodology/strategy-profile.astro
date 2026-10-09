@@ -1,0 +1,14 @@
+---
+import { socialIsOn } from '../../arena/social/client.ts';
+import strategyProfile from '../../content/pages/strategy-profile.ts';
+import DocPage from '../../site/DocPage.astro';
+
+// How a strategy profile is measured: the editor's Doc (apps/web/src/content/pages/strategy-profile.ts,
+// its default export), set by the site's long-page layout. A Phase 6 page: while the switch is off it
+// is the site's 404, and a probe that failed sends the page with 503, never as 200.
+const social = await socialIsOn(Astro);
+if (social === 'off') return Astro.rewrite('/404');
+if (social === 'failed') Astro.response.status = 503;
+---
+
+<DocPage doc={strategyProfile} current="methodology" />

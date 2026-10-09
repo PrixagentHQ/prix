@@ -1,0 +1,16 @@
+---
+// The page could not be made. The route answers 500; this page says so in Prix's words and
+// offers the one thing that helps, loading the same address again. It never shows the error
+// itself: no message from the server, no code, no stack trace.
+import { text } from '../content/index.ts';
+import ErrorPage from './ErrorPage.astro';
+
+// The same address, so the action works without script.
+const again = `${Astro.url.pathname}${Astro.url.search}`;
+---
+
+<ErrorPage
+  title={text('errors.serverTitle', 'Prix could not load this page')}
+  body={text('errors.serverBody', 'Something failed on our side. Reload the page in a minute.')}
+  action={{ label: text('common.reloadPage', 'Reload the page'), href: again }}
+/>

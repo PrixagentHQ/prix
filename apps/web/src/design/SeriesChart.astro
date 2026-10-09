@@ -1,0 +1,342 @@
+---
+// SeriesChart: two to four lines on one scale, drawn on the server in SVG (docs/DESIGN.md section 8).
+// The ranks of a rivalry, the values of a paper experiment by war-day. Hand-written, no library,
+// no script. Every word arrives as a prop: the caption, the key's name, each line's names.
+//
+// Each line is told apart three ways, never by colour alone: its stroke (ink or grey, solid or
+// dashed), its marker (filled or hollow), and its name, both in the key above the plot and as a
+// direct label at its last point. Lines take the four styles in the order given, A to D, and keep
+// them: a page passes its series in a fixed order (by slot, or agent A then agent B), never by rank.
+// A null value is a gap: the line breaks and the day has no point. No area under any line.
+// Positions are SVG attributes in percent, so the plot needs no style attribute and no viewBox,
+// and strokes and markers keep their size at every width (docs/DESIGN.md section 19).
+//
+// The figure is a picture: the page puts the same values in a table under it (the default slot).
+import { axisDates, givesWayWhenNarrow } from './chart.ts';
+
+interface Series {
+  /** The name in the key and at the line's end. */
+  label: string;
+  /**
+   * The name at the end of the line, whole, at most sixteen characters: a slot letter and a model's
+   * short name, an agent's name. Never cut with an ellipsis; leave it out to use `label`.
+   */
+  short?: string;
+  /** Oldest first, one per x label. Null is a gap. */
+  values: Array<number | null>;
+}
+
+interface Props {
+  id: string;
+  /** What the chart shows, in a sentence: the figure's caption. */
+  caption: string;
+  /** The name of the key for assistive technology. */
+  keyLabel: string;
+  series: Series[];
+  /** One short label per point, oldest first: "6 Oct". */
+  xLabels: string[];
+  /** The value at the top edge and at the bottom edge of the plot. Top may be smaller (ranks). */
+  top: number;
+  bottom: number;
+  /** Grid lines with their labels. */
+  ticks: Array<{ value: number; label: string }>;
+  /** A value marked by a dashed line, with its words: the value every portfolio started with. */
+  baseline?: { value: number; label: string };
+}
+
+const { id, caption, keyLabel, series, xLabels, top, bottom, ticks, baseline } = Astro.props;
+const STYLES = ['a', 'b', 'c', 'd'] as const;
+const count = xLabels.length;
+const round = (value: number): number => Math.round(value * 100) / 100;
+const x = (index: number): number => (count <= 1 ? 50 : round((index / (count - 1)) * 100));
+const y = (value: number): number => round(((value - top) / (bottom - top)) * 100);
+const pct = (value: number): string => `${value}%`;
+
+const lines = series.slice(0, 4).map((line, index) => {
+  const style = STYLES[index] ?? 'a';
+  const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  const points: Array<{ x: number; y: number }> = [];
+  line.values.forEach((value, at) => {
+    if (value === null) return;
+    points.push({ x: x(at), y: y(value) });
+    const before = at > 0 ? line.values[at - 1] : null;
+    if (before !== null && before !== undefined)
+      segments.push({ x1: x(at - 1), y1: y(before), x2: x(at), y2: y(value) });
+  });
+  const last = points.at(-1) ?? null;
+  return { ...line, short: line.short ?? line.label, style, segments, points, endY: last ? last.y : null };
+});
+
+// Direct labels at each line's last point, nudged apart so that two lines ending close together
+// keep both names readable. Nine percent of the plot is one line of 12 pixel text.
+const GAP = 9;
+const labels = lines
+  .filter((line) => line.endY !== null)
+  .map((line) => ({ style: line.style, text: line.short, y: line.endY ?? 0 }))
+  .sort((a, b) => a.y - b.y);
+for (let index = 1; index < labels.length; index += 1) {
+  const above = labels[index - 1];
+  const here = labels[index];
+  if (above && here && here.y - above.y < GAP) here.y = above.y + GAP;
+}
+const overflow = (labels.at(-1)?.y ?? 0) - 100;
+if (overflow > 0) for (const label of labels) label.y -= overflow;
+for (const label of labels) label.y = round(Math.max(0, label.y));
+
+// Five dates at most. With five points or fewer every one is named at every width; with more,
+// under 560 pixels every other one gives way, so two dates never meet (chart.ts).
+const days = axisDates(count).map((date, at, all) => ({
+  ...date,
+  label: xLabels[date.index] ?? '',
+  between: givesWayWhenNarrow(count, at, all.length),
+}));
+---
+
+<figure class="series" id={id}>
+  <ul class="series-key" aria-label={keyLabel}>
+    {
+      lines.map((line) => (
+        <li>
+          <svg class:list={['series-swatch', `s-${line.style}`]} aria-hidden="true" focusable="false">
+            <line x1="0" x2="100%" y1="50%" y2="50%" />
+            <circle cx="50%" cy="50%" r="3.5" />
+          </svg>
+          <span>{line.label}</span>
+        </li>
+      ))
+    }
+  </ul>
+  <div class="series-frame" aria-hidden="true">
+    <div class="series-plot">
+      <svg class="series-grid" focusable="false">
+        {
+          ticks.map((tick) => (
+            <>
+              <line x1="0" x2="100%" y1={pct(y(tick.value))} y2={pct(y(tick.value))} />
+              <text x="0" dx="-8" y={pct(y(tick.value))} dy="0.32em" text-anchor="end">
+                {tick.label}
+              </text>
+            </>
+          ))
+        }
+        {
+          baseline && (
+            <line class="series-base" x1="0" x2="100%" y1={pct(y(baseline.value))} y2={pct(y(baseline.value))} />
+          )
+        }
+      </svg>
+      <svg class="series-lines" focusable="false">
+        {
+          lines.map((line) => (
+            <g class:list={[`s-${line.style}`]}>
+              {line.segments.map((segment) => (
+                <line x1={pct(segment.x1)} y1={pct(segment.y1)} x2={pct(segment.x2)} y2={pct(segment.y2)} />
+              ))}
+              {line.points.map((point) => (
+                <circle cx={pct(point.x)} cy={pct(point.y)} r="3.5" />
+              ))}
+            </g>
+          ))
+        }
+      </svg>
+    </div>
+    <svg class="series-labels" focusable="false">
+      {
+        labels.map((label) => (
+          <text class={`s-${label.style}`} x="0" y={pct(label.y)} dy="0.32em">
+            {label.text}
+          </text>
+        ))
+      }
+    </svg>
+    <svg class="series-x" focusable="false">
+      {
+        days.map((day) => (
+          <text class:list={[day.between && 'series-between']} x={pct(day.x)} y="0" dy="0.9em" text-anchor={day.anchor}>
+            {day.label}
+          </text>
+        ))
+      }
+    </svg>
+  </div>
+  <figcaption class="small series-caption">
+    {caption}
+    {baseline && <> {baseline.label}</>}
+  </figcaption>
+  <slot />
+</figure>
+
+<style>
+  .series {
+    display: grid;
+    row-gap: var(--space-12);
+    margin: 0;
+    min-width: 0;
+  }
+
+  .series-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6) var(--space-16);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-13);
+    line-height: var(--leading-13);
+    font-weight: var(--weight-medium);
+  }
+
+  .series-key li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .series-swatch {
+    flex: none;
+    width: var(--space-24);
+    height: var(--space-12);
+    overflow: visible;
+  }
+
+  /*
+    The plot, with room on the left for the grid's labels and on the right for the names at the
+    ends of the lines. Under 560 pixels the names at the ends give way: the key above names every line.
+  */
+  .series-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 0;
+    grid-template-rows: 15rem auto;
+    column-gap: var(--space-12);
+    row-gap: var(--space-8);
+    /* 12 more pixels under the key: the top grid label hangs half its height above the plot. */
+    margin-top: var(--space-12);
+    padding-left: var(--space-48);
+  }
+
+  @media (min-width: 35em) {
+    .series-frame {
+      grid-template-columns: minmax(0, 1fr) 8.5rem;
+    }
+  }
+
+  .series-plot {
+    position: relative;
+    min-width: 0;
+  }
+
+  .series-plot > svg,
+  .series-labels {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .series-plot > svg + svg {
+    position: absolute;
+    inset: 0;
+  }
+
+  .series-grid line {
+    stroke: var(--line);
+    stroke-width: var(--rule-hair);
+    stroke-dasharray: 2 3;
+  }
+
+  .series-grid line.series-base {
+    stroke: var(--grey);
+    stroke-dasharray: 4 4;
+  }
+
+  .series-grid text,
+  .series-x text {
+    fill: var(--grey);
+    font-size: var(--text-12);
+    font-weight: var(--weight-medium);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  .series-labels {
+    overflow: hidden;
+  }
+
+  .series-labels text {
+    font-size: var(--text-12);
+    font-weight: var(--weight-strong);
+  }
+
+  @media not (min-width: 35em) {
+    .series-between {
+      display: none;
+    }
+  }
+
+  .series-x {
+    grid-column: 1;
+    display: block;
+    width: 100%;
+    height: var(--space-16);
+    overflow: visible;
+  }
+
+  /* The four lines: ink or grey, solid or dashed; the marker filled or hollow. */
+  .s-a line,
+  .s-b line {
+    stroke: var(--ink);
+  }
+
+  .s-c line,
+  .s-d line {
+    stroke: var(--grey);
+  }
+
+  .series-lines line,
+  .series-swatch line {
+    stroke-width: var(--line-curve);
+    stroke-linecap: round;
+  }
+
+  .s-b line,
+  .s-d line {
+    stroke-dasharray: 6 4;
+  }
+
+  .s-a circle {
+    fill: var(--ink);
+  }
+
+  .s-c circle {
+    fill: var(--grey);
+  }
+
+  .s-b circle,
+  .s-d circle {
+    fill: var(--surface);
+    stroke-width: var(--line-curve);
+  }
+
+  .s-b circle {
+    stroke: var(--ink);
+  }
+
+  .s-d circle {
+    stroke: var(--grey);
+  }
+
+  .series-labels .s-a,
+  .series-labels .s-b {
+    fill: var(--ink);
+  }
+
+  .series-labels .s-c,
+  .series-labels .s-d {
+    fill: var(--grey);
+  }
+
+  .series-caption {
+    max-width: var(--measure);
+  }
+</style>

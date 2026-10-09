@@ -1,0 +1,15 @@
+---
+import { rivalryIdSchema } from '@prix/contracts';
+import { fetchRivalry, statusOf } from '../../arena/social/client.ts';
+import RivalryPage from '../../arena/social/RivalryPage.astro';
+
+// An address that cannot be a rivalry costs no API call. The API's 404 (unknown, a hidden agent,
+// the switch off) is this page's 404, and any other failure is sent with its own status.
+const id = Astro.params.id ?? '';
+if (!rivalryIdSchema.safeParse(id).success) return Astro.rewrite('/404');
+const result = await fetchRivalry(Astro, id);
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = statusOf(result);
+---
+
+<RivalryPage />

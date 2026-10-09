@@ -1,0 +1,206 @@
+---
+// Model keys: the saved keys by provider, model and last four characters, each with its own
+// "Delete key", and the form that adds one.
+//
+// The form holds the most sensitive thing in the product. The key field is a password field
+// that is never prefilled; the provider is a choice from the list the API returned, and no
+// field takes an address. What the script does with the key is in account.ts.
+import type { AgentOwnerView, ModelKeyPublic, ProvidersResponse } from '@prix/contracts';
+import { API_KEY_MAX, API_KEY_MIN, MAX_MODEL_KEYS_PER_WALLET, MODEL_NAME_MAX } from '@prix/contracts';
+import { inWords } from '../content/facts.ts';
+import { formatDay } from '../content/format.ts';
+import { text } from '../content/index.ts';
+import { apiErrorText } from '../content/states.ts';
+import Button from '../design/Button.astro';
+import Notice from '../design/Notice.astro';
+import Select from '../design/Select.astro';
+import TextInput from '../design/TextInput.astro';
+import Confirm from './Confirm.astro';
+import Feedback from './Feedback.astro';
+import { providerLabel } from './words.ts';
+import './account.css';
+
+interface Props {
+  keys: ModelKeyPublic[];
+  agent: AgentOwnerView | null;
+  /** The providers the API allows. Null when the list could not be read. */
+  providers: ProvidersResponse['providers'] | null;
+}
+
+const { keys, agent, providers } = Astro.props;
+const full = keys.length >= MAX_MODEL_KEYS_PER_WALLET;
+const keyLimits = { min: API_KEY_MIN, max: API_KEY_MAX };
+
+const keyRejected = text(
+  'modelKey.keyRejected',
+  'That key was not accepted. A key has no spaces and only plain letters, digits and symbols. Paste it again, whole.',
+);
+const modelRejected = text(
+  'modelKey.modelRejected',
+  'That model name was not accepted. Use the name exactly as your provider spells it, at most {max} characters.',
+  { max: MODEL_NAME_MAX },
+);
+const words = {
+  modelMissing: text('modelKey.modelMissing', 'Enter the name of the model this key should run.'),
+  modelRejected,
+  keyShort: text(
+    'modelKey.keyTooShort',
+    'That key is too short to be a model key: it has fewer than {min} characters. Paste the whole key.',
+    keyLimits,
+  ),
+  keyLong: text(
+    'modelKey.keyTooLong',
+    'That key is too long: it has more than {max} characters. Paste the key alone, with nothing around it.',
+    keyLimits,
+  ),
+  keyRejected,
+  apiKeyRejected: keyRejected,
+  providerRejected: text(
+    'modelKey.providerRejected',
+    'That provider is not on the list. Reload the page and choose a provider again.',
+  ),
+};
+---
+
+<div class="stack-24">
+  {
+    keys.length === 0 ? (
+      <Notice
+        tone="empty"
+        title={text('modelKey.emptyTitle', 'No model key saved')}
+        body={text(
+          'modelKey.emptyBody',
+          'A key is needed only for the Pro division. To enter it, add a key here first, then build your agent.',
+        )}
+      />
+    ) : (
+      <ul class="acct-list" role="list">
+        {keys.map((key) => {
+          const used = agent?.modelKeyId === key.id;
+          const lineId = `key-${key.id}`;
+          return (
+            <li>
+              <div class="stack-16" role="group" aria-labelledby={lineId} data-scope>
+              <div class="stack-4">
+                <p class="body" id={lineId}>
+                  <strong>
+                    {text('modelKey.nameLine', '{provider}, {model}', {
+                      provider: providerLabel(key.provider),
+                      model: key.model,
+                    })}
+                  </strong>
+                </p>
+                <p class="small figures">
+                  {text('modelKey.savedLine', 'Key ending in {last4}. Added {date}.', {
+                    last4: key.last4,
+                    date: formatDay(key.createdAt),
+                  })}
+                  {used && agent && ` ${text('modelKey.usedBy', '{name} runs on this key.', { name: agent.name })}`}
+                </p>
+              </div>
+              <Confirm
+                id={`delete-${key.id}`}
+                label={text('modelKey.delete', 'Delete key')}
+                busyLabel={text('modelKey.deleting', 'Deleting the key')}
+                question={text('modelKey.deleteQuestion', 'Delete the key ending in {last4}?', { last4: key.last4 })}
+                consequence={
+                  used && agent
+                    ? text(
+                        'modelKey.deleteConsequenceUsed',
+                        'Prix deletes it for good. {name} runs on this key, so it will be paused until you choose another key for it.',
+                        { name: agent.name },
+                      )
+                    : text(
+                        'modelKey.deleteConsequence',
+                        'Prix deletes it for good. To use it again you would have to add it again.',
+                      )
+                }
+                act={{ call: 'deleteKey', id: key.id, done: 'key-deleted' }}
+              />
+              <Feedback failedTitle={text('modelKey.deleteFailedTitle', 'The key was not deleted')} />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    )
+  }
+
+  <div class="panel-part stack-24">
+    <h3 class="title">{text('modelKey.addTitle', 'Add a model key')}</h3>
+    {
+      full ? (
+        <Notice
+          tone="status"
+          title={text('modelKey.fullTitle', 'No room for another key')}
+          body={text(
+            'modelKey.fullBody',
+            'This wallet stores {max} model keys, the most it can. Delete one above to add another.',
+            { max: inWords(MAX_MODEL_KEYS_PER_WALLET) },
+          )}
+        />
+      ) : !providers || providers.length === 0 ? (
+        <Notice
+          tone="error"
+          title={text('modelKey.providersFailedTitle', 'The list of providers could not be loaded')}
+          body={text(
+            'modelKey.providersFailedBody',
+            'A key can be added only for a provider on that list. Reload the page to load it again.',
+          )}
+        >
+          <Button href={Astro.url.pathname} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+        </Notice>
+      ) : (
+        <form class="stack-24" method="dialog" novalidate data-key-form data-words={JSON.stringify(words)}>
+          <Select
+            label={text('modelKey.providerLabel', 'Provider')}
+            name="provider"
+            required
+            hint={text('modelKey.providerHint', 'The company the key is from. Prix calls these providers only.')}
+            options={providers.map((provider) => ({ value: provider.id, label: provider.label }))}
+          />
+          <TextInput
+            label={text('modelKey.modelLabel', 'Model name')}
+            name="model"
+            required
+            autocomplete="off"
+            hint={text(
+              'modelKey.modelHint',
+              'The model your agent should run on, spelled exactly as the provider spells it in its own documentation.',
+            )}
+          />
+          <TextInput
+            label={text('modelKey.keyLabel', 'Model key')}
+            name="apiKey"
+            type="password"
+            required
+            autocomplete="off"
+            hint={text(
+              'legal.keyHandling',
+              'Prix stores your model key encrypted, shows only its last four characters, and deletes it when you delete it.',
+            )}
+          />
+          <div class="stack-16">
+            <Button
+              type="submit"
+              variant="secondary"
+              label={text('modelKey.save', 'Save key')}
+              busyLabel={text('modelKey.saving', 'Saving the key')}
+            />
+            <Feedback
+              failedTitle={text('modelKey.saveFailedTitle', 'The key was not saved')}
+              errors={{
+                rate_limited: text(
+                  'errors.rateLimitedKeys',
+                  'Too many changes in a short time. Wait a minute and try again.',
+                ),
+                key_limit_reached: apiErrorText('key_limit_reached'),
+              }}
+            />
+          </div>
+        </form>
+      )
+    }
+  </div>
+</div>
+

@@ -1,0 +1,227 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: the file is ordered by what moves, not by specificity. */
+
+/*
+  Every transition and animation of the site lives in this file, inside one media query, so a
+  visitor who asked for less motion gets the end state at once and nothing has to be undone.
+  Motion is on transform and opacity only, 120 to 400 milliseconds. docs/DESIGN.md section 9.
+*/
+
+/* Names for the parts that travel between two pages. They do nothing until a transition runs. */
+.top {
+  view-transition-name: top;
+}
+
+.top-tabs a[aria-current]::after {
+  view-transition-name: tab-line;
+}
+
+/* An agent's mark and name: on its own page, and on the one card a person came from or goes to (motion/carry.ts). */
+[data-carry="mark"],
+[data-carried] [data-carry-source="mark"] {
+  view-transition-name: agent-mark;
+}
+
+[data-carry="name"],
+[data-carried] [data-carry-source="name"] {
+  view-transition-name: agent-name;
+}
+
+/* A line that draws: the window slides in from the left while its content slides back by the same distance. */
+@keyframes wipe-out {
+  from {
+    transform: translateX(-101%);
+  }
+}
+
+@keyframes wipe-in {
+  from {
+    transform: translateX(101%);
+  }
+}
+
+/* The ticker tape: two copies of the list side by side, moved left by one copy's width, so the end meets the start. */
+@keyframes tape {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Moving between pages is one motion, where the browser has cross-document view transitions. */
+  @view-transition {
+    navigation: auto;
+  }
+
+  /* A control answers a press. */
+  .button,
+  .follow-button,
+  .pill-tabs :is(a, button) {
+    transition: transform var(--motion-press) var(--ease);
+  }
+
+  .follow-button:active,
+  .pill-tabs :is(a, button):active {
+    transform: scale(0.96);
+  }
+
+  /* A card lifts 2 pixels and its shadow deepens. */
+  .card--link {
+    transition: transform var(--motion-hover) var(--ease);
+  }
+
+  .card::before {
+    transition: opacity var(--motion-hover);
+  }
+
+  /* A sparkline draws when motion/draw.ts shows it, and again under the pointer on its card. */
+  .spark.is-drawing {
+    animation: wipe-out var(--motion-draw) var(--ease);
+  }
+
+  .spark.is-drawing svg {
+    animation: wipe-in var(--motion-draw) var(--ease);
+  }
+
+  /* The line of a chart draws once when the page shows, and fades when the range changes. */
+  .linechart-clip {
+    animation: wipe-out var(--motion-draw) var(--ease);
+  }
+
+  .linechart-clip svg {
+    animation: wipe-in var(--motion-draw) var(--ease);
+  }
+
+  .linechart-cross,
+  .linechart-tip {
+    transition: opacity var(--motion-press);
+  }
+
+  .toast {
+    transition:
+      transform var(--motion-show) var(--ease),
+      opacity var(--motion-show);
+  }
+
+  /*
+    The ticker tape: the one thing on the site that moves without being asked, slowly, at one
+    speed whatever the number of symbols: TickerStrip picks a class tape-40 to tape-180 (seconds
+    for one pass) from the length of its list (90 for the twenty-symbol sample, 100 for
+    twenty-two). A style attribute would carry the exact time, but the site's policy blocks it.
+    It stops in place under the pointer. With the keyboard on it, it stands at its first symbol
+    and scrolls by hand.
+  */
+  .ticker-view {
+    overflow-x: hidden;
+  }
+
+  .ticker-copy {
+    display: flex;
+  }
+
+  .ticker-track {
+    animation: tape var(--tape-seconds, 90s) linear infinite;
+  }
+
+  .ticker-track.tape-40 {
+    --tape-seconds: 40s;
+  }
+
+  .ticker-track.tape-50 {
+    --tape-seconds: 50s;
+  }
+
+  .ticker-track.tape-60 {
+    --tape-seconds: 60s;
+  }
+
+  .ticker-track.tape-70 {
+    --tape-seconds: 70s;
+  }
+
+  .ticker-track.tape-80 {
+    --tape-seconds: 80s;
+  }
+
+  .ticker-track.tape-90 {
+    --tape-seconds: 90s;
+  }
+
+  .ticker-track.tape-100 {
+    --tape-seconds: 100s;
+  }
+
+  .ticker-track.tape-110 {
+    --tape-seconds: 110s;
+  }
+
+  .ticker-track.tape-120 {
+    --tape-seconds: 120s;
+  }
+
+  .ticker-track.tape-130 {
+    --tape-seconds: 130s;
+  }
+
+  .ticker-track.tape-140 {
+    --tape-seconds: 140s;
+  }
+
+  .ticker-track.tape-150 {
+    --tape-seconds: 150s;
+  }
+
+  .ticker-track.tape-160 {
+    --tape-seconds: 160s;
+  }
+
+  .ticker-track.tape-170 {
+    --tape-seconds: 170s;
+  }
+
+  .ticker-track.tape-180 {
+    --tape-seconds: 180s;
+  }
+
+  .ticker:hover .ticker-track {
+    animation-play-state: paused;
+  }
+
+  .ticker-view:focus-visible {
+    overflow-x: auto;
+  }
+
+  .ticker-view:focus-visible .ticker-track {
+    animation: none;
+  }
+
+  .ticker-view:focus-visible .ticker-copy {
+    display: none;
+  }
+
+  /* A block rises as it scrolls into view (motion/reveal.ts). It is never hidden before that. */
+  .is-revealed {
+    animation: rise var(--motion-move) var(--ease);
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .agent-card:hover .spark {
+    animation: wipe-out var(--motion-draw) var(--ease);
+  }
+
+  .agent-card:hover .spark svg {
+    animation: wipe-in var(--motion-draw) var(--ease);
+  }
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}

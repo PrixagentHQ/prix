@@ -1,0 +1,214 @@
+---
+// /developers/reference: every endpoint, generated from the contract's registry. The head and
+// the tabs, the endpoints on the left, and the list of them in a panel that stays in view on a
+// wide screen. Each endpoint: its path, what it answers with, its facts, its parameters in a
+// panel and an example call in a code panel. The conversion of the schemas runs once per isolate
+// (see reference-model.ts). The page is not prerendered: a static file would skip the Worker and
+// its security headers.
+import Code from '../../design/Code.astro';
+import DefinitionList from '../../design/DefinitionList.astro';
+import Layout from '../../design/Layout.astro';
+import Table from '../../design/Table.astro';
+import { readAccount } from '../../lib/account.ts';
+import Contents from '../Contents.astro';
+import PageHead from '../PageHead.astro';
+import ShareMeta from '../ShareMeta.astro';
+import { siteShareImage } from '../share.ts';
+import DevTabs from './DevTabs.astro';
+import { buildReference } from './reference-model.ts';
+import { developersWords, errorMeaning, referenceWords as words } from './words.ts';
+
+const account = await readAccount(Astro);
+const origin = (Astro.site ?? Astro.url).origin;
+const { endpoints, errors } = buildReference();
+const lead = words.lead.replace('{origin}', origin);
+const copy = {
+  copyLabel: developersWords.copy,
+  copiedLabel: developersWords.copied,
+  failedLabel: developersWords.copyFailed,
+};
+const contents = [
+  { id: 'calling', label: words.authTitle },
+  ...endpoints.map((endpoint) => ({ id: endpoint.id, label: endpoint.path })),
+  { id: 'errors', label: words.errorsTitle },
+];
+---
+
+<Layout title={words.title} description={lead} current="developers" account={account}>
+  <ShareMeta slot="head" title={words.title} description={lead} image={siteShareImage()} />
+
+  <div class="page site-top with-panel ref-page">
+    <PageHead title={words.title} eyebrow={developersWords.eyebrow} eyebrowHref="/developers" lead={lead}>
+      <DevTabs current="reference" />
+    </PageHead>
+
+    <Contents title={words.contents} items={contents} />
+
+    <div class="ref-main">
+      <section class="ref-block stack-8" aria-labelledby="calling">
+        <h2 class="headline" id="calling">{words.authTitle}</h2>
+        <p class="prose">{words.authBody}</p>
+        <p class="small">
+          <strong>{developersWords.noticeTitle}.</strong>{' '}
+          {developersWords.noticeBody}
+        </p>
+      </section>
+
+      {
+        endpoints.map((endpoint) => (
+          <section class="ref-block stack-16" aria-labelledby={endpoint.id}>
+            <div class="stack-4">
+              <h2 class="headline ref-path" id={endpoint.id}>
+                {`GET ${endpoint.path}`}
+              </h2>
+              <p class="prose ref-summary">{endpoint.summary}</p>
+              {endpoint.namesSeason && <p class="small">{words.oneSeasonField}</p>}
+            </div>
+            <DefinitionList
+              labelWidth="8.5rem"
+              items={[
+                { term: words.idLabel, value: endpoint.id },
+                { term: words.toolLabel, value: endpoint.mcpTool },
+                { term: words.meteredLabel, value: endpoint.metered ? words.yes : words.no },
+                {
+                  term: words.cacheLabel,
+                  value:
+                    endpoint.cacheSeconds > 0 ? words.seconds.replace('{n}', String(endpoint.cacheSeconds)) : words.notCached,
+                },
+                { term: words.responseLabel, value: endpoint.fields.join(', ') },
+              ]}
+            />
+            {endpoint.params.length === 0 ? (
+              <p class="small">{words.noParams}</p>
+            ) : (
+              <div class="panel ref-table">
+                <Table
+                  id={`params-${endpoint.id}`}
+                  caption={words.paramsCaption.replace('{path}', endpoint.path)}
+                  scroll
+                  minWidth="36rem"
+                  columns={[
+                    { key: 'name', label: words.colName },
+                    { key: 'in', label: words.colIn },
+                    { key: 'type', label: words.colType },
+                    { key: 'required', label: words.colRequired },
+                    { key: 'notes', label: words.colNotes },
+                  ]}
+                >
+                  <tbody>
+                    {endpoint.params.map((param) => (
+                      <tr>
+                        <th scope="row" class="c-name">
+                          {param.name}
+                        </th>
+                        <td class="c-in">{param.where === 'path' ? words.inPath : words.inQuery}</td>
+                        <td class="c-type">{param.type}</td>
+                        <td class="c-required">{param.required ? words.yes : words.no}</td>
+                        <td class="c-notes">{param.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+            <Code
+              label={words.exampleLabel}
+              code={`curl -H "Authorization: Bearer prix_YOUR_KEY" ${origin}${endpoint.examplePath}`}
+              {...copy}
+            />
+          </section>
+        ))
+      }
+
+      <section class="ref-block stack-16" aria-labelledby="errors">
+        <div class="stack-4">
+          <h2 class="headline" id="errors">{words.errorsTitle}</h2>
+          <p class="prose ref-summary">{words.errorsLead}</p>
+        </div>
+        <div class="panel ref-table">
+          <Table
+            id="errors-table"
+            caption={words.errorsCaption}
+            scroll
+            minWidth="32rem"
+            columns={[
+              { key: 'code', label: words.colCode },
+              { key: 'status', label: words.colStatus, align: 'end' },
+              { key: 'meaning', label: words.colMeaning },
+            ]}
+          >
+            <tbody>
+              {
+                errors.map((entry) => (
+                  <tr>
+                    <th scope="row" class="c-code">
+                      {entry.code}
+                    </th>
+                    <td class="c-status num">{entry.status}</td>
+                    <td class="c-meaning">{errorMeaning[entry.code] ?? ''}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </Table>
+        </div>
+      </section>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* The panel of .with-panel spans nine rows; this page has two blocks on the left. */
+  @media (min-width: 60em) {
+    .ref-page > :global(.panel) {
+      grid-row: 1 / span 2;
+    }
+
+    /* The head keeps its own height; what the panel adds below it goes to the second row. */
+    .ref-page {
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  .ref-page {
+    padding-bottom: var(--space-48);
+  }
+
+  .ref-main {
+    min-width: 0;
+  }
+
+  /* One endpoint a block, a hairline between two of them. */
+  .ref-block {
+    scroll-margin-top: var(--space-24);
+  }
+
+  .ref-block + .ref-block {
+    margin-top: var(--space-32);
+    padding-top: var(--space-32);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .ref-block [id] {
+    scroll-margin-top: var(--space-24);
+  }
+
+  .ref-path {
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  .ref-summary {
+    color: var(--grey);
+  }
+
+  .ref-table :global(tbody tr:last-child > *) {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .ref-table :global(.c-name),
+  .ref-table :global(.c-code) {
+    overflow-wrap: anywhere;
+  }
+</style>

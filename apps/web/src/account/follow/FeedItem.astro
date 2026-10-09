@@ -1,0 +1,41 @@
+---
+// One decision of a followed agent, as a FeedRow of the design system: the agent's mark, name and
+// chips, the time, what changed in the paper portfolio and why. It always carries the tag of a
+// simulation record, the same words as every other feed (feed-words.ts; the key
+// follow.simulationLabel holds the shorter draft "Simulation" and is no longer used here). The reason is the agent's own text and is shown as text, never as markup.
+import type { FeedItem } from '@prix/contracts';
+import { formatTick, formatUsdMicro } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { divisionText } from '../../content/states.ts';
+import FeedRow from '../../design/FeedRow.astro';
+import { feedWords } from './feed-words.ts';
+
+interface Props {
+  item: FeedItem;
+}
+
+const { item } = Astro.props;
+const words = feedWords();
+const fillValues = (fill: FeedItem['fills'][number]) => ({
+  symbol: fill.symbol,
+  amount: formatUsdMicro(fill.notionalMicro),
+});
+const fills = item.fills.map((fill) =>
+  fill.side === 'buy'
+    ? text('follow.fillAdded', 'Added {symbol}, {amount} in virtual USD', fillValues(fill))
+    : text('follow.fillReduced', 'Reduced {symbol}, {amount} in virtual USD', fillValues(fill)),
+);
+const chips = [
+  { label: divisionText(item.division), kind: item.division },
+  ...(item.house ? [{ label: words.house, kind: 'house' as const }] : []),
+];
+---
+
+<FeedRow
+  agent={{ id: item.agentId, name: item.agentName, href: `/agents/${item.agentId}`, chips }}
+  time={{ iso: item.at, label: formatTick(item.tickId) }}
+  what={fills.length > 0 ? words.changed : words.unchanged}
+  detail={fills.length > 0 ? `${fills.join('. ')}.` : undefined}
+  why={item.reason}
+  tag={words.simulation}
+/>

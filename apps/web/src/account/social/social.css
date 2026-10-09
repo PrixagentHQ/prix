@@ -1,0 +1,249 @@
+/*
+  The signed-in Phase 6 screens: the fork builder, the paper manager page and the Model Wars admin
+  page. They are built from the primitives of apps/web/src/design and the cards of account.css;
+  this file only places them. Every value is a token, never a colour of its own, so the pages
+  follow the theme (docs/DESIGN.md). Nothing here moves.
+*/
+
+/* ---------- The fork builder ---------- */
+
+.fork-subhead,
+.mgr-subhead {
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-13);
+}
+
+.fork-same {
+  color: var(--grey);
+}
+
+.fork-form-card .build-form > * + * {
+  margin-top: var(--space-24);
+}
+
+.fork-form-card .build-form > .panel-part {
+  padding-top: var(--space-24);
+}
+
+.fork-form-card .build-key {
+  margin-top: var(--space-16);
+}
+
+/* ---------- Paper managers ---------- */
+
+.mgr-list > li {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.mgr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8) var(--space-12);
+}
+
+.mgr-head .headline a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.mgr-head .headline a:hover {
+  text-decoration: underline;
+}
+
+.mgr-allocation {
+  max-width: var(--measure-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.mgr-allocation > li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding-block: var(--space-4);
+}
+
+.mgr-allocation > li + li {
+  border-top: var(--rule-hair) solid var(--line);
+}
+
+.mgr-confirm {
+  margin-top: var(--space-8);
+  padding: var(--space-12);
+  border-radius: var(--radius-inner);
+  background: var(--wash);
+}
+
+.mgr-allocation-fields {
+  min-width: 0;
+  margin-inline: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mgr-allocation-fields > legend {
+  padding: 0;
+}
+
+/* One row per agent: the agent, its weight and the way to remove the row. */
+.mgr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: end;
+}
+
+.mgr-row[hidden] {
+  display: none;
+}
+
+@media (min-width: 45em) {
+  .mgr-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 9rem) auto;
+  }
+}
+
+.mgr-add,
+.mgr-cash {
+  margin-top: var(--space-12);
+}
+
+.mgr-cash {
+  color: var(--grey);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Over 100%: the words say it, and the ink rule on the left edge matches an error elsewhere. */
+.mgr-cash--over {
+  padding-left: var(--space-12);
+  border-left: var(--rule) solid var(--ink);
+  color: var(--ink);
+}
+
+/* ---------- Model Wars ---------- */
+
+.war-entrants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.war-slot {
+  display: inline-block;
+  min-width: 1.5rem;
+  color: var(--grey);
+  font-weight: var(--weight-strong);
+}
+
+.war-maker {
+  margin-left: var(--space-6);
+  color: var(--grey);
+  font-size: var(--text-13);
+}
+
+.mgr-allocation-fields .stack-16 {
+  margin-top: var(--space-12);
+}
+
+.mgr-list {
+  margin-top: var(--space-16);
+}
+
+/* An allocation names its agents in ink, as the public manager page does; the line comes on hover. */
+.mgr-allocation .mgr-agent {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+}
+
+.mgr-allocation .mgr-agent:hover {
+  text-decoration: underline;
+}
+
+/* No manager yet: one plain sentence. Beside the form it names the form; under it, on a phone, it links there. */
+.mgr-empty {
+  margin-top: var(--space-16);
+}
+
+.mgr-empty-narrow {
+  display: none;
+}
+
+@media (max-width: 59.99em) {
+  .mgr-empty-wide {
+    display: none;
+  }
+
+  .mgr-empty-narrow {
+    display: inline;
+  }
+}
+
+/* With no form beside it (every slot in use, and not editing), the list takes two thirds of the
+   width: not a lone half that reads as a missing column, not a full row that strands the chips. */
+@media (min-width: 60em) {
+  .mgr-grid:has(> [data-editor-wrap][hidden]) > .acct-cards {
+    grid-column: 1 / -1;
+    max-width: 66.667%;
+  }
+}
+
+/* ---------- The fork builder on a phone: the form comes first, the parent after it ---------- */
+
+@media (min-width: 60em) {
+  .fork-grid > .fork-parent {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .fork-grid > .fork-action {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+/* ---------- Model Wars admin ---------- */
+
+/* The create form, and beside it from 960 pixels the open war when there is one. A lone form takes
+   two thirds of the page, so it neither runs the whole width nor sits in a narrow left column. */
+.war-admin > .war-admin-open {
+  margin-top: var(--gap-card);
+}
+
+.war-none {
+  margin-bottom: var(--space-16);
+}
+
+@media (min-width: 60em) {
+  .war-admin {
+    max-width: 66.667%;
+  }
+
+  .war-admin--split {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--gap-card);
+    align-items: start;
+    max-width: none;
+  }
+
+  .war-admin--split > .war-admin-open {
+    margin-top: 0;
+  }
+}
+
+/* The open war: its title, its days, its models and its actions, each a step apart. */
+.war-open {
+  display: grid;
+  gap: var(--space-12);
+}

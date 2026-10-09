@@ -1,0 +1,390 @@
+/*
+  Prix design tokens. docs/DESIGN.md is the rule; this file is the value.
+  Every colour, type size, space, radius, shadow and duration on the site is one of these custom
+  properties. A page never writes a hex value, a pixel font size or a shadow of its own.
+*/
+
+/*
+  The one family: Inter 4.1, a subset under the SIL Open Font License 1.1 (fonts/Inter-LICENSE.txt,
+  recipe in fonts/README.md). The weight axis runs from 400 to 700 and the optical size axis is
+  whole, so a 28 pixel figure is set in the display cut. The unicode-range is the whole character
+  set of the file: keep it in step with fonts/build.py.
+*/
+@font-face {
+  font-family: Inter;
+  src: url("./fonts/Inter-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0020-007E, U+00A0-00AC, U+00AE-00FF, U+2007, U+2009, U+2010, U+2013-2014, U+2018-2019, U+201C-201D, U+2022,
+    U+2026, U+202F, U+2212, U+2248, U+2260, U+2264-2265;
+}
+
+/*
+  Width-matched stand-ins, shown only until the file arrives, so the swap does not rewrap the
+  page. Each size-adjust is the width of Inter over the width of the local face, measured in
+  Chromium on the site's own sentences at 14 pixels. A weight has its own stand-in: 400 and 500
+  stand on Arial, 600 and 700 on Arial Bold. The two overrides give the stand-in Inter's ascent
+  and descent (968.75 and 241.2 per 1000, each divided by the size-adjust), so a baseline does
+  not move either. Every line height is fixed in rem.
+*/
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  font-weight: 400;
+  size-adjust: 106.4%;
+  ascent-override: 91.05%;
+  descent-override: 22.67%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  font-weight: 500;
+  size-adjust: 107.3%;
+  ascent-override: 90.28%;
+  descent-override: 22.48%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT");
+  font-weight: 600;
+  size-adjust: 101.7%;
+  ascent-override: 95.26%;
+  descent-override: 23.72%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT");
+  font-weight: 700;
+  size-adjust: 102.6%;
+  ascent-override: 94.42%;
+  descent-override: 23.51%;
+  line-gap-override: 0%;
+}
+
+/* Inter narrows as it grows (the optical size axis). From 24 pixels up a figure or a name has this stand-in, measured at 28. */
+@font-face {
+  font-family: "Inter Fallback Display";
+  src: local("Arial Bold"), local("Arial-BoldMT");
+  font-weight: 600;
+  size-adjust: 96.3%;
+  ascent-override: 100.6%;
+  descent-override: 25.05%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Inter Fallback Display";
+  src: local("Arial Bold"), local("Arial-BoldMT");
+  font-weight: 700;
+  size-adjust: 97.9%;
+  ascent-override: 98.95%;
+  descent-override: 24.64%;
+  line-gap-override: 0%;
+}
+
+:root,
+[data-theme="dark"] {
+  /* ---------- Colour. Each has one job; docs/DESIGN.md section 2 gives it in a sentence. ----------
+     Two themes. Dark is the default: the layout writes <html data-theme> from the cookie
+     `prix_theme`, and a page without the cookie is dark. Every colour below is redefined for
+     light further down; a rule names the token and never the theme. */
+  color-scheme: dark;
+
+  /* Surfaces, darkest first. The page; a full-bleed band and the hero; a card or a panel; what
+     sits highest (a chosen pill, a key). `--surface` is the surface a thing stands on now: each
+     surface sets it, so a ring or a dot can cut itself out of whatever is behind it. */
+  --ground: #000000;
+  --raised: #000000;
+  --card: #0a0b0d;
+  --card-high: #000000;
+  --header: #000000;
+  --field: #000000;
+  --chosen: #000000;
+  --surface: var(--ground);
+
+  --ink: #f3f4f6;
+  --grey: #9aa1ac;
+  --line: #262a31;
+  --blue: #4c8dff;
+  --green: #22c55e;
+  --red: #f2594e;
+
+  /* The fill of a primary action and of the mark of Prix: the blue, deep enough for white words. */
+  --blue-fill: #2a66e0;
+  /* What is written on the blue fill, and on ink (the Pro chip, the toast, the crosshair's label). */
+  --on-blue: #ffffff;
+  --on-ink: #000000;
+
+  /* Two washes. They are the ink and the blue at low alpha, not new colours. */
+  --wash: rgb(255 255 255 / 0.05);
+  --tint: rgb(76 141 255 / 0.12);
+
+  /* What the blue and a wash become under the pointer: black laid over them, never a new hue. */
+  --press: rgb(0 0 0 / 0.14);
+  --line-strong: rgb(243 244 246 / 0.16);
+
+  /*
+    The light of the hero band: the ink, very faint, from the top right. It is not blue: blue is
+    for acting, and the band only tells where a page begins (docs/DESIGN.md section 2).
+  */
+  --hero-tint: rgb(243 244 246 / 0);
+
+  /* The area under a line: the line's own colour at this opacity, fading to nothing. */
+  --area-top: 0.2;
+
+  /*
+    The field of characters behind the page head (ground/ground.css): one tone of the ink, so
+    faint on the black that it is a ground, not a picture. One tone only: a second, brighter
+    one for the core read as a drawing, and could have taken a figure under 4.5 to 1.
+  */
+  --field-ink: #1c2026;
+
+  /*
+    What is chosen or marked on the black is black too, told by a hairline ring and ink words,
+    never by a grey fill (R9): the chosen pill of a tray, and a quiet chip (a tag such as
+    "Simulation record", or a state such as "Paused"). The ring of the chosen pill is 3 to 1
+    against the tray it stands in, so the ring alone tells the choice.
+  */
+  --ring-chosen: rgb(243 244 246 / 0.42);
+  --shadow-chosen: 0 0 0 1px var(--ring-chosen);
+  --quiet-fill: #000000;
+  --quiet-ring: inset 0 0 0 1px var(--line);
+  --quiet-ink: var(--ink);
+  --shadow-chosen-plain: var(--shadow-chosen);
+
+  /* The three medals. Each is a face and its rim, for ranks one, two and three and nothing else. */
+  --gold: #f2c33d;
+  --gold-rim: #b98a12;
+  --silver: #c9ced6;
+  --silver-rim: #8d95a1;
+  --bronze: #dc9a66;
+  --bronze-rim: #a8642f;
+  /* The numeral on a medal is this dark ink in both themes: the metal does not change. */
+  --medal-ink: #23272d;
+
+  /*
+    The animal of an agent (docs/DESIGN.md section 7): five tones of one ink, no hue. On the
+    dark ground they run from the ink (tone 4, the brightest characters) down to the grey
+    (tone 1), and a step under it for the faintest strokes (tone 0); on the light ground the
+    same, in dark ink. What tells two agents apart is the animal, never a colour.
+  */
+  --animal-0: #7b818b;
+  --animal-1: #9aa1ac;
+  --animal-2: #bdc1c8;
+  --animal-3: #dcdfe3;
+  --animal-4: #f3f4f6;
+
+  /*
+    The accent of an agent's card, neutral: a light top edge at rest (a 2 pixel line of the ink
+    at low strength) and a ring of the same ink under the pointer. Never a hue.
+  */
+  --accent-edge: rgb(243 244 246 / 0.16);
+  --accent-ring: rgb(243 244 246 / 0.3);
+
+  /* ---------- Type: one family. ---------- */
+  --sans: Inter, "Inter Fallback", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --sans-display: Inter, "Inter Fallback Display", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The scale of the study. Each size has one line height. */
+  --text-12: 0.75rem;
+  --text-13: 0.8125rem;
+  --text-14: 0.875rem;
+  --text-16: 1rem;
+  --text-20: 1.25rem;
+  --text-24: 1.5rem;
+  --text-28: 1.75rem;
+  --text-32: 2rem;
+  --text-40: 2.5rem;
+  --text-56: 3.5rem;
+
+  --leading-12: 1rem;
+  --leading-13: 1.125rem;
+  --leading-14: 1.25rem;
+  --leading-16: 1.5rem;
+  --leading-20: 1.75rem;
+  --leading-24: 1.875rem;
+  --leading-28: 2rem;
+  --leading-32: 2.375rem;
+  --leading-40: 2.75rem;
+  --leading-56: 3.75rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --weight-bold: 700;
+
+  /* ---------- Space: 2 4 6 8 12 16 24 32 48 64 96. ---------- */
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-6: 0.375rem;
+  --space-8: 0.5rem;
+  --space-12: 0.75rem;
+  --space-16: 1rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+  --space-48: 3rem;
+  --space-64: 4rem;
+  --space-96: 6rem;
+
+  /* The page: 1302 of content, a margin of 16 that becomes 24 at 720. */
+  --page: 81.375rem;
+  --margin: var(--space-16);
+  --gap-card: var(--space-12);
+  --section-gap: var(--space-32);
+
+  /* Reading text never runs past 72 characters. */
+  --measure: 36rem;
+  --measure-small: 30rem;
+
+  /* ---------- Shape. ---------- */
+  --radius-card: 15px;
+  --radius-box: 12px;
+  --radius-control: 10px;
+  --radius-inner: 8px;
+  --radius-pill: 6px;
+
+  /* Controls: 32 in a bar, 40 in a form, 44 for the one action of a panel. */
+  --control-sm: 2rem;
+  --control: 2.5rem;
+  --control-lg: 2.75rem;
+
+  /*
+    The two shadows of a card: at rest, and lifted under the pointer. A card has no border: its
+    edge is the first layer, a one pixel ring. On the dark ground a shadow cannot be seen, so
+    there the ring is light and carries the edge alone.
+  */
+  --shadow-rest: 0 0 0 1px rgb(255 255 255 / 0.1), 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 0 0 1px rgb(255 255 255 / 0.17), 0 12px 24px -12px rgb(0 0 0 / 0.8);
+
+  /* The darker lower edge of the one large primary action of a panel. */
+  --edge: inset 0 -3px rgb(0 0 0 / 0.22);
+
+  /* Rules and lines. */
+  --rule-hair: 1px;
+  --rule: 2px;
+  --line-spark: 1.5px;
+  --line-curve: 2px;
+  --focus-offset: 2px;
+
+  /* ---------- Motion: transform and opacity only, 120 to 400 milliseconds. ---------- */
+  --motion-press: 120ms;
+  --motion-hover: 160ms;
+  --motion-show: 200ms;
+  --motion-move: 240ms;
+  --motion-reorder: 320ms;
+  --motion-draw: 400ms;
+
+  /* Two curves: one for what arrives or moves, one for what leaves. */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /*
+    ---------- Deprecated aliases ----------
+    The names of direction A. A page that nobody has rebuilt yet still reads them, so they stay
+    and point at the new values. No new code uses them. docs/DESIGN.md section 13 lists them.
+  */
+  --paper: var(--ground);
+  --mist: var(--wash);
+  --graphite: var(--grey);
+  --hairline: var(--line);
+  --brass: var(--ink);
+  --gain: var(--green);
+  --loss: var(--red);
+  --serif: var(--sans);
+  --serif-16: var(--sans);
+  --serif-22: var(--sans);
+  --serif-26: var(--sans-display);
+  --serif-32: var(--sans-display);
+  --serif-40: var(--sans-display);
+  --text-18: var(--text-16);
+  --text-22: var(--text-20);
+  --text-26: var(--text-24);
+  --line-13: var(--leading-13);
+  --line-14: var(--leading-14);
+  --line-16: var(--leading-16);
+  --line-18: var(--leading-16);
+  --line-22: var(--leading-20);
+  --line-26: var(--leading-24);
+  --line-32: var(--leading-28);
+  --line-40: var(--leading-40);
+  --measure-sans: var(--measure-small);
+  --numeral: 2.75rem;
+  --gutter: var(--space-24);
+  --radius: var(--radius-pill);
+}
+
+/*
+  The light theme: the values of the approved study, on a soft cool grey page with white cards
+  and white bands. Three values moved a step darker than the study so that they still pass 4.5
+  to 1 on the wash laid over the grey page (docs/DESIGN.md section 11): grey, green and red.
+*/
+[data-theme="light"] {
+  color-scheme: light;
+
+  --ground: #f2f4f7;
+  --raised: #ffffff;
+  --card: #ffffff;
+  --card-high: #ffffff;
+  --header: #ffffff;
+  --field: #ffffff;
+  --chosen: #ffffff;
+
+  --ink: #23272d;
+  --grey: #626971;
+  --line: #e3e6ea;
+  --blue: #1452f0;
+  --green: #007a25;
+  --red: #d20b0f;
+
+  --blue-fill: #1452f0;
+  --on-blue: #ffffff;
+  --on-ink: #ffffff;
+
+  --wash: rgb(35 39 45 / 0.05);
+  --tint: rgb(20 82 240 / 0.1);
+  --press: rgb(0 0 0 / 0.1);
+  --line-strong: rgb(35 39 45 / 0.14);
+  --hero-tint: rgb(35 39 45 / 0.035);
+  --area-top: 0.12;
+  --field-ink: #e6e9ed;
+
+  /* In light the chosen pill is white on the grey tray, with the shadow of a card; a quiet chip sits on the wash in grey. */
+  --ring-chosen: rgb(35 39 45 / 0.28);
+  --shadow-chosen: var(--shadow-rest);
+  --quiet-fill: var(--wash);
+  --quiet-ring: none;
+  --quiet-ink: var(--grey);
+  --shadow-chosen-plain: none;
+
+  /* Dark ink on paper: tone 4 is the ink, tone 1 the grey; the light ground prints thinner than
+     the dark one glows, so its tones sit two steps darker (R8). */
+  --animal-0: #5f656d;
+  --animal-1: #4a5058;
+  --animal-2: #383d44;
+  --animal-3: #272b31;
+  --animal-4: #15171b;
+
+  --accent-edge: rgb(35 39 45 / 0.14);
+  --accent-ring: rgb(35 39 45 / 0.28);
+
+  --shadow-rest: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 6px -0.5px rgb(0 0 0 / 0.025), 0 2px 10px rgb(0 0 0 / 0.025);
+  --shadow-lift:
+    0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px -0.5px rgb(0 0 0 / 0.06), 0 3px 3px -1.5px rgb(0 0 0 / 0.06),
+    0 6px 6px -3px rgb(0 0 0 / 0.06);
+  --edge: inset 0 -3px rgb(0 0 0 / 0.2);
+}
+
+@media (min-width: 45em), print {
+  :root {
+    --margin: var(--space-24);
+  }
+}

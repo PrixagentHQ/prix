@@ -1,0 +1,17 @@
+{
+  "name": "@prix/sim",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Paper portfolio engine.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prix/contracts": "workspace:*"
+  }
+}

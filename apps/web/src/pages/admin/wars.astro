@@ -1,0 +1,17 @@
+---
+import { readSession } from '../../account/session.ts';
+import WarsAdminPage from '../../account/social/WarsAdminPage.astro';
+import { readAccount } from '../../lib/account.ts';
+import { statusForCode } from '../../lib/status.ts';
+
+// The status is decided here, because a component cannot set it. A wallet that is signed in and
+// is not an administrator gets 403 with the page that says so. A visitor who is not signed in
+// gets the sign-in, as 200. This page does not depend on the Phase 6 switch: the admin routes of
+// the API are always mounted, and the API checks the wallet again on every call.
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+if (session.state === 'signed-in' && !session.me.isAdmin) Astro.response.status = 403;
+else if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+---
+
+<WarsAdminPage account={account} session={session} />

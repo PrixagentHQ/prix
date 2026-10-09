@@ -1,0 +1,169 @@
+---
+// /account/api: keys, usage and credits of the signed-in wallet. A signed-out visitor gets the
+// sign-in gate and nothing else: no key control and no payment control is rendered for them.
+// The page reads everything through /api/data from the browser; the server decides each answer.
+import { text } from '../../content/index.ts';
+import Layout from '../../design/Layout.astro';
+import Notice from '../../design/Notice.astro';
+import { readAccount } from '../../lib/account.ts';
+import AccountCard from '../AccountCard.astro';
+import PageHead from '../PageHead.astro';
+import SessionGate from '../SessionGate.astro';
+import { herePath, readSession, signInHref } from '../session.ts';
+import CreditsPanel from './CreditsPanel.astro';
+import KeysPanel from './KeysPanel.astro';
+import UsagePanel from './UsagePanel.astro';
+import { dataWords } from './words.ts';
+import '../account.css';
+
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+const words = dataWords();
+---
+
+<Layout
+  title={words.title}
+  description={words.description}
+  current="account"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  <PageHead
+    title={words.title}
+    back={{ href: '/account', label: text('nav.account', 'Account') }}
+    intro={session.state === 'signed-in' || session.state === 'failed' ? words.intro : `${words.intro} ${words.signInToOpen}`}
+  />
+  {
+    session.state !== 'signed-in' ? (
+      <div class="page section">
+        <div class="acct-column">
+          {session.state === 'failed' ? (
+            <SessionGate session={session} />
+          ) : (
+            <AccountCard title={text('nav.signIn', 'Sign in')} headingId="sign-in-heading">
+              <SessionGate session={session} steps />
+            </AccountCard>
+          )}
+        </div>
+      </div>
+    ) : (
+      <div class="page section acct-cards" data-api-page data-words={JSON.stringify(words)}>
+        <noscript>
+          <Notice tone="status" title={words.noScriptTitle} body={words.noScriptBody} />
+        </noscript>
+        <AccountCard title={words.usageTitle} headingId="usage-heading" intro={words.usageIntro}>
+          <UsagePanel words={words} />
+        </AccountCard>
+        <div class="acct-grid">
+          <AccountCard title={words.keysTitle} headingId="keys-heading" id="keys" intro={words.keysIntro}>
+            <KeysPanel words={words} />
+          </AccountCard>
+          <AccountCard title={words.creditsTitle} headingId="credits-heading" id="credits" intro={words.creditsIntro}>
+            <CreditsPanel words={words} />
+          </AccountCard>
+        </div>
+      </div>
+    )
+  }
+</Layout>
+
+<script>
+  import './mount.ts';
+</script>
+
+<style is:global>
+  [data-api-page] .addr-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-8) var(--space-16);
+  }
+  [data-api-page] .addr {
+    color: var(--ink);
+    font-size: var(--text-20);
+    line-height: var(--leading-20);
+    font-weight: var(--weight-strong);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  [data-api-page] .addr-half {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  [data-api-page] .addr-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-8) var(--space-12);
+  }
+  [data-api-page] .history-cap {
+    max-width: var(--measure-small);
+  }
+  [data-api-page] .revoke-confirm {
+    padding-block: var(--space-16);
+    border-block: var(--rule-hair) solid var(--line);
+  }
+  [data-api-page] #keys-table .c-action {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 40rem) {
+    [data-api-page] .facts {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+    [data-api-page] .facts dd {
+      margin-bottom: var(--space-12);
+    }
+    [data-api-page] .addr-half {
+      display: block;
+    }
+
+    /* Keys: two lines per key. The header row is for assistive technology only. */
+    #keys-table thead {
+      position: absolute;
+      width: var(--rule-hair);
+      height: var(--rule-hair);
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    #keys-table,
+    #keys-table tbody {
+      display: block;
+    }
+    #keys-table tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--space-4) var(--space-12);
+      padding-block: var(--space-12);
+      border-bottom: var(--rule-hair) solid var(--line);
+    }
+    #keys-table tbody td {
+      padding: 0;
+    }
+    #keys-table .c-label {
+      flex: 1 1 calc(100% - var(--space-96) - var(--space-16));
+      min-width: 0;
+      font-weight: var(--weight-strong);
+      overflow-wrap: anywhere;
+    }
+    #keys-table .c-status {
+      flex: 0 0 calc(var(--space-64) + var(--space-16));
+      text-align: right;
+      color: var(--grey);
+    }
+    #keys-table :is(.c-prefix, .c-created, .c-used) {
+      font-size: var(--text-14);
+      line-height: var(--leading-16);
+    }
+    #keys-table :is(.c-created, .c-used)::before {
+      content: attr(data-label) ' ';
+      color: var(--grey);
+    }
+    #keys-table .c-action {
+      margin-left: auto;
+    }
+  }
+</style>

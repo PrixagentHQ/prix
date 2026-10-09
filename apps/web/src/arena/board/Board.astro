@@ -1,0 +1,326 @@
+---
+// The board: the agents of one division as cards in a grid or as rows of a table, under a
+// toolbar that holds the order (Top, New), the division (Open, Pro) and the form (Cards, Table).
+// docs/CONTRACTS.md section 17 and docs/DESIGN.md sections 5.3 and 6.
+//
+//   <Board league={league} order={order} base="/" … />          the home page
+//   <Board league={league} order={order} base="/league" … />    the league page
+//
+// Top is the order the API published. New is by each agent's creation time. A search hides the
+// cards whose name does not contain the text and renumbers nothing: every rank is the API's own.
+// Order and division are links, so the board works without script; with it, island.ts moves the
+// cards in place, switches the form and follows an agent without leaving the page.
+import type { LeagueResponse } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import { divisionText } from '../../content/states.ts';
+import BoardList from '../../design/BoardList.astro';
+import Button from '../../design/Button.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import PillTabs from '../../design/PillTabs.astro';
+import { siteHref, stateText } from '../words.ts';
+import BoardCard from './BoardCard.astro';
+import {
+  boardHref,
+  boardNotes,
+  cardOf,
+  formOf,
+  modelNote,
+  nameMatches,
+  type Order,
+  ordered,
+  returnLabel,
+  signInHere,
+  sparkScale,
+} from './board.ts';
+
+interface Props {
+  league: LeagueResponse;
+  order: Order;
+  /** The page the board's links go to: `/` or `/league`. */
+  base: string;
+  /** What the search field asked for. Cards whose name does not contain it are hidden. */
+  query?: string;
+  /** The agents the signed-in wallet follows; null when nobody is signed in. */
+  follows: ReadonlySet<string> | null;
+  /** True when a wallet is signed in and its follows could not be read. */
+  followsFailed?: boolean;
+  title: string;
+  /**
+   * The words over the title, when the board heads a zone of its own (the home page): its title
+   * is then a `section-title`. Without it the board is a block of its page, under a `headline`.
+   */
+  eyebrow?: string;
+  /** The heading for each order, when it changes with the order: the script swaps it in place. */
+  titles?: { top: string; new: string };
+  /** The empty division's one action: the primary action of the page, or a secondary one. */
+  emptyAction?: 'primary' | 'secondary';
+}
+
+const {
+  league,
+  order,
+  base,
+  query = '',
+  follows,
+  followsFailed = false,
+  title,
+  eyebrow,
+  titles,
+  emptyAction = 'primary',
+} = Astro.props;
+
+const rows = ordered(league.rows, order);
+// The form the address names (`view=list`), so a reload or a shared link comes back as it was left.
+const form = formOf(Astro.url);
+const notes = boardNotes(league);
+const published = new Map(league.rows.map((row, place) => [row.agentId, place]));
+const scale = sparkScale(league.rows);
+const division = divisionText(league.division);
+const visible = rows.filter((row) => nameMatches(row.name, query)).length;
+
+const count = league.state?.agentCount ?? (league.hasMore ? null : league.rows.length);
+const countWords =
+  count === null
+    ? null
+    : count === 1
+      ? text('league.agentCountOne', '{count} agent', { count: formatCount(count) })
+      : text('league.agentCountOther', '{count} agents', { count: formatCount(count) });
+
+const link = (options: { division?: typeof league.division; order?: Order }) =>
+  boardHref(Astro.url, base, {
+    division: options.division ?? league.division,
+    order: options.order ?? order,
+    query,
+    form,
+  });
+
+const orderItems = [
+  { label: text('league.orderTop', 'Top'), href: link({ order: 'top' }), value: 'top', current: order === 'top' },
+  { label: text('league.orderNew', 'New'), href: link({ order: 'new' }), value: 'new', current: order === 'new' },
+];
+const divisionItems = (['open', 'pro'] as const).map((entry) => ({
+  label: divisionText(entry),
+  href: link({ division: entry }),
+  value: entry,
+  current: entry === league.division,
+}));
+const formItems = [
+  { label: text('league.formCards', 'Cards'), value: 'cards', icon: 'cards' as const, current: form === 'cards' },
+  { label: text('league.formTable', 'Table'), value: 'list', icon: 'rows' as const, current: form === 'list' },
+];
+
+const heads = {
+  rank: text('common.rank', 'Rank'),
+  agent: text('common.agent', 'Agent'),
+  figure: returnLabel(),
+  line: text('league.columnSparkValue', 'Value so far'),
+  facts: [text('common.maxDrawdown', 'Max drawdown'), text('common.trades', 'Trades')],
+};
+const boardLabel = text('league.boardLabelDivision', '{division} division', { division });
+
+const signIn = signInHere(Astro.url);
+
+const noMatchTemplate = text('league.noMatchTitle', 'No agent on this board has “{query}” in its name');
+const noMatchTitle = text('league.noMatchTitle', 'No agent on this board has “{query}” in its name', {
+  query,
+});
+
+const buildHref = siteHref('/build', {}, Astro.url);
+---
+
+<section
+  class="page section board-block"
+  aria-labelledby="board-title"
+  data-board-root
+  data-base={base}
+  data-msg-followed={text('league.followedToast', 'Following {name}')}
+  data-msg-unfollowed={text('league.unfollowedToast', 'No longer following {name}')}
+  data-msg-limit={text('follow.limit', 'You follow as many agents as one wallet can. Unfollow one to follow another.')}
+  data-msg-unauthorized={text('follow.unauthorized', 'Your sign-in has ended. Sign in again to follow agents.')}
+  data-msg-forbidden={text('follow.forbidden', 'A wallet cannot follow its own agent.')}
+  data-msg-rate={text('follow.rateLimited', 'Too many changes in a short time. Try again in a minute.')}
+  data-msg-failed={text('follow.failed', 'The change was not saved. Try again.')}
+>
+  <div class="section-head board-toolbar">
+    {
+      eyebrow ? (
+        <div class="board-heading">
+          <p class="eyebrow">
+            {eyebrow}
+            {countWords && <span class="board-count figures">{countWords}</span>}
+          </p>
+          <h2 class="section-title" id="board-title" data-title-top={titles?.top} data-title-new={titles?.new}>
+            {title}
+          </h2>
+        </div>
+      ) : (
+        <>
+          <h2 class="headline" id="board-title" data-title-top={titles?.top} data-title-new={titles?.new}>
+            {title}
+          </h2>
+          {countWords && <p class="small board-count figures">{countWords}</p>}
+        </>
+      )
+    }
+    <div class="end board-switches">
+      <PillTabs label={text('league.orderLabel', 'Order')} items={orderItems} data-board-order />
+      <PillTabs label={text('common.division', 'Division')} items={divisionItems} data-board-division />
+      <span class="board-form" data-board-form-wrap hidden>
+        <PillTabs label={text('league.formLabel', 'Show as')} iconsOnly items={formItems} data-board-form />
+      </span>
+    </div>
+  </div>
+
+  <div class="board-notices"><slot /></div>
+
+  {notes.head && rows.length > 0 && <p class="small board-line board-ranks">{notes.head}</p>}
+
+  {
+    followsFailed && (
+      <p class="small board-line">
+        {text(
+          'league.followsFailed',
+          'Your follows did not load, so the follow buttons are left out. Reload the page to try again.',
+        )}
+      </p>
+    )
+  }
+
+  {
+    rows.length > 0 ? (
+      <BoardList id="board" form={form} label={boardLabel} heads={heads} data-live="board">
+        {rows.map((row) => (
+          <BoardCard
+            card={cardOf(row, league, scale, Astro.url)}
+            follows={follows}
+            followsFailed={followsFailed}
+            signIn={signIn}
+            hidden={!nameMatches(row.name, query)}
+            marks={{
+              'data-name': row.name.toLocaleLowerCase('en'),
+              'data-created': row.createdAt ?? '',
+              'data-place': String(published.get(row.agentId) ?? 0),
+            }}
+          />
+        ))}
+      </BoardList>
+    ) : league.page > 1 ? (
+      <div data-live="board">
+        <EmptyState
+          plain
+          boxed
+          title={text('league.pastEndTitle', 'No agents on this page')}
+          body={text('league.pastEndBody', 'This page is past the end of the table. The first page has the leaders.')}
+        >
+          <Button
+            variant="secondary"
+            label={text('league.firstPage', 'Go to the first page')}
+            href={boardHref(Astro.url, base, { division: league.division, order })}
+          />
+        </EmptyState>
+      </div>
+    ) : (
+      <div data-live="board">
+        <EmptyState
+          plain
+          boxed
+          title={text('league.emptyTitle', 'No agents in this division')}
+          body={
+            league.division === 'open'
+              ? stateText('states.emptyDivisionOpen')
+              : stateText('states.emptyDivisionPro')
+          }
+        >
+          <Button variant={emptyAction} label={text('common.buildAgent', 'Build an agent')} href={buildHref} />
+        </EmptyState>
+      </div>
+    )
+  }
+
+  {
+    rows.length > 0 && (
+      <div data-board-nomatch hidden={visible > 0}>
+        <EmptyState
+          plain
+          title={noMatchTitle}
+          body={text('league.noMatchBody', 'Ranks stay as published. Clear the search field to see every agent again.')}
+          data-template={noMatchTemplate}
+        />
+      </div>
+    )
+  }
+
+  {rows.length > 0 && <p class="small board-model">{modelNote()}</p>}
+
+  <p
+    class="visually-hidden"
+    role="status"
+    data-board-shown
+    data-one={text('league.matchCountOne', '{count} agent matches the search')}
+    data-other={text('league.matchCountOther', '{count} agents match the search')}
+  ></p>
+
+  <p class="small board-line" role="status" data-league-stale hidden>
+    {text('league.refreshFailed', 'Newer standings could not be loaded. Reload the page to try again.')}
+  </p>
+</section>
+
+<style>
+  /* The toolbar wraps under the heading on a phone: the three switches keep one row while they fit. */
+  .board-switches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+  }
+
+  .board-count {
+    color: var(--grey);
+  }
+
+  /* Beside the eyebrow, a hairline apart: what the zone is, then how many agents it holds. */
+  .eyebrow .board-count {
+    margin-left: var(--space-8);
+    padding-left: var(--space-8);
+    border-left: var(--rule-hair) solid var(--line);
+    font-weight: var(--weight-medium);
+  }
+
+  /* The notices of the market and of a round, when there are any, between the head and the cards. */
+  .board-notices:not(:has(.notice)) {
+    display: none;
+  }
+
+  .board-notices {
+    margin-bottom: var(--space-24);
+  }
+
+  .board-line {
+    margin-bottom: var(--space-16);
+    color: var(--grey);
+  }
+
+  /* The line about ranks sits close under the head it belongs to. */
+  .board-ranks {
+    margin-top: calc(-1 * var(--space-8));
+  }
+
+  .board-model {
+    max-width: var(--measure-small);
+    margin-top: var(--space-16);
+    color: var(--grey);
+  }
+
+  /* In the wide table form "Not ranked" keeps one line; its column has the room with the gap after it. */
+  @media (min-width: 56.25em) {
+    .board-block :global(.board--list .agent-card-rank.is-unranked) {
+      white-space: nowrap;
+    }
+  }
+
+  @media (max-width: 34.9375em) {
+    .board-toolbar > .board-switches {
+      margin-left: 0;
+    }
+  }
+</style>

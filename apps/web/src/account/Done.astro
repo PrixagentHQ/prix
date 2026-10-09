@@ -1,0 +1,43 @@
+---
+// Where a section confirms, in words, what the person just did. The page reloads after an
+// action so the server shows the new state; dom.ts then puts the matching message here and
+// moves focus to it. Until then the place takes no room.
+import Button from '../design/Button.astro';
+import Notice from '../design/Notice.astro';
+
+interface Props {
+  items: Array<{
+    /** The fixed word the script remembers across the reload, for example "key-saved". */
+    name: string;
+    title: string;
+    /** Left out when the section under it already says the rest. */
+    body?: string;
+    action?: { href: string; label: string };
+  }>;
+}
+
+const { items } = Astro.props;
+---
+
+<div>
+  <div class="done" data-done-outlet></div>
+  {
+    items.map((item) => (
+      <template data-done={item.name}>
+        {item.action ? (
+          <Notice tone="status" title={item.title} body={item.body}>
+            <Button href={item.action.href} label={item.action.label} variant="secondary" />
+          </Notice>
+        ) : (
+          <Notice tone="status" title={item.title} body={item.body} />
+        )}
+      </template>
+    ))
+  }
+</div>
+
+<style>
+  .done:not(:empty) {
+    margin-bottom: var(--space-16);
+  }
+</style>

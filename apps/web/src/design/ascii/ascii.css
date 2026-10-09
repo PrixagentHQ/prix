@@ -1,0 +1,310 @@
+/*
+  The ASCII animals: the mark of an agent (AgentMark, AsciiAvatar) and the mascot studies of
+  Prix (AsciiLogo). An agent's animal is monochrome: its five tones are `--animal-0` to
+  `--animal-4` of tokens.css, the ink and greys of the theme (docs/DESIGN.md section 7). Only the
+  mascot keeps a hue of its own, `prix`, here, until the founder decides the logo; it is used on
+  no page of the site.
+*/
+
+/*
+  JetBrains Mono 2.304, cut to printable ASCII and to the weights 400 to 800
+  (fonts/build.py; SIL Open Font License 1.1, fonts/JetBrainsMono-LICENSE.txt). The layout
+  preloads it. An avatar is a picture, so its face blocks for a short while (`fallback`: about
+  100 ms) and then prints with the stand-in below until the file arrives, for at most about
+  3 s. It no longer holds the largest paint of a page until the file is in.
+*/
+@font-face {
+  font-family: "Prix ASCII";
+  src: url("./fonts/JetBrainsMono-ascii.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: fallback;
+  unicode-range: U+0020-007E;
+}
+
+/*
+  The stand-in: a monospace face of the device whose characters are 0.6 of the size wide, as
+  JetBrains Mono's are (Menlo and DejaVu Sans Mono 0.602, the others 0.600). The grid's columns
+  are counted in that width and its lines are set in em, so the cells stay where they are and
+  nothing moves when the face arrives. Only the shapes of the characters differ, for that while.
+*/
+@font-face {
+  font-family: "Prix ASCII Fallback";
+  src:
+    local("Menlo"), local("Menlo-Regular"), local("DejaVu Sans Mono"), local("DejaVuSansMono"),
+    local("Liberation Mono"), local("LiberationMono"), local("Roboto Mono"), local("RobotoMono-Regular"),
+    local("Droid Sans Mono"), local("DroidSansMono"), local("Cousine"), local("Courier New"),
+    local("CourierNewPSMT");
+  font-weight: 400 800;
+  font-style: normal;
+  unicode-range: U+0020-007E;
+}
+
+/*
+  Every picture of characters: the square of an avatar or of the mascot, and the mark of an
+  agent (`.agent-mark--animal`, board.css gives its sizes). `--ascii-box` is the side of the
+  square and `--ascii-cols` the columns of its grid (20 small, 40 large).
+*/
+.ascii,
+.agent-mark--animal {
+  --ascii-face: "Prix ASCII", "Prix ASCII Fallback", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ascii-cols: 20;
+  --a0: var(--animal-0);
+  --a1: var(--animal-1);
+  --a2: var(--animal-2);
+  --a3: var(--animal-3);
+  --a4: var(--animal-4);
+  /* An avatar is never selected as text, and never read letter by letter. */
+  user-select: none;
+}
+
+.ascii {
+  --ascii-box: 4rem;
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  inline-size: var(--ascii-box);
+  block-size: var(--ascii-box);
+  overflow: hidden;
+  border-radius: var(--radius-inner);
+  background: var(--wash);
+  color: var(--a2);
+  vertical-align: middle;
+}
+
+.ascii-grid {
+  display: block;
+  /* A character is 0.6 of the size wide and a line 0.75 high: 20 by 16 cells fill the square. */
+  font-family: var(--ascii-face);
+  font-size: calc(var(--ascii-box) / var(--ascii-cols) / 0.6);
+  font-weight: 600;
+  line-height: 0.75em;
+  font-kerning: none;
+  font-synthesis: none;
+  font-variant-ligatures: none;
+  color: var(--a2);
+  white-space: pre;
+  text-align: start;
+  /*
+    Its own layer, so the characters are smoothed in grey and not in the red and blue of the
+    screen's subpixels: at three pixels a character's fringes would be louder than its shape.
+    Nothing moves; the layer only changes how the text is drawn.
+  */
+  will-change: transform;
+}
+
+/*
+  The mark grid, under 48 pixels (ascii/framing.ts): 12 columns and 10 rows. A character is a
+  twelfth of the side wide (0.6 of the font size) and its line a tenth of the side (0.72 of the
+  font size), which is the height of a capital in this face: the dense characters of the grid
+  touch the row above and the row below, so the head is one shape and not a stack of stripes.
+  Heavy weights, so a stroke of two pixels still carries its tone.
+*/
+.ascii-grid--mark {
+  font-size: calc(var(--ascii-box) / 12 / 0.6);
+  /*
+    A capital is as tall as the line, but its edge falls between two pixels and the row of
+    pixels it shares with the next line is half lit: a stripe. So the lines are set a fifth
+    closer and the grid is drawn a fifth taller, from its top: the glyphs overlap their
+    neighbours above and below by a hair and the rows close, while the grid still fills the square.
+  */
+  line-height: calc(var(--ascii-box) / 10 / 1.2);
+  transform: scaleY(1.2);
+  transform-origin: 0 0;
+  font-weight: 700;
+  /* A stroke of the glyph's own colour round its outline closes the counters of `#`, `%` and `@` at this size. */
+  -webkit-text-stroke: 0.04em currentColor;
+}
+
+/*
+  On the light ground thin dark strokes on white read far lighter than their colour, so the
+  picture of a mark or a small avatar is drawn with a stroke round each glyph as well.
+*/
+[data-theme="light"] :is(.agent-mark--animal, .ascii--sm, .ascii--md) .ascii-grid {
+  -webkit-text-stroke: 0.03em currentColor;
+}
+
+[data-theme="light"] .ascii-grid--mark {
+  -webkit-text-stroke-width: 0.08em;
+}
+
+/*
+  The tones, dim to bright on the dark ground, light to dark on the light one. Tone 2 is the
+  block's own colour; the others are short inline elements (ascii/render.ts, ascii/avatar.ts).
+  Heavier strokes carry more ink where the picture is brightest.
+  `d-N` is a cell drawn for the dark ground only and `l-N` for the light ground only (the eyes,
+  their shine, the penguin's hood): the theme shows one of each pair.
+*/
+:is(t-0, d-0, l-0) {
+  color: var(--a0);
+  font-weight: 400;
+}
+:is(t-1, d-1, l-1) {
+  color: var(--a1);
+  font-weight: 500;
+}
+:is(d-2, l-2) {
+  color: var(--a2);
+  font-weight: 600;
+}
+:is(t-3, d-3, l-3) {
+  color: var(--a3);
+  font-weight: 700;
+}
+:is(t-4, d-4, l-4) {
+  color: var(--a4);
+  font-weight: 800;
+}
+
+/* On the mark grid every tone is heavy: 700, and 800 for the two brightest. */
+.ascii-grid--mark :is(t-0, t-1, d-0, d-1, d-2, l-0, l-1, l-2) {
+  font-weight: 700;
+}
+.ascii-grid--mark :is(t-3, t-4, d-3, d-4, l-3, l-4) {
+  font-weight: 800;
+}
+
+/*
+  On the light ground thin dark strokes on white read far lighter than their colour: a picture
+  on paper sets every tone heavier, from 600 at the dimmest.
+*/
+[data-theme="light"] :is(t-0, d-0, l-0, t-1, d-1, l-1) {
+  font-weight: 600;
+}
+[data-theme="light"] :is(.ascii-grid, d-2, l-2, t-3, d-3, l-3) {
+  font-weight: 700;
+}
+[data-theme="light"] .ascii-grid--mark,
+[data-theme="light"] .ascii-grid--mark :is(t-0, t-1, d-0, d-1, d-2, l-0, l-1, l-2) {
+  font-weight: 800;
+}
+
+/*
+  The grounds. A picture takes them from the nearest element that sets a theme, so a light
+  card inside a dark page prints right. A large avatar or the mascot holds two prints of its
+  grid (`.ascii-glow` for dark, `.ascii-print` for light); a mark holds one grid with its few
+  cells of one ground (`d-N`, `l-N`).
+*/
+:root,
+[data-theme="dark"] {
+  --ascii-show-glow: block;
+  --ascii-show-print: none;
+  --ascii-show-dark: inline;
+  --ascii-show-light: none;
+}
+
+[data-theme="light"] {
+  --ascii-show-glow: none;
+  --ascii-show-print: block;
+  --ascii-show-dark: none;
+  --ascii-show-light: inline;
+}
+
+.ascii-glow {
+  display: var(--ascii-show-glow, block);
+}
+.ascii-print {
+  display: var(--ascii-show-print, none);
+}
+:is(d-0, d-1, d-2, d-3, d-4) {
+  display: var(--ascii-show-dark, inline);
+}
+:is(l-0, l-1, l-2, l-3, l-4) {
+  display: var(--ascii-show-light, none);
+}
+
+/* Sizes of AsciiAvatar: 40 and 64 use the small grid, 128 and 192 the large one. */
+.ascii--sm {
+  --ascii-box: 2.5rem;
+  border-radius: var(--radius-pill);
+}
+.ascii--md {
+  --ascii-box: 4rem;
+}
+.ascii--lg {
+  --ascii-box: 8rem;
+  --ascii-cols: 40;
+  border-radius: var(--radius-box);
+}
+.ascii--xl {
+  --ascii-box: 12rem;
+  --ascii-cols: 40;
+  border-radius: var(--radius-card);
+}
+
+/*
+  ---------- The mascot's hue, tone 0 to 4 ----------
+  The hue of the blue of an action, for the mascot studies only (AsciiLogo, the sheet). The
+  logo of the site is PrixMark, "Seat" (D-111).
+*/
+:root,
+[data-theme="dark"] {
+  --ascii-prix-0: #475b7e;
+  --ascii-prix-1: #597ab6;
+  --ascii-prix-2: #6b9af0;
+  --ascii-prix-3: #9bbefe;
+  --ascii-prix-4: #d2e2fe;
+}
+
+[data-theme="light"] {
+  --ascii-prix-0: #819fd5;
+  --ascii-prix-1: #567fca;
+  --ascii-prix-2: #305eb7;
+  --ascii-prix-3: #17439a;
+  --ascii-prix-4: #0a2c71;
+}
+
+.ascii--prix {
+  --a0: var(--ascii-prix-0);
+  --a1: var(--ascii-prix-1);
+  --a2: var(--ascii-prix-2);
+  --a3: var(--ascii-prix-3);
+  --a4: var(--ascii-prix-4);
+}
+
+/* ---------- The mascot without a tile, beside the word (studies only). ---------- */
+.ascii--bare {
+  background: none;
+  border-radius: 0;
+}
+
+.ascii-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--ink);
+  line-height: 1;
+}
+
+.ascii-word {
+  font-family: "Prix ASCII", "Prix ASCII Fallback", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 800;
+  font-size: 1.375rem;
+  /* Monospace letters sit apart; the word is drawn a little closer, as a name and not as code. */
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+
+.ascii-logo--lg {
+  gap: var(--space-16);
+}
+
+.ascii-logo--lg .ascii-word {
+  font-size: 3.5rem;
+}
+
+/* In forced colours the tones are dropped and the picture stays, in the text colour. */
+@media (forced-colors: active) {
+  .ascii,
+  .agent-mark--animal,
+  .ascii-grid,
+  :is(t-0, t-1, t-3, t-4, d-0, d-1, d-2, d-3, d-4, l-0, l-1, l-2, l-3, l-4) {
+    color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .ascii,
+  .agent-mark--animal {
+    background: Canvas;
+  }
+}

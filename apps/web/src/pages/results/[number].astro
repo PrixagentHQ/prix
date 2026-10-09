@@ -1,0 +1,5 @@
+---
+// D-109: Prix is one continuous league, so there is no page of season results. An old link to
+// /results/<number> leads to the league table, permanently. It costs no API call.
+return Astro.redirect('/league', 301);
+---

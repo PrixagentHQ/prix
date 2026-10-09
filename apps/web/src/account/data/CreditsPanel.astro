@@ -1,0 +1,66 @@
+---
+// Credits: what is on sale, how to pay from a person's own wallet app, the field for the
+// transaction hash and the payments already credited. This panel never asks a wallet for anything.
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import Steps from '../../design/Steps.astro';
+import Table from '../../design/Table.astro';
+import TextInput from '../../design/TextInput.astro';
+import type { DataWords } from './words.ts';
+
+interface Props {
+  words: DataWords;
+}
+const { words } = Astro.props;
+---
+
+<div data-panel="credits" class="stack-24">
+  <div data-view="loading">
+    <Notice tone="loading" title={words.loadingTitle} body={words.loadingBody} minHeight="8rem" />
+  </div>
+  <div data-view="error" hidden>
+    <Notice tone="error" title={words.loadFailedTitle} body="{message}">
+      <Button label={words.retry} variant="secondary" data-retry />
+    </Notice>
+  </div>
+  <div data-view="ready" class="stack-24" hidden>
+    <div data-credits-off hidden>
+      <Notice tone="empty" title={words.creditsOffTitle} body={words.creditsOffBody} />
+    </div>
+    <div data-credits-on class="stack-24" hidden>
+      <div data-pay-facts></div>
+      <p class="small">{words.payNoWallet}</p>
+      <Steps
+        items={[
+          { title: words.payStepSendTitle, body: words.payStepSendBody },
+          { title: words.payStepWaitTitle, body: words.payStepWaitBody },
+          { title: words.payStepHashTitle, body: words.payStepHashBody },
+        ]}
+      />
+      <form class="stack-16" method="dialog" novalidate data-pay-form>
+        <TextInput label={words.hashLabel} name="txHash" required autocomplete="off" hint={words.hashHint} />
+        <Button type="submit" variant="secondary" label={words.submitHash} busyLabel={words.submittingHash} />
+      </form>
+      <div data-pay-outlet role="status"></div>
+      <div data-payments-empty hidden>
+        <Notice tone="empty" title={words.paymentsEmptyTitle} body={words.paymentsEmptyBody} />
+      </div>
+      <div data-payments-table hidden>
+        <Table
+          id="payments-table"
+          caption={words.paymentsCaption}
+          captionVisible
+          scroll
+          minWidth="30rem"
+          columns={[
+            { key: 'time', label: words.payColTime },
+            { key: 'amount', label: words.payColAmount, align: 'end' },
+            { key: 'hash', label: words.payColHash },
+          ]}
+        >
+          <tbody data-payment-rows></tbody>
+        </Table>
+      </div>
+    </div>
+  </div>
+</div>

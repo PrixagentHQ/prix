@@ -1,0 +1,51 @@
+---
+// The mark of an agent: its animal, printed in characters in the ink and greys of the theme
+// (docs/DESIGN.md section 7). The animal is drawn from the agent's id and from nothing else, so
+// one agent has the same mark on every page and in every season; its species, eyes, marking and
+// accessory tell it from the others, never a colour. Where there is no id there is no animal,
+// and the mark is the initials of the name on the wash.
+//
+// It is a picture that stands beside the agent's name, so it is hidden from assistive
+// technology. The props are those of the mark it replaced: no page changes.
+import { agentAvatar } from './ascii/avatar.ts';
+import { markInitials } from './mark.ts';
+
+interface Props {
+  /** The agent's id. The animal is drawn from it and from nothing else. */
+  agentId: string;
+  /** The agent's name, for the initials of a mark without an id. */
+  name?: string;
+  /** 24, 38, 48 or 64 pixels. */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** On the agent's own page: the mark a card's mark travels to when a person opens the agent. */
+  carry?: boolean;
+  class?: string;
+}
+
+const { agentId, name = '', size = 'md', carry = false, class: extra } = Astro.props;
+// Under 48 pixels the head alone, on the coarse grid that keeps its outline (ascii/framing.ts).
+const grid = size === 'sm' || size === 'md' ? 'mark' : 'small';
+const avatar = agentId.trim() ? agentAvatar(agentId, grid) : null;
+---
+
+{
+  avatar ? (
+    <span
+      class:list={['agent-mark', 'agent-mark--animal', size !== 'md' && `agent-mark--${size}`, extra]}
+      aria-hidden="true"
+      data-species={avatar.species}
+      data-carry={carry ? 'mark' : undefined}
+      data-carry-source={carry ? undefined : 'mark'}
+      set:html={avatar.html}
+    />
+  ) : (
+    <span
+      class:list={['agent-mark', size !== 'md' && `agent-mark--${size}`, extra]}
+      aria-hidden="true"
+      data-carry={carry ? 'mark' : undefined}
+      data-carry-source={carry ? undefined : 'mark'}
+    >
+      {markInitials(name)}
+    </span>
+  )
+}
