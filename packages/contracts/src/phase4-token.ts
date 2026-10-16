@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import { type Entitlements, type EntitlementsReadOptions, TIER_RULES, type Tier } from './entitlements.ts';
-import { type Address, addressSchema, isoTimeSchema } from './primitives.ts';
+import { type Address, addressSchema, type IsoTime, isoTimeSchema } from './primitives.ts';
+import { z } from './zod.ts';
 
 /**
  * Phase 4, Token: holder tiers decided on the server from the chain.
@@ -263,7 +263,12 @@ export interface TokenBalances {
  * The token address always comes from the configuration row and never from a request.
  */
 export interface TokenChainReader {
-  readBalances(token: Address, wallets: readonly Address[]): Promise<TokenBalances>;
+  /**
+   * `atBlock` (Phase 6.7, docs/contracts/phase-6-holders.md section 5, revision 2): when given, every
+   * endpoint is asked at that block number (the `eth_call` block tag) and the answer's `blockNumber` is
+   * that block; absent, the endpoint's head as before. Only the holders' poll tally passes it.
+   */
+  readBalances(token: Address, wallets: readonly Address[], atBlock?: number): Promise<TokenBalances>;
 }
 
 // --- the store ------------------------------------------------------------------------------------
@@ -348,6 +353,44 @@ export interface TokenService {
    * `TOKEN_STALE_GRACE_SECONDS`, then tier 0 (docs/contracts/README.md, the seam; Phase 3 delivery uses it).
    */
   entitlementsFor(address: Address | null, options?: EntitlementsReadOptions): Promise<Entitlements>;
+  /**
+   * A wallet's holding in whole tokens, for a rule that asks for a holding and not for a tier (the room,
+   * Phase 6.3): `gatingOn` as `info()` has it, and `tokens`, the stored balance divided by ten to the
+   * token's decimals, rounded down and capped at Number.MAX_SAFE_INTEGER. From the same stored row a tier
+   * comes from, never from a request. With `options.cachedOnly` it never reads the chain: the stored row of
+   * any age within `TOKEN_STALE_GRACE_SECONDS`, else 0. Without it, a row that is missing or older than
+   * `TOKEN_CACHE_SECONDS` is read again whatever its tier (a tier of 0 is otherwise kept for six hours),
+   * within the same budget of reads on demand as `entitlementsFor`; when that budget is spent or the read
+   * fails, the stored row within the stale grace, else 0. The hold before a tier rises does not apply: a
+   * balance counts at the first read that shows it. While the gate is off: `{ gatingOn: false, tokens: 0 }`.
+   *
+   * Phase 6.8 (docs/contracts/phase-6-holders-2.md section 2.2, revision 3): it also answers `tier`: the tier
+   * column of the row `holdingOf` took `tokens` from; 0 for no row, for the memory-only read under one whole
+   * token, and while the gate is off. It is not asked of `entitlementsFor`. engine-runtime always sets
+   * `tier`. A holding without `tier` counts as tier 0, so every existing fake still builds.
+   *
+   * Revision 3 (security L1): it also answers `checkedAt`, the time of the successful chain read the answer
+   * rests on (the stored row's, or the isolate's memory's for the memory-only read); null when it rests on
+   * none (the gate off, no read ever made). The lounge's join approves only when it is younger than
+   * `TOKEN_CACHE_SECONDS`. Absent counts as null, so every existing fake still builds.
+   */
+  holdingOf(
+    address: Address,
+    options?: EntitlementsReadOptions,
+  ): Promise<{ gatingOn: boolean; tokens: number; tier?: Tier; checkedAt?: IsoTime | null }>;
+  /**
+   * Phase 6.8, revision 3 (security H1; docs/contracts/phase-6-holders-2.md section 4.6 step 3): the lounge
+   * sweep's read of these wallets again, in one batched chain read through the token sweep's own path
+   * (`readBalances`, `settleTier`, the store): for at most LOUNGE_SWEEP_CHECKS_PER_RUN wallets, one subrequest
+   * and at most two D1 statements (the previous rows and the store). It answers, for every wallet it read,
+   * the tier `settleTier` gave, the gate's token and the read's time, whether or not a row was stored for
+   * that wallet; null while the gate is off or when the read failed (nothing is written then). Optional, so
+   * every existing fake still builds; engine-runtime always sets it, and the sweep is idle without it.
+   */
+  refreshHolders?(
+    wallets: readonly Address[],
+    now: Date,
+  ): Promise<ReadonlyMap<Address, { tier: Tier; tokenAddress: Address; checkedAt: IsoTime }> | null>;
   /** The configuration, kept in memory for `TOKEN_CONFIG_CACHE_SECONDS`. */
   getConfig(): Promise<TokenConfig>;
   /** `GET /api/token`. */

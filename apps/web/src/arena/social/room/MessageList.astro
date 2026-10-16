@@ -1,0 +1,164 @@
+---
+// The messages of the Community chat, newest first, as the read gave them: the time in UTC, the writer's
+// short address, the admin's mark, the text (docs/contracts/phase-6-room.md, section 9). While the read
+// carries `holder` (docs/contracts/phase-6-holders-2.md, section 2.1), a message whose `holder` is true has
+// the quiet Holder mark beside its writer, a picture message too; the server never sets both marks.
+//
+// A message is text. It is printed as a text node and nowhere else: never `set:html`, never an attribute,
+// a script element or a JSON island, and no link is made of anything in it. It wraps anywhere, so a long
+// run of characters cannot widen the page. The order, the time, the short address and the mark are the
+// server's; nothing here sorts, shortens or decides.
+//
+// A picture message (docs/contracts/phase-6-pictures.md, section 11) has the row of PictureRow in the
+// text's place, and its own text is never printed: it is a word of the contract, not the writer's. The
+// row carries the message's id, from which the one script builds a picture's address after a click.
+// Such a row never carries the admin's mark, whatever its state: Prix posts no picture, and the row of a
+// picture whose writer is an admin wallet now must not read as Prix's. Its writer and its time have ids,
+// by which the row's button "Show picture" is described: a full room has fifty buttons of that one name.
+//
+// The list has a name the account's scripts find it by (`data-room-list`), and says whether pictures are
+// on (`data-room-pictures`, the read's own value, absent while the read carries none). It is rendered
+// whenever the read answered, also for a room with nothing to show: it is then empty, and hidden.
+import type { RoomPictureMessage, RoomWithPicturesResponse } from '@prix/contracts';
+import { ROOM_PICTURE_DOM } from '@prix/contracts';
+import { formatTick } from '../../../content/format.ts';
+import { text } from '../../../content/index.ts';
+import AdminMark from './AdminMark.astro';
+import HolderMark from './HolderMark.astro';
+import PictureRow from './PictureRow.astro';
+import PictureScript from './PictureScript.astro';
+import { pictureWords } from './words.ts';
+
+interface Props {
+  messages: RoomPictureMessage[];
+  /** The read's `pictures`: `on`, `off` or `resting`; absent while the read carries none. */
+  pictures: RoomWithPicturesResponse['pictures'];
+  /** The id of the heading that names the list. */
+  labelledBy: string;
+}
+
+const { messages, pictures, labelledBy } = Astro.props;
+// Read once: the same three words name the parts of every message for a screen reader.
+const timeWord = text('social.roomColTime', 'Time');
+const writerWord = text('social.roomColWriter', 'Writer');
+const messageWord = text('social.roomColMessage', 'Message');
+const words = pictureWords();
+// The names the two owners of the page share are the contract's, written from its own constant.
+const listMarks = {
+  [ROOM_PICTURE_DOM.list]: '',
+  ...(pictures === undefined ? {} : { [ROOM_PICTURE_DOM.state]: pictures }),
+};
+/** Whether any row offers a picture. Without one the page ships no script. */
+const offers = pictures === 'on' && messages.some((message) => message.picture?.state === 'shown');
+---
+
+<ol class="room-list" role="list" aria-labelledby={labelledBy} hidden={messages.length === 0} {...listMarks}>
+  {
+    messages.map((message) => (
+      <li class="room-item" {...(message.picture ? { [ROOM_PICTURE_DOM.id]: message.id } : {})}>
+        <p class="room-when" id={message.picture ? `room-when-${message.id}` : undefined}>
+          <span class="visually-hidden">{timeWord} </span>
+          <time class="figures" datetime={message.at}>
+            {formatTick(message.at)}
+          </time>
+        </p>
+        <p class="room-who" id={message.picture ? `room-who-${message.id}` : undefined}>
+          <span class="visually-hidden">{writerWord} </span>
+          <span class="room-writer figures">{message.authorShort}</span>
+          {message.admin && !message.picture && <AdminMark />}
+          {message.holder === true && <HolderMark />}
+        </p>
+        {message.picture ? (
+          <PictureRow
+            picture={message.picture}
+            pictures={pictures}
+            authorShort={message.authorShort}
+            words={words}
+            label={messageWord}
+            describedBy={`room-who-${message.id} room-when-${message.id}`}
+          />
+        ) : (
+          <p class="room-text">
+            <span class="visually-hidden">{messageWord} </span>
+            {message.text}
+          </p>
+        )}
+      </li>
+    ))
+  }
+</ol>
+{offers && <PictureScript />}
+
+<style>
+  .room-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  /*
+    On a phone a message is two lines of record over its text: who and when share the first row, the
+    writer first because that is what the eye looks for, the time at the right edge. From 45em it is a
+    row of a ledger: the time, the writer, the text, each in its own column.
+  */
+  .room-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'who when'
+      'text text';
+    column-gap: var(--space-12);
+    row-gap: var(--space-4);
+    padding-block: var(--space-12);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .room-when {
+    grid-area: when;
+    color: var(--grey);
+    font-size: var(--text-13);
+    line-height: var(--leading-14);
+    white-space: nowrap;
+  }
+
+  .room-who {
+    display: flex;
+    grid-area: who;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-8);
+    min-width: 0;
+    font-size: var(--text-13);
+    line-height: var(--leading-14);
+  }
+
+  .room-writer {
+    color: var(--grey);
+    font-weight: var(--weight-medium);
+  }
+
+  /* Any text, however it is written, stays inside its column. */
+  .room-text {
+    grid-area: text;
+    min-width: 0;
+    max-width: var(--measure);
+    overflow-wrap: anywhere;
+  }
+
+  /* The list holds the three columns and every message takes them over, so they line up down the page. */
+  @media (min-width: 45em) {
+    .room-list {
+      display: grid;
+      grid-template-columns: max-content max-content minmax(0, 1fr);
+      column-gap: var(--space-24);
+    }
+
+    .room-item {
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+      grid-template-areas: 'when who text';
+      align-items: baseline;
+    }
+  }
+</style>

@@ -2,6 +2,7 @@ import type { DailyPrices, MarketSnapshot, UniverseToken } from '@prix/contracts
 import {
   CHAIN_ID,
   CRYPTO_FEED_STALE_AFTER_SECONDS,
+  CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
   CRYPTO_UNIVERSE_SIZE,
   FEED_STALE_AFTER_SECONDS,
   isStockToken,
@@ -17,6 +18,8 @@ import { computeRecentReturns, createMarket, FEED_SOURCE_URL, haltedSymbols, toP
 import { UNIVERSE_TOKEN_BY_ADDRESS } from '@prix/market/wallet-activity';
 import { MULTICALL_ADDRESS } from '@prix/market/wire';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { MULTICALL3_ADDRESS } from '../support/abi.ts';
+import { ARBITRUM_SYMBOLS, isArbitrumFeed, TEST_ARBITRUM } from '../support/fake-arbitrum.ts';
 import type { FeedState } from '../support/fake-rpc.ts';
 import { FakeRpc } from '../support/fake-rpc.ts';
 import { makeSnapshot, TEST_PRICES, utc } from '../support/fixtures.ts';
@@ -50,7 +53,7 @@ interface Scene {
   take(options?: {
     rpcUrls?: string[];
     staleAfterSeconds?: number;
-    cryptoStaleAfterSeconds?: number;
+    cryptoStaleAfterSecondsBySymbol?: Readonly<Record<string, number>>;
     quietAfterSeconds?: number;
     now?: Date;
   }): Promise<MarketSnapshot>;
@@ -81,8 +84,10 @@ function scene(): Scene {
     take(options = {}) {
       const market = createMarket({
         rpcUrls: options.rpcUrls ?? [PRIMARY, FALLBACK],
+        arbitrum: TEST_ARBITRUM,
         staleAfterSeconds: options.staleAfterSeconds ?? FEED_STALE_AFTER_SECONDS,
-        cryptoStaleAfterSeconds: options.cryptoStaleAfterSeconds ?? CRYPTO_FEED_STALE_AFTER_SECONDS,
+        cryptoStaleAfterSecondsBySymbol:
+          options.cryptoStaleAfterSecondsBySymbol ?? CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
         quietAfterSeconds: options.quietAfterSeconds ?? MARKET_QUIET_AFTER_SECONDS,
         fetch: rpc.fetch,
       });
@@ -104,18 +109,24 @@ const BTC_INDEX = STOCK_UNIVERSE_SIZE;
 const ETH_INDEX = STOCK_UNIVERSE_SIZE + 1;
 
 describe('UNIVERSE', () => {
-  it('holds exactly 20 Stock Tokens, then the two crypto assets of section 21', () => {
-    expect(UNIVERSE_SIZE).toBe(22);
+  it('holds exactly 20 Stock Tokens, then BTC and ETH (section 21), then BNB, HYPE and SOL (section 23)', () => {
+    expect(UNIVERSE_SIZE).toBe(25);
     expect(UNIVERSE).toHaveLength(UNIVERSE_SIZE);
     expect(UNIVERSE.filter(isStockToken)).toHaveLength(STOCK_UNIVERSE_SIZE);
     expect(UNIVERSE.filter((token) => token.kind === 'crypto')).toHaveLength(CRYPTO_UNIVERSE_SIZE);
-    // The Stock Tokens first, in symbol order, then the crypto assets in symbol order.
+    // The Stock Tokens first, in symbol order, then the crypto assets: every position a stored tick
+    // already has stays where it is.
     expect(UNIVERSE.slice(0, STOCK_UNIVERSE_SIZE).every(isStockToken)).toBe(true);
     const stocks = STOCK_SYMBOLS();
     expect(stocks).toEqual([...stocks].sort());
+    expect(UNIVERSE.slice(STOCK_UNIVERSE_SIZE).map((token) => token.symbol)).toEqual([
+      'BTC',
+      'ETH',
+      ...ARBITRUM_SYMBOLS,
+    ]);
   });
 
-  it('lists BTC and ETH with the feeds of section 21, read on chain on 2026-10-09', () => {
+  it('lists BTC and ETH with the feeds of section 21, read on chain on 2026-10-09, on Robinhood Chain', () => {
     expect(UNIVERSE[BTC_INDEX]).toEqual({
       kind: 'crypto',
       symbol: 'BTC',
@@ -124,6 +135,7 @@ describe('UNIVERSE', () => {
       feedDecimals: 8,
       sourceUrl: FEED_SOURCE_URL,
       readOn: '2026-10-09',
+      chainId: CHAIN_ID,
     });
     expect(UNIVERSE[ETH_INDEX]).toEqual({
       kind: 'crypto',
@@ -133,6 +145,7 @@ describe('UNIVERSE', () => {
       feedDecimals: 8,
       sourceUrl: FEED_SOURCE_URL,
       readOn: '2026-10-09',
+      chainId: CHAIN_ID,
     });
   });
 
@@ -262,9 +275,12 @@ describe('market.takeSnapshot: an open market', () => {
 
   it("reads each feed and each Stock Token's pause flag, and no pool: a pool price is not a reference price", async () => {
     await s.take();
+    // On Robinhood Chain: the multicall, Multicall3 for the chain ID, every feed but the three of
+    // Arbitrum One (section 23), and every Stock Token's pause flag.
     const expected = new Set<string>([
       MULTICALL_ADDRESS.toLowerCase(),
-      ...UNIVERSE.map((token) => token.feedAddress.toLowerCase()),
+      MULTICALL3_ADDRESS,
+      ...UNIVERSE.map((token) => token.feedAddress.toLowerCase()).filter((address) => !isArbitrumFeed(address)),
       ...UNIVERSE.filter(isStockToken).map((token) => token.tokenAddress.toLowerCase()),
     ]);
     expect(s.rpc.calledAddresses).toEqual(expected);
@@ -344,14 +360,16 @@ describe('market.takeSnapshot: a quiet market, a paused oracle and the reason th
     for (const token of UNIVERSE) s.setFeed(token.symbol, { updatedAt: NOW_SECONDS - secondsAgo });
   };
 
-  it('is closed with feeds_stale when no feed has published for more than three hours, with no symbol halted', async () => {
+  it('is closed with feeds_stale when no feed has published for more than three hours, with no Stock Token halted', async () => {
     setAllUpdated(MARKET_QUIET_AFTER_SECONDS + 1);
     const snapshot = await s.take();
     expect(marketSnapshotSchema.safeParse(snapshot).success).toBe(true);
     expect(snapshot.open).toBe(false);
     expect(snapshot.closedReason).toBe('feeds_stale');
-    // On a Saturday every feed is younger than 25 hours: nothing needs to be halted.
-    expect(snapshot.prices.every((point) => point.fresh)).toBe(true);
+    // On a Saturday every feed is younger than 25 hours: no Stock Token, BTC or ETH needs to be
+    // halted. SOL's own staleness (7,200 s, section 23) is shorter than the three hours of the quiet
+    // rule, so SOL alone is.
+    expect(snapshot.prices.filter((point) => !point.fresh).map((point) => point.symbol)).toEqual(['SOL']);
   });
 
   it('is open when one feed of the universe has published inside the quiet limit, exactly at it', async () => {
@@ -558,17 +576,28 @@ describe('market.takeSnapshot: crypto assets (section 21)', () => {
   it('uses the crypto threshold for crypto and the stock threshold for Stock Tokens', async () => {
     s.setFeed(symbolAt(0), { updatedAt: NOW_SECONDS - 100 });
     s.setFeed('BTC', { updatedAt: NOW_SECONDS - 100 });
-    const strictCrypto = await s.take({ cryptoStaleAfterSeconds: 99 });
+    const strictCrypto = await s.take({
+      cryptoStaleAfterSecondsBySymbol: { ...CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL, BTC: 99 },
+    });
     expect(halted(strictCrypto)).toEqual(['BTC']);
     const strictStock = await s.take({ staleAfterSeconds: 99 });
     expect(halted(strictStock)).toContain(symbolAt(0));
     expect(halted(strictStock)).not.toContain('BTC');
   });
 
-  it('halts every crypto symbol, and only those, when the crypto threshold is not a number', async () => {
-    const snapshot = await s.take({ cryptoStaleAfterSeconds: Number.NaN });
+  it('halts every crypto symbol, and only those, when the crypto thresholds are not numbers', async () => {
+    const notNumbers = Object.fromEntries(
+      Object.keys(CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL).map((symbol) => [symbol, Number.NaN]),
+    );
+    const snapshot = await s.take({ cryptoStaleAfterSecondsBySymbol: notNumbers });
     expect(snapshot).toMatchObject({ open: true, closedReason: null });
-    expect(halted(snapshot)).toEqual(['BTC', 'ETH']);
+    expect(halted(snapshot)).toEqual(['BTC', 'ETH', ...ARBITRUM_SYMBOLS]);
+  });
+
+  it('halts every crypto symbol, and only those, when no crypto threshold is given', async () => {
+    const snapshot = await s.take({ cryptoStaleAfterSecondsBySymbol: {} });
+    expect(snapshot).toMatchObject({ open: true, closedReason: null });
+    expect(halted(snapshot)).toEqual(['BTC', 'ETH', ...ARBITRUM_SYMBOLS]);
   });
 
   it('never asks a crypto entry for oraclePaused()', async () => {

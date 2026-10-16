@@ -29,6 +29,21 @@ export function shareStatement(): string {
 }
 
 /**
+ * The two lines of the disclaimer that every share image prints at its foot. ShareImage.astro
+ * draws them, and the alt text of the site's image repeats them, so both read from here: the alt
+ * says what the PNG prints, never a sentence the picture does not carry (D-168, W168-4).
+ */
+export function shareDisclaimerLines(): readonly [string, string] {
+  const simulation = text('common.simulationLabel', 'Paper trading simulation');
+  const notAdvice = text('common.notAdviceLabel', 'Not investment advice');
+  const noOrders = text('common.noOrdersLabel', 'No real orders are placed');
+  return [
+    text('share.disclaimerFirst', '{simulation}. {notAdvice}.', { simulation, notAdvice }),
+    text('share.disclaimerSecond', '{noOrders}.', { noOrders }),
+  ];
+}
+
+/**
  * The general image of the site, for a page that has no image of its own: the landing page,
  * the long-form pages, and an agent's page until agents have images.
  */
@@ -40,10 +55,7 @@ export function siteShareImage(): ShareImageMeta {
     alt: text('share.siteAlt', '{name}. {statement} {disclaimer}', {
       name: text('common.productName', 'Prix'),
       statement: shareStatement(),
-      disclaimer: text(
-        'common.disclaimer',
-        'Paper trading simulation. Not investment advice. No real orders are placed.',
-      ),
+      disclaimer: shareDisclaimerLines().join(' '),
     }),
   };
 }

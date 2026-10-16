@@ -1,7 +1,8 @@
 /**
  * The most bytes of one RPC answer that a chain reader of this package reads (docs/CONTRACTS.md
- * section 20; security review of the newest reads, finding 5). The 22-feed multicall answer (20 Stock
- * Tokens and two crypto assets, section 21; 66 inner calls) is a few kilobytes, so the cap never
+ * section 20; security review of the newest reads, finding 5). The Robinhood multicall answer (20 Stock
+ * Tokens and two crypto assets, section 21; 66 inner calls) and the Arbitrum one (three crypto assets
+ * and the sequencer feed, section 23; 10 inner calls) are a few kilobytes each, so the cap never
  * touches an honest answer of the snapshot or of `createRpc`.
  */
 export const RPC_MAX_RESPONSE_BYTES = 256 * 1024;

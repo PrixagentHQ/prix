@@ -1,0 +1,210 @@
+/*
+  "Start from a template" on the Build page (D-155). The templates sit as the division's cards do
+  (Choices, form "cards"): boxes with a hairline ring that the whole box answers, two even columns
+  from 45em, so the eight make four even rows at every desktop width, and one column below it. No
+  box is ever marked as chosen: a starting text is not a pick, and the filled field (signed in) or
+  the status line (signed out) says what happened. Nothing here moves.
+*/
+.tpl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-16);
+}
+
+/* The title reads as a field's label does; the note steps back, as a hint. */
+.tpl-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-strong);
+}
+
+.tpl-note,
+.tpl-hint {
+  margin: 0;
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+/* What choosing a template does, under the title, before the boxes. */
+.tpl-hint {
+  margin-top: var(--space-4);
+}
+
+.tpl-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-8);
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 45em) {
+  .tpl-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/*
+  The holder templates (D-161), for a wallet the server read at tier 1 or above: a small title, as
+  the section's own steps back, then the same boxes. For everyone else one quiet line, a hint's
+  size and colour, with a plain link to the token page; it names no holder template.
+*/
+.tpl-subtitle {
+  margin: var(--space-16) 0 0;
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-strong);
+}
+
+.tpl-locked {
+  margin: var(--space-12) 0 0;
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+.tpl-list > li {
+  display: flex;
+  min-width: 0;
+}
+
+.tpl-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-lg);
+  padding: var(--space-8) var(--space-12);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+/* Only where the pointer can hover: on a phone a tapped box would keep the wash (DC3-3). */
+@media (hover: hover) {
+  .tpl-item:hover {
+    background: var(--wash);
+  }
+}
+
+.tpl-item:focus-visible,
+.tpl-confirm:focus-visible {
+  border-radius: var(--radius-control);
+}
+
+.tpl-item-title {
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-strong);
+}
+
+.tpl-item-line {
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+/* On a phone the boxes are tighter and the line one step smaller; the hint and the note stay. */
+@media (max-width: 29.99em) {
+  .tpl-item {
+    padding: var(--space-8);
+  }
+
+  .tpl-item-line {
+    font-size: var(--text-12);
+    line-height: var(--leading-12);
+  }
+}
+
+/*
+  Forced colours draw no box shadow, so each box keeps a 1 pixel edge of its own, and gives that
+  pixel back from its padding so nothing shifts.
+*/
+@media (forced-colors: active) {
+  .tpl-item {
+    border: 1px solid ButtonText;
+    padding: calc(var(--space-8) - 1px) calc(var(--space-12) - 1px);
+  }
+}
+
+@media (forced-colors: active) and (max-width: 29.99em) {
+  .tpl-item {
+    padding: calc(var(--space-8) - 1px);
+  }
+}
+
+/*
+  Signed out: what a choice did, and the way on. On a phone the eight boxes are taller than the
+  window, so the line rides at the bottom of the window, on the card's own surface, while any box
+  is in view, and settles under the grid at the end of the section. It moves no focus.
+  Its words keep 8 pixels above and below them, and below them the phone's home bar too where
+  there is one (DC3-1).
+*/
+.tpl-status {
+  position: sticky;
+  bottom: 0;
+  margin: 0;
+  padding-block: var(--space-8);
+  padding-bottom: max(var(--space-8), env(safe-area-inset-bottom));
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  container-type: scroll-state;
+}
+
+/*
+  Only while it rides at the bottom of the window, the line has a hairline edge on top, so the
+  boxes scrolling under it stop at a line and not at nothing. Settled under the grid it has none,
+  and where the browser cannot tell that it is stuck it has none either.
+*/
+@container scroll-state(stuck: bottom) {
+  .tpl-status::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* Before a choice the line holds nothing and takes no room; its live region stays in place. */
+.tpl-status:has(> [data-template-status]:empty) {
+  padding-block: 0;
+}
+
+.tpl-status:has(> [data-template-status]:empty)::before {
+  content: none;
+}
+
+/* The question, when the field holds the person's own text: on the wash, as a banner is. */
+.tpl-confirm {
+  margin-top: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-control);
+  background: var(--wash);
+}
+
+.tpl-confirm[hidden] {
+  display: none;
+}
+
+.tpl-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-16);
+  align-items: center;
+}

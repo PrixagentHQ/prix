@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import type { TokenSymbol } from './primitives.ts';
 import { amountSchema, symbolSchema } from './primitives.ts';
+import { z } from './zod.ts';
 
 /**
  * A paper portfolio. Cash is in micro-USD and holdings are in micro-shares.

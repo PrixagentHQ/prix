@@ -5,9 +5,11 @@ import type {
   LeagueResponse,
   MarketPricesResponse,
   MarketResponse,
+  PortfolioState,
   ProvidersResponse,
   Season,
   SeasonsResponse,
+  SimEngine,
   Store,
 } from '@prix/contracts';
 import {
@@ -27,7 +29,10 @@ import type { Hono } from 'hono';
 import { failures, json } from './errors.ts';
 import { readSession } from './guard.ts';
 import { matches, readQuery } from './input.ts';
+import type { HoldingsSource, LiveDelay } from './league/delay.ts';
+import { delayAgentRows, delayStandingRows, NO_LIVE_DELAY } from './league/delay.ts';
 import { readSessionToken } from './session.ts';
+import { ownerHoldsFor } from './token/owner-holds.ts';
 import {
   currentSeason,
   pricesOf,
@@ -60,10 +65,28 @@ export async function modelOf(
 }
 
 /**
+ * The portfolio an agent read shows, and the tick it is as of, once the Live delay has been applied:
+ * the stored one, the one the newest visible row left, or the starting one.
+ */
+function shownPortfolio(
+  sim: SimEngine,
+  record: { portfolio: PortfolioState; lastTickId: string | null },
+  source: HoldingsSource,
+): { portfolio: PortfolioState; asOfTickId: string | null } {
+  if (source.kind === 'row') return { portfolio: source.row.portfolio, asOfTickId: source.row.tickId };
+  if (source.kind === 'start') return { portfolio: sim.newPortfolio(), asOfTickId: null };
+  return { portfolio: record.portfolio, asOfTickId: record.lastTickId };
+}
+
+/**
  * The reads anyone may make. None of them looks at a session, so none of them can show
  * anything that belongs to one wallet, and all of them may be cached.
+ *
+ * `delay` is the publication delay of Prix Live (docs/CONTRACTS.md section 24.8): today's rows and
+ * the holdings they left, of an agent linked to a Live wallet, stay out of these reads until 20:00
+ * UTC, except for the agent's own owner.
  */
-export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
+export function registerPublicRoutes(app: Hono, deps: ApiDeps, delay: LiveDelay = NO_LIVE_DELAY): void {
   const { store, scoring, sim, config } = deps;
 
   app.get('/market', async () => {
@@ -83,8 +106,10 @@ export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
       computeRecentReturns(pricesOf(tick.snapshot), previous).map((entry) => [entry.symbol, entry.day1Bps]),
     );
     const prices: MarketPricesResponse['prices'] = [];
-    // The universe gives the order and the names: the Stock Tokens, then the crypto assets (section 21).
-    // A symbol without a price at the round, such as a coin in a tick stored before it joined, is left out.
+    // The universe gives the order and the names: the Stock Tokens, then the crypto assets (sections 21
+    // and 23), whatever chain their feed is read on. A symbol without a price at the round, such as a
+    // coin in a tick stored before it joined, is left out. The snapshot's `otherChains` (which endpoint
+    // answered, at which block) is never part of this answer.
     for (const token of UNIVERSE) {
       const point = points.get(token.symbol);
       if (point === undefined) continue;
@@ -138,6 +163,14 @@ export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
     const tick = processing.find((entry) => entry.seasonId === seasonId && (division === 'pro' || entry.daily));
     const round =
       tick === undefined ? null : { tickId: tick.id, pending: await store.countPendingAgents(tick.id, division) };
+    // The holdings of a Live-linked agent's row wait for 20:00 UTC (section 24.8); its figures do not.
+    const shown = sources.slice(0, LEAGUE_PAGE_SIZE);
+    const rows = await delayStandingRows(
+      delay,
+      shown,
+      shown.map((source) => toStandingRow(scoring, state, source, config.houseOwners, sim)),
+      deps.now(),
+    );
 
     return json<LeagueResponse>(
       {
@@ -146,9 +179,7 @@ export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
         seasonEnded: now >= season.endsAt,
         market,
         state,
-        rows: sources
-          .slice(0, LEAGUE_PAGE_SIZE)
-          .map((source) => toStandingRow(scoring, state, source, config.houseOwners, sim)),
+        rows,
         page,
         hasMore: sources.length > LEAGUE_PAGE_SIZE,
         round,
@@ -183,17 +214,27 @@ export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
     const isOwner = viewer !== null && viewer.toLowerCase() === agent.owner.toLowerCase();
     const delaySeconds = isOwner ? 0 : entitlements.feedDelaySeconds;
     const nowDate = deps.now();
-    const visibleRows = rows.filter((row) => isVisibleAt(row.createdAt, nowDate, delaySeconds));
+    // Prix Live (section 24.8): today's rows of a linked agent, and the holdings they left, wait for
+    // 20:00 UTC. The owner sees them at once.
+    const live = await delayAgentRows(delay, agent.id, rows, record.lastTickId, nowDate, isOwner);
+    const visibleRows = live.rows.filter((row) => isVisibleAt(row.createdAt, nowDate, delaySeconds));
+    const shown = shownPortfolio(sim, record, live.holdings);
 
-    // Holdings are valued at the prices of the agent's latest tick. Before its first row an
+    // Holdings are valued at the prices of the tick they are as of. Before its first row an
     // agent holds cash only, so there is nothing to price.
-    const tick = record.lastTickId === null ? null : await store.getTick(record.lastTickId);
-    if (record.lastTickId !== null && tick === null) throw new Error('the tick of an agent row is missing');
+    const tick = shown.asOfTickId === null ? null : await store.getTick(shown.asOfTickId);
+    if (shown.asOfTickId !== null && tick === null) throw new Error('the tick of an agent row is missing');
     const { holdings, cashWeightBps } = valueHoldings(
       sim,
-      record.portfolio,
+      shown.portfolio,
       tick === null ? {} : pricesOf(tick.snapshot),
     );
+
+    // The owner's full address is read for these two marks and reaches no field of the answer.
+    const house = isHouseOwner(config.houseOwners, agent.owner);
+    // Phase 6.7, part B: the owner's choice first, then the STORED tier with `cachedOnly`. The same answer
+    // for every viewer; a failure answers false and never fails the read.
+    const ownerHolds = await ownerHoldsFor(deps, agent.owner, house);
 
     return json<AgentPublic>(
       {
@@ -213,16 +254,18 @@ export function registerPublicRoutes(app: Hono, deps: ApiDeps): void {
         rankedCount: state?.rankedCount ?? 0,
         stats: record.stats,
         holdings,
-        cashMicro: record.portfolio.cashMicro,
+        cashMicro: shown.portfolio.cashMicro,
         cashWeightBps,
-        asOfTickId: record.lastTickId,
+        asOfTickId: shown.asOfTickId,
         decisions: visibleRows.map(toDecisionPublic),
         method: state?.method ?? SCORING_METHOD,
-        // The owner's full address is read for this mark and reaches no field of the answer.
-        house: isHouseOwner(config.houseOwners, agent.owner),
+        house,
+        ownerHolds,
       },
       200,
-      hasCookie && entitlements.gatingOn ? 'private' : 'public',
+      // The owner sees what the public may not see yet (a Live agent's day before 20:00 UTC), so the
+      // owner's answer is never one anybody may keep.
+      hasCookie && (entitlements.gatingOn || isOwner) ? 'private' : 'public',
     );
   });
 }

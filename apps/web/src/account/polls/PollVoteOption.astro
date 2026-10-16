@@ -1,0 +1,27 @@
+---
+// One option's part of the vote control (docs/contracts/phase-6-holders.md section 4.5): "Vote for this one",
+// or "Your vote" on the wallet's current choice. web-site's page puts it inside each option of the open poll,
+// within a `PollVoteControl`. Both are hidden until GET /api/polls/me says that a vote would pass; the button's
+// accessible description is the option's name, so four buttons with the same words stay apart.
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import './polls.css';
+
+interface Props {
+  /** The option's id within the open poll (`HOLDER_POLLS`). */
+  optionId: string;
+  /** The option's public name, as `HOLDER_POLLS` has it. */
+  optionName: string;
+}
+
+const { optionId, optionName } = Astro.props;
+const nameId = `poll-option-${optionId}-name`;
+---
+
+<span class="poll-vote-option" data-poll-option={optionId} data-poll-name-id={nameId}>
+  <span id={nameId} hidden>{optionName}</span>
+  <span data-poll-vote-action hidden>
+    <Button variant="secondary" size="sm" label={text('polls.vote', 'Vote for this one')} data-poll-vote-button={optionId} />
+  </span>
+  <span class="poll-vote-yours" data-poll-yours hidden>{text('polls.yourVote', 'Your vote')}</span>
+</span>

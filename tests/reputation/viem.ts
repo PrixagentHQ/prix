@@ -3,7 +3,7 @@
  *
  * The tests package does not list viem as a dependency (qa does not change dependencies), but
  * the API package does and its copy is installed. The import goes through that copy until the
- * lead adds `viem` to tests/package.json (see the report); the file then becomes
+ * operator adds `viem` to tests/package.json (see the report); the file then becomes
  * `export { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'`.
  */
 // @ts-expect-error: the file path import has no type declarations next to it; the shape is declared below

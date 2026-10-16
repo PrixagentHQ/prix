@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { ROOM_PICTURE_RATE_BINDING, ROOM_PICTURE_RATE_NAMESPACE, ROOM_PICTURE_RATE_PER_MINUTE } from '@prix/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { RateLimitBinding } from '../../apps/api/src/rate-limit.ts';
 import { createRateLimiter, ipSubjectKey, RATE_LIMIT_RULES } from '../../apps/api/src/rate-limit.ts';
@@ -87,10 +88,27 @@ describe('the rules and the Wrangler bindings', () => {
 
   it('gives every rule the limit its binding enforces, per 60 seconds', () => {
     const configured = bindings();
-    expect([...configured.keys()].sort()).toEqual(['RATE_READ', 'RATE_SIGN_IN', 'RATE_WRITE']);
+    // The three rules of the limiter, and since Phase 6.4 the `picture` rule of the two bytes routes of
+    // the room's pictures, which is a binding of its own (docs/contracts/phase-6-pictures.md section 14).
+    expect([...configured.keys()].sort()).toEqual(
+      ['RATE_READ', 'RATE_SIGN_IN', 'RATE_WRITE', ROOM_PICTURE_RATE_BINDING].sort(),
+    );
     for (const spec of Object.values(RATE_LIMIT_RULES)) {
       expect(configured.get(spec.binding)).toEqual({ limit: spec.perMinute, period: 60 });
     }
+  });
+
+  it('gives the picture rule the limit of the contract, in 60 seconds, in a namespace of its own', () => {
+    expect(ROOM_PICTURE_RATE_BINDING).toBe('RATE_PICTURE');
+    expect(bindings().get(ROOM_PICTURE_RATE_BINDING)).toEqual({ limit: ROOM_PICTURE_RATE_PER_MINUTE, period: 60 });
+    const text = readFileSync(path.join(import.meta.dirname, '..', '..', 'apps', 'api', 'wrangler.jsonc'), 'utf8');
+    const namespaces = [...text.matchAll(/"name":\s*"(RATE_\w+)",\s*"namespace_id":\s*"(\d+)"/g)].map((match) => [
+      match[1],
+      match[2],
+    ]);
+    expect(namespaces.find(([name]) => name === ROOM_PICTURE_RATE_BINDING)?.[1]).toBe(ROOM_PICTURE_RATE_NAMESPACE);
+    // No two rules share a namespace: a count of one is never a count of another.
+    expect(new Set(namespaces.map(([, id]) => id)).size).toBe(namespaces.length);
   });
 
   it('allows what the contract says per subject: sign-in 20, write 20, read 300 a minute', () => {

@@ -1,3 +1,7 @@
+// NOT USED SINCE THE HOLDERS ROUND (docs/contracts/phase-6-holders.md section 7, infra/README.md section 20): it
+// takes the webhook secret from the command line. prix-api sets the webhook itself from /admin/holders, and
+// infra/telegram/put-webhook-secret.mjs makes and stores the secret without showing it.
+//
 // Registers the Prix Telegram webhook (docs/contracts/phase-3-follow.md section 5).
 //
 //   TELEGRAM_BOT_TOKEN=... TELEGRAM_WEBHOOK_SECRET=... SITE_ORIGIN=https://prixagent.com \

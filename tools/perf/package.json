@@ -8,7 +8,8 @@
     "budgets": "node budgets.mjs",
     "bundle": "node bundle.mjs",
     "capacity": "node capacity.mjs",
-    "siwe-cpu": "node siwe-cpu.mjs"
+    "siwe-cpu": "node siwe-cpu.mjs",
+    "stage2-tick": "node stage2-tick.mjs"
   },
   "devDependencies": {
     "lighthouse": "^13.5.0",

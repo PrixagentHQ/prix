@@ -1,4 +1,11 @@
-import type { SocialJobDeps, SocialJobName, SocialJobOutcome, UtcDay } from '@prix/contracts';
+import type {
+  ReputationStore,
+  SocialJobDeps,
+  SocialJobName,
+  SocialJobOutcome,
+  SocialStore,
+  UtcDay,
+} from '@prix/contracts';
 import { SOCIAL_JOB_SKIP_AFTER_FAILURES, socialFailureCursor } from '@prix/contracts';
 
 /**
@@ -54,7 +61,13 @@ function failuresToday(body: string | null, today: UtcDay): number {
  * `idle` and writes nothing once today's count is reached. A run that does work clears the count.
  */
 export async function guardSocialJob(
-  deps: Pick<SocialJobDeps, 'log' | 'social' | 'reputation'>,
+  // Revision 4 of the holders contract (HB3-4): only what the guard uses, so that a job with narrow deps
+  // (`PollTallyJobDeps`) passes them as they are. Every job's deps still satisfy it.
+  deps: {
+    log: SocialJobDeps['log'];
+    social: Pick<SocialStore, 'putCursor'>;
+    reputation: Pick<ReputationStore, 'getJobState'>;
+  },
   job: SocialJobName,
   now: Date,
   run: (skip: SkipGate) => Promise<SocialJobOutcome>,

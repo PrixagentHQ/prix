@@ -1,0 +1,187 @@
+---
+// The standings: the board of the home page's hero (docs/DESIGN.md sections 5.3 and 12.2, R17).
+// A card that holds a short table of agents on one shared scale: rank, animal, name with its
+// chips, the line since the start over the dashed start line, the figure, and from 720 pixels
+// the facts named by `heads.facts`. Under 720 a row is a grid: rank, animal, name over its chips,
+// and the figure over its line at the right; the column heads are then for assistive technology
+// only.
+//
+// It computes nothing and holds no words of its own: every word, figure and label is a prop the
+// page formats from the API's values, and the scale is the page's `sparkDomain` and `sparkSlots`.
+// With no rows the default slot stands where the table would: an empty or failed state.
+//
+//   <Standings title="Top five of 12 agents" meta="Open division, after the round of 13 Oct, 15:00 UTC"
+//     more={{ label: 'See all 12 agents', href: '/league' }} caption="…" heads={…} rows={…}
+//     notRanked="Not ranked" domain={domain} slots={slots} baseline={10000} key="Every agent starts …" />
+import AgentMark from './AgentMark.astro';
+import Chip from './Chip.astro';
+import type { Domain } from './chart.ts';
+import Medal from './Medal.astro';
+import Sparkline from './Sparkline.astro';
+
+interface Row {
+  agent: { id: string; name: string; href: string };
+  /** The rank, or null for an agent that has none yet. */
+  rank: number | null;
+  /** The rank in words for assistive technology: "Rank 1". */
+  rankLabel?: string;
+  /** "Run by Prix" (`house`), a division, or a state such as "No decision on 13 Oct" (`neutral`). */
+  chips?: Array<{ label: string; kind?: 'open' | 'pro' | 'house' | 'neutral' }>;
+  /** The figure with its sign, formatted: "+4.82%". */
+  figure: { text: string; tone?: 'gain' | 'loss' };
+  /** The values since the start, oldest first, the starting value first. */
+  line: { values: readonly number[]; label?: string; emptyLabel?: string };
+  /** From 720 pixels, one value for each of `heads.facts`, in order. */
+  facts?: string[];
+}
+
+interface Props {
+  /** "Top five of 12 agents". */
+  title: string;
+  /** One sentence under the title: "Open division, after the round of 13 Oct, 15:00 UTC". No middle dot. */
+  meta?: string;
+  /** The link at the title's right: "See all 12 agents". No arrow is drawn after it. */
+  more?: { label: string; href: string };
+  /** The table's caption, for assistive technology. */
+  caption: string;
+  /**
+   * The column heads: rank, agent, line, figure, facts. The animal's column has no head: it is a
+   * picture beside the name, so its head and cells are hidden from assistive technology and the
+   * agent's name is the one "Agent" column a screen reader hears.
+   */
+  heads: { rank: string; agent: string; line: string; figure: string; facts?: string[] };
+  rows: readonly Row[];
+  /** What an agent without a rank shows in the rank column, for assistive technology: "Not ranked". */
+  notRanked: string;
+  /** The shared scale and count of slots of the board (`sparkDomain`, `sparkSlots`). */
+  domain?: Domain;
+  slots?: number;
+  /** The value every agent starts from: the dashed line through every row. */
+  baseline?: number;
+  /** The key under the table, beside a drawn dash: "Every agent starts at 10,000 virtual USD. …". */
+  key?: string;
+  id?: string;
+  [data: `data-${string}`]: string | boolean | undefined;
+}
+
+const {
+  title,
+  meta,
+  more,
+  caption,
+  heads,
+  rows,
+  notRanked,
+  domain,
+  slots,
+  baseline,
+  key,
+  id,
+  slot: _slot,
+  ...rest
+} = Astro.props as Props & { slot?: string };
+const facts = heads.facts ?? [];
+const titleId = `${id ?? 'standings'}-title`;
+---
+
+<section class="card standings" id={id} aria-labelledby={titleId} data-standings {...rest}>
+  <header class="standings-head">
+    <h2 class="standings-title" id={titleId}>{title}</h2>
+    {more && <a class="standings-more" href={more.href}>{more.label}</a>}
+    {meta && <p class="standings-meta">{meta}</p>}
+  </header>
+  {
+    rows.length > 0 ? (
+      <table class="standings-table">
+        <caption class="visually-hidden">{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="st-rank">{heads.rank}</th>
+            <td class="st-mark" aria-hidden="true" />
+
+            <th scope="col" class="st-name">{heads.agent}</th>
+            <th scope="col" class="st-line">{heads.line}</th>
+            <th scope="col" class="st-figure num">{heads.figure}</th>
+            {facts.map((fact) => (
+              <th scope="col" class="st-fact num">
+                {fact}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr data-crawler-row>
+              <td class="st-rank">
+                {row.rank !== null && row.rank >= 1 && row.rank <= 3 ? (
+                  <Medal rank={row.rank as 1 | 2 | 3} label={row.rankLabel ?? String(row.rank)} />
+                ) : row.rank !== null ? (
+                  <span class="standings-rank figures">
+                    {row.rankLabel && <span class="visually-hidden">{row.rankLabel}</span>}
+                    <span aria-hidden={row.rankLabel ? 'true' : undefined}>{row.rank}</span>
+                  </span>
+                ) : (
+                  <span class="standings-rank standings-rank--none">
+                    <span aria-hidden="true">–</span>
+                    <span class="visually-hidden">{notRanked}</span>
+                  </span>
+                )}
+              </td>
+              <td class="st-mark" aria-hidden="true">
+                <AgentMark agentId={row.agent.id} name={row.agent.name} size="md" />
+              </td>
+              <th scope="row" class="st-name">
+                <a href={row.agent.href}>{row.agent.name}</a>
+                {(row.chips ?? []).length > 0 && (
+                  <span class="standings-chips">
+                    {(row.chips ?? []).map((chip) => (
+                      <Chip label={chip.label} kind={chip.kind} />
+                    ))}
+                  </span>
+                )}
+              </th>
+              <td class="st-line">
+                <Sparkline
+                  values={row.line.values}
+                  domain={domain}
+                  slots={slots}
+                  baseline={baseline}
+                  tone={row.figure.tone}
+                  label={row.line.label}
+                  emptyLabel={row.line.emptyLabel}
+                  draw
+                />
+              </td>
+              <td class="st-figure num">
+                <span class:list={['figures', row.figure.tone]}>{row.figure.text}</span>
+              </td>
+              {facts.map((_, index) => (
+                <td class="st-fact num">
+                  <span class="figures">{row.facts?.[index] ?? ''}</span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ) : (
+      <div class="standings-state">
+        <slot />
+      </div>
+    )
+  }
+  {
+    key && (
+      <footer class="standings-foot">
+        <p class="standings-key">
+          {baseline !== undefined && (
+            <svg class="standings-dash" viewBox="0 0 24 4" aria-hidden="true" focusable="false">
+              <line x1="0" y1="2" x2="24" y2="2" />
+            </svg>
+          )}
+          <span>{key}</span>
+        </p>
+      </footer>
+    )
+  }
+</section>

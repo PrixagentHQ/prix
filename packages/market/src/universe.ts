@@ -1,8 +1,10 @@
 import type { UniverseToken } from '@prix/contracts';
+import { ARBITRUM_CHAIN_ID, CHAIN_ID } from '@prix/contracts';
 
 /**
- * The symbols the league trades: 20 Stock Tokens, then two crypto assets (docs/CONTRACTS.md section 21,
- * documented at CRYPTO_READ_ON below). The Stock Tokens were GENERATED from primary sources on 2026-10-06; RESEARCH.md has the
+ * The symbols the league trades: 20 Stock Tokens, then two crypto assets read on Robinhood Chain
+ * (docs/CONTRACTS.md section 21, documented at CRYPTO_READ_ON below), then three read on Arbitrum One
+ * (section 23, documented at ARBITRUM_READ_ON below). The Stock Tokens were GENERATED from primary sources on 2026-10-06; RESEARCH.md has the
  * method, the raw chain reads and the ranking. Do not edit an address by hand: re-run the research.
  *
  * Where each address was read:
@@ -42,6 +44,36 @@ export const READ_ON = '2026-10-06';
  * "BTC / USD" and "ETH / USD", `decimals()` 8, and a current `latestRoundData()`. RESEARCH.md, section 11.
  */
 export const CRYPTO_READ_ON = '2026-10-09';
+
+/**
+ * Where the three Arbitrum One feeds of docs/CONTRACTS.md section 23 were read: Chainlink's feed list
+ * for Arbitrum, which renders ARBITRUM_FEED_SOURCE_DATA_URL; that JSON is what was read, on
+ * 2026-10-09 at 06:41 UTC. The rows "SOL / USD", "BNB / USD" and "HYPE / USD", field `proxyAddress`
+ * (they have no SVR proxy), 8 decimals, heartbeat 86,400 s, deviation 0.1% (SOL, BNB) and 0.5% (HYPE),
+ * `docs.marketHours` "Crypto". Each was then called on chain through `readArbitrum` on the official
+ * endpoint and the confirming pair: chain 42161, `decimals()` 8 and a current `latestRoundData()`.
+ * RESEARCH.md, section 12.
+ */
+export const ARBITRUM_FEED_SOURCE_URL = 'https://docs.chain.link/data-feeds/price-feeds/addresses?network=arbitrum';
+export const ARBITRUM_FEED_SOURCE_DATA_URL =
+  'https://reference-data-directory.vercel.app/feeds-ethereum-mainnet-arbitrum-1.json';
+/** The UTC day the three Arbitrum feeds and the sequencer feed were read. */
+export const ARBITRUM_READ_ON = '2026-10-09';
+
+/**
+ * Chainlink's L2 Sequencer Uptime Status Feed on Arbitrum One (docs/CONTRACTS.md section 23): answer
+ * 0 while the sequencer is up, 1 while it is down; `startedAt` is when that status began. It is not a
+ * universe entry. Source: the "L2 Sequencer Uptime Status Feed" row of ARBITRUM_FEED_SOURCE_DATA_URL
+ * (`proxyAddress`, 0 decimals), the list behind ARBITRUM_FEED_SOURCE_URL, read on ARBITRUM_READ_ON;
+ * its meaning from https://docs.chain.link/data-feeds/l2-sequencer-feeds, read the same day.
+ */
+export const ARBITRUM_SEQUENCER_FEED = {
+  address: '0xfdb631f5ee196f0ed6faa767959853a9f217697d',
+  decimals: 0,
+  sourceUrl: ARBITRUM_FEED_SOURCE_URL,
+  semanticsUrl: 'https://docs.chain.link/data-feeds/l2-sequencer-feeds',
+  readOn: ARBITRUM_READ_ON,
+} as const;
 
 export const UNIVERSE: readonly UniverseToken[] = [
   {
@@ -273,6 +305,7 @@ export const UNIVERSE: readonly UniverseToken[] = [
     feedDecimals: 8,
     sourceUrl: FEED_SOURCE_URL,
     readOn: CRYPTO_READ_ON,
+    chainId: CHAIN_ID,
   },
   {
     kind: 'crypto',
@@ -282,5 +315,38 @@ export const UNIVERSE: readonly UniverseToken[] = [
     feedDecimals: 8,
     sourceUrl: FEED_SOURCE_URL,
     readOn: CRYPTO_READ_ON,
+    chainId: CHAIN_ID,
+  },
+  // The crypto assets of docs/CONTRACTS.md section 23, read on Arbitrum One, after BTC and ETH, in
+  // symbol order (BNB, HYPE, SOL), so every position a stored tick already has stays where it is.
+  {
+    kind: 'crypto',
+    symbol: 'BNB',
+    name: 'BNB',
+    feedAddress: '0x6970460aabf80c5be983c6b74e5d06dedca95d4a',
+    feedDecimals: 8,
+    sourceUrl: ARBITRUM_FEED_SOURCE_URL,
+    readOn: ARBITRUM_READ_ON,
+    chainId: ARBITRUM_CHAIN_ID,
+  },
+  {
+    kind: 'crypto',
+    symbol: 'HYPE',
+    name: 'Hyperliquid',
+    feedAddress: '0xf9ce4fe2f0ece0362cb416844ae179a49591d567',
+    feedDecimals: 8,
+    sourceUrl: ARBITRUM_FEED_SOURCE_URL,
+    readOn: ARBITRUM_READ_ON,
+    chainId: ARBITRUM_CHAIN_ID,
+  },
+  {
+    kind: 'crypto',
+    symbol: 'SOL',
+    name: 'Solana',
+    feedAddress: '0x24cea4b8ce57cda5058b924b9b9987992450590c',
+    feedDecimals: 8,
+    sourceUrl: ARBITRUM_FEED_SOURCE_URL,
+    readOn: ARBITRUM_READ_ON,
+    chainId: ARBITRUM_CHAIN_ID,
   },
 ];

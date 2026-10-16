@@ -88,6 +88,13 @@
   content: "";
 }
 
+/* Under a coarse pointer the wallet is 36 high, as the theme control, X and "Sign out" beside it. */
+@media (pointer: coarse) {
+  .top-wallet {
+    min-height: 2.25rem;
+  }
+}
+
 .top-tabs {
   grid-area: 2 / 1 / 3 / -1;
   min-width: 0;
@@ -145,8 +152,13 @@
     border-bottom: 0;
   }
 
+  /*
+    The mark keeps its own width and the actions take what is left. The track of the actions can
+    shrink to nothing, so the row is never wider than the page, whatever stands in it: the tabs
+    and the search field below span this grid, and would be drawn out past the window with it.
+  */
   .top-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     column-gap: var(--space-12);
   }
 
@@ -154,16 +166,41 @@
     height: 3.5rem;
   }
 
-  /* Under 400 px the actions need the room: the mark alone stands for the wordmark in the header,
+  /* Under 420 px the actions need the room: the mark alone stands for the wordmark in the header,
      and the link keeps its name through its label. */
-  @media (max-width: 24.9375em) {
+  @media (max-width: 26.1875em) {
     .top .wordmark > span {
       display: none;
     }
+
+    /*
+      The mark is drawn 22 wide, under the 24 a target needs (docs/DESIGN.md section 11). Its link
+      takes 8 on each side and gives the same 8 back as margin: the link is 38 wide, the mark
+      stands where it stood and its column stays 22. The 8 on the left lie in the page margin of
+      16, the 8 on the right in the 12 before the actions, so nothing moves and nothing is covered.
+    */
+    .top .wordmark {
+      padding-inline: var(--space-8);
+      margin-inline: calc(-1 * var(--space-8));
+    }
   }
 
+  /*
+    The steps at 420 and 375 px are set so that the actions fit one line from 320 px up
+    (docs/DESIGN.md section 5.2). Should they not fit all the same (a larger text size, a longer word), they wrap
+    onto a second line under the first: nothing overlaps the mark and nothing leaves the page.
+  */
   .top-acts {
     grid-area: 1 / 2;
+    flex-wrap: wrap;
+    padding-block: var(--space-8);
+  }
+
+  /* Under 375 px "Sign out", which has no ground at rest, stands 8 from its edges instead of 12. */
+  @media (max-width: 23.375em) {
+    .top-acts .button--quiet {
+      padding-inline: var(--space-8);
+    }
   }
 
   /* The tabs scroll sideways inside their row, edge to edge, and the hairline runs under them. */
@@ -184,6 +221,23 @@
 
   .top-acts .top-how,
   .top-search kbd {
+    display: none;
+  }
+}
+
+/*
+  R17: the home page (`Layout home`). Its hero carries "How it works" beside "Build an agent",
+  so the header's link is gone at every width and the first screen says it once. Under 720 the
+  search field leaves the header too: the page sets its own under the board, so a phone's first
+  screen is the header, the sentence, the action and the board. These rules stand after the
+  rules they undo (R13).
+*/
+.top--home .top-acts .top-how {
+  display: none;
+}
+
+@media (max-width: 44.99em) {
+  .top--home .top-search {
     display: none;
   }
 }
@@ -264,6 +318,23 @@
   }
 }
 
+/*
+  Under 720 px the header keeps X only; GitHub stays in the footer. Under 375 px X stays there
+  too: the row has no room for it beside the wallet. These rules stand after `.top-x` on purpose:
+  they have the same weight as it, so the later one decides `display`.
+*/
+@media (max-width: 44.9375em) {
+  .top-gh {
+    display: none;
+  }
+}
+
+@media (max-width: 23.375em) {
+  .top-x {
+    display: none;
+  }
+}
+
 /* ---------- Footer (Layout) ---------- */
 
 /* The footer's band is drawn by base.css (`body > footer`). */
@@ -329,9 +400,16 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  From 720 the words stand beside the links. The words keep 22rem, the width at which the token's
+  address stands whole on its line, and never more than half the row, so a larger text size cannot
+  widen the page. The links wrap in what is left, and where they fit on one line the words take
+  the rest. With a minimum of 0 the links' one line took the row first: with ten links the words
+  had no width at all from 720 to 793, and 46 at 840 (footer-check.mjs).
+*/
 @media (min-width: 45em) {
   .foot {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(min(22rem, 50%), 1fr) auto;
     align-items: start;
   }
 }
@@ -832,6 +910,14 @@ textarea.input {
   --table-min: 56rem;
 }
 
+/* A header's second line (Table's `note`): small, in the header's own weight, never wider than its label. */
+.table th .table-note {
+  display: block;
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-weight: 400;
+}
+
 .table th.w-8 {
   width: 8%;
 }
@@ -921,8 +1007,38 @@ textarea.input {
 /* ---------- Table: a hairline under the header and between the rows ---------- */
 
 .table-scroll {
+  /*
+    The width of an edge fade (R21): the end padding of an amount cell (the holders table's D3), so that a
+    column that ends at the box's end edge keeps its figures clear of the fade.
+  */
+  --table-fade: var(--space-16);
   position: relative;
   overflow-x: auto;
+}
+
+/*
+  A scrolling table's cue (`Table` `cue`, R20, R21): one line of the page's words, flush with the box's end
+  edge above it, in grey and with no chevron or arrow, so it never reads as a link. It takes room only while
+  the box overflows (with no script: never), and is seen while columns lie out of view on either side of the
+  box (a table opened at its end still has its first columns to the left), so it hides only when every column
+  is in view, and then the box does not overflow and the line takes no room.
+*/
+.table-cue {
+  display: none;
+  margin-bottom: var(--space-8);
+  color: var(--grey);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  text-align: right;
+}
+
+.table-cue[data-overflows] {
+  display: block;
+  visibility: hidden;
+}
+
+.table-cue[data-overflows][data-more] {
+  visibility: visible;
 }
 
 .table caption {
@@ -1016,6 +1132,88 @@ textarea.input {
 
 .table--scroll {
   min-width: var(--table-min, 36rem);
+}
+
+/*
+  `Table` `stickyFirst` (R20): the row names stay at the box's start edge while the other columns scroll
+  under them, on the ground the table stands on. The table's borders are separate (base.css), so each sticky
+  cell keeps its own hairline. A row whose first cell spans columns scrolls with the rest.
+*/
+.table--sticky-first :is(thead, tbody, tfoot) > tr > :first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--table-ground, var(--surface));
+}
+
+/*
+  The edge fades of a scrolling table (R21, DC6-3 of the holders round). A column cut by an edge of the box
+  fades into the ground over `--table-fade` while columns lie out of view beyond that edge, so a cut reads as
+  "more this way" and never as a broken table. table-scroll.ts marks the edges (`data-hidden-start`,
+  `data-hidden-end`); with no script there is no fade. No motion: a fade comes and goes with the scroll
+  position, at once, so reduced motion has nothing to take away.
+
+  With a sticky first column (`data-sticky-first`, from the column's computed position, so a page that makes
+  it sticky in its own style gets the same) the fades hang from each sticky cell: the start fade from the
+  cell's end edge, over the columns that slide under it; the end fade at the box's end edge, placed by
+  `--table-end-at`. Each is a gradient of the ground the table stands on, so it covers the cells' content and
+  not the hairlines between rows, and a row whose first cell spans columns (a sentence row) has no sticky cell
+  and is never faded, so no letter of a sentence is lost to a fade.
+*/
+.table-scroll[data-sticky-first] :is(thead, tbody, tfoot) > tr > :first-child:not([colspan])::before,
+.table-scroll[data-sticky-first] :is(thead, tbody, tfoot) > tr > :first-child:not([colspan])::after {
+  content: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--table-fade);
+  pointer-events: none;
+}
+
+/*
+  The fades stand on a screen only, and not under forced colours or more contrast: forced colours draw text
+  in the system's colours over a plain ground, where a fade would leave a column's first or last figures at
+  a contrast nobody chose; more contrast asks for edges as they are; paper shows every column. There the cut
+  stays hard and the cue still says that columns lie out of view.
+*/
+@media screen and (forced-colors: none) and (not (prefers-contrast: more)) {
+  .table-scroll[data-sticky-first][data-hidden-start]
+    :is(thead, tbody, tfoot)
+    > tr
+    > :first-child:not([colspan])::before {
+    content: "";
+    left: 100%;
+    background: linear-gradient(to right, var(--table-ground, var(--surface)), transparent);
+  }
+
+  .table-scroll[data-sticky-first][data-hidden-end] :is(thead, tbody, tfoot) > tr > :first-child:not([colspan])::after {
+    content: "";
+    left: calc(var(--table-end-at, 100%) - var(--table-fade));
+    background: linear-gradient(to left, var(--table-ground, var(--surface)), transparent);
+  }
+
+  /*
+    With no sticky first column every row scrolls whole, so the box itself is masked at the edge it hides
+    columns beyond. While the box has keyboard focus the mask is off, so that the focus ring outside the box
+    is never cut.
+  */
+  .table-scroll:not([data-sticky-first], :focus-visible)[data-hidden-start] {
+    mask-image: linear-gradient(to right, transparent, #000 var(--table-fade));
+  }
+
+  .table-scroll:not([data-sticky-first], :focus-visible)[data-hidden-end] {
+    mask-image: linear-gradient(to left, transparent, #000 var(--table-fade));
+  }
+
+  .table-scroll:not([data-sticky-first], :focus-visible)[data-hidden-start][data-hidden-end] {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--table-fade),
+      #000 calc(100% - var(--table-fade)),
+      transparent
+    );
+  }
 }
 
 /* The line above a table: tabs on the left, the status in words on the right. */

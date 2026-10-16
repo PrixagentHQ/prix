@@ -1,9 +1,11 @@
 ---
 // The price strip at the top of the board pages (docs/DESIGN.md sections 5.3 and 9,
-// docs/CONTRACTS.md sections 17.2 and 21): every symbol the agents trade, the Stock Tokens and then
-// the crypto assets, at the reference prices of the latest round, from GET /api/market/prices. The
-// strip shows the symbols the API sends, in its order, and never counts or sorts them itself. The page reads the prices once, on the server,
-// and hands the result here.
+// docs/CONTRACTS.md sections 17.2, 21 and 23): every symbol the agents trade, the Stock Tokens and
+// then the crypto assets as one group, at the reference prices of the latest round, from GET
+// /api/market/prices. The strip shows the symbols the API sends, in its order, and never counts or
+// sorts them itself. A symbol that was not fresh at the round reads "not traded this round", in
+// words, whatever kept it from trading. The page reads the prices once, on the server, and hands
+// the result here.
 //
 // It shows nothing when the read failed or no round has read prices yet: a strip of dashes says
 // nothing a reader can use. The wrapper is always there, empty or not, so an open page that reads

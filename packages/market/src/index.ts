@@ -9,4 +9,9 @@
 export { PUBLIC_RPC_URL, PUBLIC_RPC_URLS, rpcEndpoints } from './chain.ts';
 export { createMarket } from './market.ts';
 export { computeRecentReturns, haltedSymbols, toPriceMap } from './returns.ts';
-export { FEED_SOURCE_URL, UNIVERSE } from './universe.ts';
+export {
+  ARBITRUM_FEED_SOURCE_URL,
+  ARBITRUM_SEQUENCER_FEED,
+  FEED_SOURCE_URL,
+  UNIVERSE,
+} from './universe.ts';

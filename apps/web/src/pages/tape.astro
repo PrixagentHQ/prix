@@ -1,0 +1,19 @@
+---
+import { statusOf } from '../arena/social/client.ts';
+import { fetchTape } from '../arena/tape/client.ts';
+import TapePage from '../arena/tape/TapePage.astro';
+import { readAccount } from '../lib/account.ts';
+
+// Phase 6.8, the holders' tape (docs/contracts/phase-6-holders-2.md section 3.2). The status is decided
+// here, because a component cannot set it. The tape exists only while its switch is on: while it is off
+// the API answers the generic 404 and this page is the site's 404, as chat.astro does for the room. Any
+// other failure sends the API's own status (`statusOf`), so an error page is never sent as 200. The read
+// is web-arena's `fetchTape`, made once per request on the server: the page reads the same answer.
+const result = await fetchTape(Astro);
+if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+Astro.response.status = statusOf(result);
+// The signed-in wallet for the masthead, read as chat.astro reads it.
+const account = await readAccount(Astro);
+---
+
+<TapePage account={account} />

@@ -1,0 +1,24 @@
+---
+import { readSession } from '../../account/session.ts';
+import AdminChatPage from '../../account/social/room/AdminChatPage.astro';
+import { beforeOf, fetchAdminRoom } from '../../account/social/room/admin-read.ts';
+import { readAccount } from '../../lib/account.ts';
+import { statusForCode } from '../../lib/status.ts';
+
+// The status is decided here, because a component cannot set it. A wallet that is signed in and is
+// not an administrator gets 403 with the page that says so, and the admins' read is never made for
+// it. A visitor who is not signed in gets the sign-in, as 200. A read that failed sends the API's own
+// status. This page does not depend on the switch of the Community chat: the admin routes of the API
+// are always mounted, and the API checks the wallet again on the read and on every control.
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+const admin = session.state === 'signed-in' && session.me.isAdmin;
+const before = beforeOf(Astro.url);
+const list = admin ? await fetchAdminRoom(Astro, before) : null;
+
+if (session.state === 'signed-in' && !session.me.isAdmin) Astro.response.status = 403;
+else if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+else if (list && !list.ok) Astro.response.status = list.status >= 400 ? list.status : 500;
+---
+
+<AdminChatPage account={account} session={session} list={list} before={before} />

@@ -16,12 +16,18 @@ import type {
  *   tier0        gating on, a small holding, one slot used of one, a buy link set
  *   tier1        gating on, tier 1
  *   tier2        gating on, tier 2 with four agents, no buy link
- *   stale        gating on, tier 1 from an older read because the last read failed
+ *   tier3        gating on, tier 3, the last column of "Open to holders now" marked
+ *   stale       gating on, tier 1 from an older read because the last read failed
  *   signed-out   every signed-in call answers 401
  *   rate-limited the refresh answers 429
  *   fail         every call answers 500
  *
- * An unknown name makes every call fail, so a typing mistake is seen at once.
+ * An unknown name makes every call fail, so a typing mistake is seen at once. Beside it, for "Open to
+ * holders now" (the holders round): `?ownerholds=off` makes GET /api/token/me/owner-holds answer 404 (the API
+ * without B's half), `on` answers the mark on, `refuse` refuses its PUT with 429, and anything else answers it
+ * off; `?pictures=off` reads the room's pictures as off; `?holdertiers=missing` leaves tier 3 out of GET
+ * /api/token's tiers, so that "Open to holders now" does not show and the tier table stands whole (revision 5,
+ * D1).
  */
 
 export interface TokenCall {
@@ -31,7 +37,17 @@ export interface TokenCall {
 }
 export type TokenTransport = (call: TokenCall) => Promise<Response>;
 
-const NAMES = ['gating-off', 'tier0', 'tier1', 'tier2', 'stale', 'signed-out', 'rate-limited', 'fail'] as const;
+const NAMES = [
+  'gating-off',
+  'tier0',
+  'tier1',
+  'tier2',
+  'tier3',
+  'stale',
+  'signed-out',
+  'rate-limited',
+  'fail',
+] as const;
 type Name = (typeof NAMES)[number];
 
 const TOKEN = '0x00000000000000000000000000000000000fa11e';
@@ -63,7 +79,7 @@ export function tokenInfoFixture(url: URL): TokenInfoResponse | null {
     tokenAddress: on ? TOKEN : null,
     explorerUrl: on ? `https://robinhoodchain.blockscout.com/token/${TOKEN}` : null,
     buyUrl: name === 'tier0' ? 'https://ponsfamily.com/token/fixture' : null,
-    tiers: TIERS,
+    tiers: url.searchParams.get('holdertiers') === 'missing' ? TIERS.filter((rule) => rule.tier !== 3) : TIERS,
     feedDelaySeconds: 86_400,
   };
 }
@@ -96,6 +112,18 @@ function meFor(name: Name, now: string): TokenMeResponse {
       slots: { used: 1, max: 1, pausedForSlots: 0 },
       checkedAt: null,
       stale: false,
+    };
+  }
+  if (name === 'tier3') {
+    return {
+      ...base,
+      gatingOn: true,
+      tier: 3,
+      entitlements: entitlementsOf(3, true),
+      balance: '2000000000000000000000000',
+      holdingPpm: 2000,
+      nextTier: null,
+      slots: { used: 6, max: 25, pausedForSlots: 0 },
     };
   }
   if (name === 'tier2') {
@@ -178,6 +206,17 @@ export function createTokenFixtureTransport(pageUrl: URL): TokenTransport {
     if (call.path === '/api/token/refresh') {
       if (name === 'rate-limited') return failure('rate_limited', 'Checked a moment ago. Try again in a minute.');
       return Response.json(meFor(name === 'stale' ? 'tier1' : name, now));
+    }
+    if (call.path === '/api/token/me/owner-holds') {
+      // `?ownerholds=off`: the API has no B half yet (404); `on`: the mark is on; otherwise it is off.
+      const holds = pageUrl.searchParams.get('ownerholds');
+      if (holds === 'off') return failure('not_found', 'Not found.');
+      if (call.method === 'PUT') {
+        if (holds === 'refuse') return failure('rate_limited', 'Too many requests.');
+        const show = (call.body as { show?: unknown } | undefined)?.show;
+        return typeof show === 'boolean' ? Response.json({ show }) : failure('invalid_input', 'Send { show }.');
+      }
+      return Response.json({ show: holds === 'on' });
     }
     if (call.path === '/api/admin/token/config') {
       if (call.method === 'PUT') {

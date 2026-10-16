@@ -1,0 +1,41 @@
+---
+// One control of the admins' page of the Community chat. It never runs from its first click: the button
+// opens a question and what a yes leads to, with the way out beside it, and only the button inside the
+// question carries the act. The page's script makes the call and says the result in words.
+import Button from '../../../design/Button.astro';
+
+interface Props {
+  /** The name of the act, as the page's script knows it. */
+  act: string;
+  /** The message the control is about. None for the switch of pictures. */
+  id?: number;
+  words: { label: string; busy: string; question: string; consequence: string };
+  cancel: string;
+  /** The id of the question, which names the group for a screen reader. One a page. */
+  questionId: string;
+}
+
+const { act, id, words, cancel, questionId } = Astro.props;
+---
+
+<div data-confirm>
+  <Button label={words.label} variant="secondary" data-confirm-ask data-confirm-open />
+  <div class="stack-16 mgr-confirm" role="group" aria-labelledby={questionId} tabindex="-1" hidden data-confirm-panel>
+    <div class="stack-4">
+      <p class="body" id={questionId}>
+        <strong>{words.question}</strong>
+      </p>
+      <p class="body">{words.consequence}</p>
+    </div>
+    <p class="acct-actions">
+      <Button
+        label={words.label}
+        busyLabel={words.busy}
+        variant="secondary"
+        data-room-act={act}
+        data-room-id={id === undefined ? undefined : String(id)}
+      />
+      <Button label={cancel} variant="quiet" data-confirm-cancel />
+    </p>
+  </div>
+</div>

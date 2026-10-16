@@ -1,7 +1,8 @@
-import { z } from 'zod';
 import type { ApiDeps } from './api.ts';
 import type { Entitlements, EntitlementsPort } from './entitlements.ts';
 import type { RecordsReadPort } from './phase2-reputation.ts';
+import type { TelegramWebhookAdminResponse, TelegramWebhookWatch } from './phase6-holders.ts';
+import type { TelegramUpdateKind } from './phase6-holders2.ts';
 import { fillSchema } from './portfolio.ts';
 import type { Address, AgentId, Division, IsoTime, TickId, UtcDay } from './primitives.ts';
 import {
@@ -15,6 +16,7 @@ import {
 } from './primitives.ts';
 import type { DecisionRow } from './ticks.ts';
 import { seasonSchema } from './ticks.ts';
+import { z } from './zod.ts';
 
 /**
  * Phase 3, Follow. docs/contracts/phase-3-follow.md says what these shapes mean and what the
@@ -73,6 +75,17 @@ export const NOTICE_SIMULATION_LINE = 'Paper trading simulation. Not investment 
 /** What the bot answers in the chat. These are the only two messages it ever sends unprompted. */
 export const TELEGRAM_LINKED_REPLY =
   'Linked. You will get a short note when an agent you follow changes its paper portfolio. Send /stop to unlink. Paper trading simulation. Not investment advice.';
+/**
+ * The linked reply of the holders round (docs/contracts/phase-6-holders.md section 7, revision 3, H2-SEC-7):
+ * a link code is bearer, so the reply names the wallet the chat is now linked to, in short form, and the
+ * way out. api-core sends `telegramLinkedReply(shortAddress(address))` with the address `redeemLinkCode`
+ * answers, in place of TELEGRAM_LINKED_REPLY, which stays until that change is built and is then deleted.
+ */
+export const TELEGRAM_LINKED_REPLY_TEMPLATE =
+  'Linked. This chat now gets notes for wallet {ownerShort}. If that is not your wallet, send /stop. You get a short note when an agent that wallet follows changes its paper portfolio. Paper trading simulation. Not investment advice.';
+export function telegramLinkedReply(ownerShort: string): string {
+  return TELEGRAM_LINKED_REPLY_TEMPLATE.replace('{ownerShort}', ownerShort);
+}
 export const TELEGRAM_STOPPED_REPLY = 'Unlinked. You will get no more notes from Prix here.';
 
 /**
@@ -355,10 +368,28 @@ export type TelegramSend =
   /** blocked: the user stopped the bot (403). retry: 429, 5xx or no answer. rejected: any other refusal. */
   | { ok: false; reason: 'blocked' | 'retry' | 'rejected'; retryAfterSeconds: number | null };
 
-/** The one outgoing call of the phase. Implemented in `packages/runtime/src/follow/telegram.ts`. */
+/**
+ * The phase's outgoing calls. Implemented in `packages/runtime/src/follow/telegram.ts`. The two webhook
+ * calls are the holders round's (docs/contracts/phase-6-holders.md section 7, revision 3, HB-2): only the
+ * admin route `POST /api/admin/telegram/webhook` uses them. Like `sendMessage`, neither throws, and no error
+ * or log carries the URL (the bot token is in its path).
+ */
 export interface TelegramPort {
   /** Plain text, no parse mode. Never throws. */
   sendMessage(chatId: number, text: string): Promise<TelegramSend>;
+  /**
+   * Telegram's `setWebhook`; true when Telegram answered ok. Never throws. Revision 6 of the holders contract
+   * (R1, HB1F-SEC-1): `allowedUpdates` is any list of `TelegramUpdateKind`, passed through as `allowed_updates`;
+   * the admin route sends `TELEGRAM_ALLOWED_UPDATES` (phase6-holders2.ts) and nothing else.
+   */
+  setWebhook(input: {
+    url: string;
+    secretToken: string;
+    allowedUpdates: readonly TelegramUpdateKind[];
+    dropPendingUpdates: true;
+  }): Promise<boolean>;
+  /** Telegram's `getWebhookInfo`, reduced to the three fields the founder pastes back; null on any failure. Never throws. */
+  getWebhookInfo(): Promise<TelegramWebhookAdminResponse | null>;
 }
 
 export type CreateTelegramPort = (botToken: string, fetchFn?: typeof fetch) => TelegramPort;
@@ -604,6 +635,12 @@ export interface FollowApiDeps extends ApiDeps {
   records: RecordsReadPort;
   /** Null until the bot is configured: the notification routes then answer 404. */
   telegram: { config: TelegramConfig; port: TelegramPort } | null;
+  /**
+   * The webhook's watch (docs/contracts/phase-6-holders.md section 7, revision 4, H3-SEC-8). While it answers
+   * a time, the link routes and the status's `botUsername` answer as while `botUsername` is "", and
+   * `POST /api/admin/telegram/webhook` clears it once its read-back url is TELEGRAM_WEBHOOK_URL. Absent: never moved.
+   */
+  webhookWatch?: TelegramWebhookWatch;
 }
 
 export interface EmitDeps {

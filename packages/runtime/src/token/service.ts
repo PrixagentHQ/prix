@@ -6,6 +6,8 @@ import {
   entitlementsOfTier,
   FEED_DELAY_SECONDS,
   holdingPpm,
+  type IsoTime,
+  LOUNGE_SWEEP_CHECKS_PER_RUN,
   OPEN_PREVIEW_ENTITLEMENTS,
   type SaveConfigResult,
   type Tier,
@@ -46,6 +48,21 @@ const UNSTORED_MEMORY_SECONDS = 900;
 const TIER0_STORED_SECONDS = 6 * 3600;
 /** On-demand chain reads per isolate per UTC day; when spent, answers come from the stored row or tier 0. */
 const ON_DEMAND_READS_PER_DAY = 3000;
+
+/** What `holdingOf` answers: `tier` and `checkedAt` are always set (Phase 6.8). */
+interface Holding {
+  gatingOn: boolean;
+  tokens: number;
+  tier: Tier;
+  checkedAt: IsoTime | null;
+}
+
+/** What `refreshHolders` answers for each wallet it read. */
+interface RefreshedHolder {
+  tier: Tier;
+  tokenAddress: Address;
+  checkedAt: IsoTime;
+}
 
 interface WalletMemory {
   tier: Tier;
@@ -98,6 +115,18 @@ export function settleTier(
     riseTier: since === null ? readTier : (Math.min(pending, readTier) as Tier),
     riseSince: since ?? now.toISOString(),
   };
+}
+
+const MAX_WHOLE_TOKENS = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * The whole tokens of one read: base units divided by ten to the token's decimals, rounded down and
+ * capped at Number.MAX_SAFE_INTEGER. A balance or decimals that are not plain numbers count as 0.
+ */
+export function wholeTokens(balance: string, decimals: number): number {
+  if (!/^\d{1,78}$/.test(balance) || !Number.isInteger(decimals) || decimals < 0 || decimals > 77) return 0;
+  const whole = BigInt(balance) / 10n ** BigInt(decimals);
+  return whole > MAX_WHOLE_TOKENS ? Number.MAX_SAFE_INTEGER : Number(whole);
 }
 
 function errorCode(error: unknown): string {
@@ -174,8 +203,9 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
         riseTier: settled.riseTier,
         riseSince: settled.riseSince,
       };
-      if (tier === 0 && previous === null && readTier === 0) {
-        // No row for a wallet that holds nothing: memory only, so throwaway wallets cost no D1 rows.
+      if (tier === 0 && previous === null && readTier === 0 && wholeTokens(row.balance, row.decimals) < 1) {
+        // No row for a wallet that holds less than one whole token: memory only, so throwaway wallets cost
+        // no D1 rows. One whole token is stored: `holdingOf` with `cachedOnly` finds it in any isolate.
         remember(address, tier, token, UNSTORED_MEMORY_SECONDS, row);
         return row;
       }
@@ -224,6 +254,118 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
       const tier: Tier = usable ? row.tier : 0;
       remember(wallet, tier, token);
       return entitlementsOfTier(tier);
+    }
+  }
+
+  /**
+   * A wallet's holding in whole tokens, from its stored row and never from a request (the room asks it).
+   * No tier is asked of `entitlementsFor` and the hold before a tier rises does not apply to `tokens`: the
+   * row's balance counts as read. A read it makes goes through `readAndStore`, so the wallet's tier row is
+   * settled by the same read.
+   *
+   * Phase 6.8 (docs/contracts/phase-6-holders-2.md 2.2 and 4.4 step 5): `tier` is the tier column of the
+   * row `tokens` came from (the settled tier, so the hour before a rise holds), and `checkedAt` that row's
+   * read time; tier 0 and null when the answer rests on no row. The memory-only read under one whole token
+   * answers tier 0 and the time of that read.
+   */
+  async function holdingOf(address: Address, options?: EntitlementsReadOptions): Promise<Holding> {
+    const config = await getConfig();
+    const token = config.tokenAddress;
+    if (!config.enabled || token === null) return { gatingOn: false, tokens: 0, tier: 0, checkedAt: null };
+    const wallet = address.toLowerCase() as Address;
+    const now = nowMs();
+    const row = await store.getHolder(wallet, token);
+    const answer = (held: TokenHolder | null): Holding => ({
+      gatingOn: true,
+      tokens: held === null ? 0 : wholeTokens(held.balance, held.decimals),
+      tier: held === null ? 0 : held.tier,
+      checkedAt: held === null ? null : held.checkedAt,
+    });
+    const usable = row !== null && ageSeconds(row.checkedAt, now) < TOKEN_STALE_GRACE_SECONDS ? row : null;
+    if (options?.cachedOnly === true) return answer(usable);
+    if (row !== null && ageSeconds(row.checkedAt, now) < TOKEN_CACHE_SECONDS) return answer(row);
+    if (row === null) {
+      // A read this isolate made within the cache time and did not store: less than one whole token.
+      const memory = walletMemory.get(wallet);
+      if (memory?.row !== undefined && memory.token === token && (now - memory.at) / 1000 < memory.ttl) {
+        return answer(memory.row);
+      }
+    }
+    if (!takeOnDemand()) {
+      log('token_on_demand_spent', {});
+      return answer(usable);
+    }
+    try {
+      return answer(await readAndStore(config, token, wallet, row));
+    } catch (error) {
+      log('token_read_failed', { code: errorCode(error) });
+      return answer(usable);
+    }
+  }
+
+  /**
+   * Phase 6.8, revision 3 (security H1; docs/contracts/phase-6-holders-2.md 4.6 step 3): the lounge sweep's
+   * read of its members' wallets again, through the token sweep's own path. At most
+   * LOUNGE_SWEEP_CHECKS_PER_RUN distinct wallets in lower case: one chain read (one subrequest), one read of
+   * their previous rows and one batch that stores them (two D1 statements), with the tier `settleTier` gives,
+   * so the hour before a rise holds and a fall applies at once. A wallet with no row that holds less than one
+   * whole token and reads tier 0 is answered but not stored, as `readAndStore` leaves it. It calls no
+   * `applySlots`: a row whose slots changed is marked dirty by `putHolders`, and the next token sweep's
+   * `applySlots` matches it. The isolate's memory of every wallet it read is dropped, so the next
+   * `entitlementsFor` reads the new row. Null while the gate is off, and null with nothing written when the
+   * read or the store fails; the log line carries a code and nothing else.
+   */
+  async function refreshHolders(
+    wallets: readonly Address[],
+    now: Date,
+  ): Promise<ReadonlyMap<Address, RefreshedHolder> | null> {
+    const config = await getConfig();
+    const token = config.tokenAddress;
+    if (!config.enabled || token === null) return null;
+    const asked = [...new Set(wallets.map((wallet) => wallet.toLowerCase() as Address))].slice(
+      0,
+      LOUNGE_SWEEP_CHECKS_PER_RUN,
+    );
+    const answers = new Map<Address, RefreshedHolder>();
+    if (asked.length === 0) return answers;
+    try {
+      const read = await chain.readBalances(token, asked);
+      if (read.balances.length !== asked.length) throw new TokenReadError('invalid_answer');
+      const previousRows = new Map((await store.getHolders(asked, token)).map((held) => [held.address, held]));
+      const checkedAt = now.toISOString();
+      const rows: TokenHolder[] = [];
+      asked.forEach((address, index) => {
+        const balance = read.balances[index];
+        if (balance === undefined) throw new TokenReadError('invalid_answer');
+        const previous = previousRows.get(address) ?? null;
+        const readTier = computeTier(balance, read.totalSupply, config.thresholdsPpm);
+        const settled = settleTier(previous, readTier, now);
+        answers.set(address, { tier: settled.tier, tokenAddress: token, checkedAt });
+        const unstored =
+          previous === null &&
+          settled.tier === 0 &&
+          readTier === 0 &&
+          wholeTokens(balance.toString(), read.decimals) < 1;
+        if (unstored) return;
+        rows.push({
+          address,
+          balance: balance.toString(),
+          totalSupply: read.totalSupply.toString(),
+          decimals: read.decimals,
+          tier: settled.tier,
+          maxAgents: entitlementsOfTier(settled.tier).maxAgents,
+          tokenAddress: token,
+          checkedAt,
+          riseTier: settled.riseTier,
+          riseSince: settled.riseSince,
+        });
+      });
+      if (rows.length > 0) await store.putHolders(rows);
+      for (const address of asked) walletMemory.delete(address);
+      return answers;
+    } catch (error) {
+      log('token_refresh_failed', { code: errorCode(error) });
+      return null;
     }
   }
 
@@ -418,5 +560,5 @@ export function createTokenService(deps: TokenServiceDeps): TokenService {
     }
   }
 
-  return { entitlementsFor, getConfig, info, statusOf, probe, saveConfig, sweep };
+  return { entitlementsFor, holdingOf, refreshHolders, getConfig, info, statusOf, probe, saveConfig, sweep };
 }

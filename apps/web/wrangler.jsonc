@@ -9,8 +9,8 @@
   // The Worker holds no secret, no variable and no storage. Everything it knows comes from the
   // API Worker, through the `API` binding below.
   //
-  // Deploying is done by hand at the gate: `pnpm --filter @prix/web run deploy`. `prix-api`
-  // must be deployed first, because a Worker cannot bind to a service that does not exist.
+  // Deploying is done by hand at the gate: `pnpm --filter @prix/web run deploy`. `prix-api` must
+  // be deployed first, because a Worker cannot bind to a service that does not exist.
   "name": "prix-web",
   "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2026-10-01",

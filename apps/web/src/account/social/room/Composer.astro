@@ -1,0 +1,189 @@
+---
+// The composer of the Community chat (docs/contracts/phase-6-room.md section 9, item 3), mounted once
+// by the page /chat. Signed out: who may write, in one sentence, the way to sign in, and a link to the
+// page of the account that shows the wallet's $PRIX and reads it again (/account/token). Signed in:
+// the server renders the form itself, its field and its button closed, so that the page does not jump
+// when the composer opens. Its script asks the API once whether this wallet may write, then opens the
+// field, or puts the sentence that says why not in the form's place.
+//
+// Nothing here is trusted. `signedIn` only chooses what is drawn; the API reads the session again on
+// `me` and on every send, judges the text itself and decides who writes. The composer's own check of a
+// text is a courtesy that saves a round trip. After a send the page is loaded again: nothing an answer
+// carries is ever put into the page.
+//
+// Pictures (docs/contracts/phase-6-pictures.md section 11). Every part of them arrives hidden. The script
+// shows "Add a picture" only when `me` says this wallet may add one AND the page's list of messages says
+// pictures are on: it reads that from the attribute the page wrote on the list, and this component takes
+// no prop for it. A chosen picture stands in the place of the line of text, since a picture has no
+// caption, and is previewed in a canvas. An admin wallet reads the contract's note in the control's
+// place, and a new writer the rule of the first message. The page's own check of a file is a courtesy:
+// the server runs the same rule on whatever arrives.
+import { ROOM_PICTURE_DOM } from '@prix/contracts';
+import { roomRefusalText } from '../../../content/states.ts';
+import Button from '../../../design/Button.astro';
+import Notice from '../../../design/Notice.astro';
+import TextInput from '../../../design/TextInput.astro';
+import { herePath, signInHref } from '../../session.ts';
+import { pictureScriptWords, pictureWords } from './picture-words.ts';
+import { composerScriptWords, composerWords } from './words.ts';
+import '../../account.css';
+import './room.css';
+
+interface Props {
+  /** The one address a message may hold, from the read of the room; null while the token has none. */
+  prixAddress: string | null;
+  /** The one host a message may hold, from the read of the room. */
+  siteHost: string;
+  signedIn: boolean;
+}
+
+const { prixAddress, siteHost, signedIn } = Astro.props;
+const words = composerWords();
+const picture = pictureWords();
+const here = herePath(Astro.url);
+const signIn = signInHref(here);
+/** The count of an empty field, which is what the field holds when the page arrives. */
+const emptyCount = words.count.replace('{count}', '0');
+/**
+ * The room the sentence about what is left of the day will take: the sentence with two figure spaces
+ * where its count goes, not shown and not read out, so that nothing moves when `me` answers and the
+ * script writes the count in. It states no number.
+ */
+const leftPlace = words.leftOther.replace('{count}', '  ');
+---
+
+{
+  !signedIn ? (
+    <div class="room-composer">
+      <p class="body room-sentence">{words.whoWrites}</p>
+      <p class="acct-actions">
+        <Button href={signIn} label={words.signIn} />
+        <Button href="/account/token" label={words.holdingLink} variant="secondary" />
+      </p>
+    </div>
+  ) : (
+    <div
+      class="room-composer"
+      data-room-composer
+      data-prix-address={prixAddress ?? ''}
+      data-site-host={siteHost}
+      data-words={JSON.stringify(composerScriptWords())}
+      data-picture-words={JSON.stringify(pictureScriptWords())}
+    >
+      <noscript>
+        <p class="body room-sentence">{words.noScript}</p>
+      </noscript>
+
+      <div data-room-state="failed" hidden>
+        <Notice tone="error" title={words.checkFailedTitle} body={words.checkFailedBody}>
+          <Button href={here} label={words.reload} variant="secondary" />
+        </Notice>
+      </div>
+
+      <div data-room-state="ended" hidden>
+        <Notice tone="error" title={words.signedOutTitle} body={words.signedOut}>
+          <Button href={signIn} label={words.signInAgain} variant="secondary" />
+        </Notice>
+      </div>
+
+      <div data-room-state="not_holder" hidden>
+        <p class="body room-sentence" role="status">{roomRefusalText('not_holder')}</p>
+        <p class="acct-actions">
+          <Button href="/account/token" label={words.holdingLink} variant="secondary" />
+        </p>
+      </div>
+
+      <div data-room-state="gate_off" hidden>
+        <p class="body room-sentence" role="status">{roomRefusalText('gate_off')}</p>
+      </div>
+
+      <div data-room-state="muted" hidden>
+        <p class="body room-sentence" role="status">{roomRefusalText('muted')}</p>
+      </div>
+
+      <div data-room-state="day_used" hidden>
+        <p class="body room-sentence" role="status">{words.dayUsed}</p>
+      </div>
+
+      <form class="room-form" method="dialog" novalidate data-room-state="yes">
+        <div class="room-line-part" data-room-line>
+          <TextInput
+            label={words.label}
+            name="text"
+            id="room-text"
+            hint={words.hint}
+            autocomplete="off"
+            maxlength={2000}
+            disabled
+          />
+          <p class="room-refusal-more" id="room-text-more" aria-live="polite" data-room-more hidden></p>
+          <p class="field-count room-count" id="room-text-count" data-room-count>{emptyCount}</p>
+        </div>
+        <div class="room-pick" data-room-picture hidden>
+          <canvas class="room-pick-preview" width="16" height="16" aria-hidden="true" data-room-picture-preview hidden></canvas>
+          <p class="room-pick-facts" aria-live="polite" data-room-picture-facts></p>
+          <p class="acct-actions">
+            <Button label={picture.discard} variant="secondary" data-room-picture-discard />
+          </p>
+          <p class="body room-pick-note">{picture.composerNote}</p>
+        </div>
+        <div class="acct-actions">
+          <Button type="submit" label={words.send} busyLabel={words.sendBusy} size="lg" disabled
+            data-picture-label={picture.send}
+            data-picture-busy-label={picture.sending}
+          />
+          <span class="room-pick-add" data-room-picture-offer="add" hidden>
+            <Button label={picture.add} variant="secondary" size="lg" data-room-picture-add />
+            <input type="file" accept="image/jpeg,image/png,image/gif" tabindex="-1" hidden data-room-picture-file />
+          </span>
+        </div>
+        <div class="room-pick-problem" role="alert" data-room-picture-problem hidden>
+          <p class="field-error" data-room-picture-problem-sentence></p>
+          <p class="room-refusal-more">{picture.limits}</p>
+        </div>
+        <div class="room-left-lines">
+          <p class="small room-left" aria-hidden="true" data-room-left>{leftPlace}</p>
+          <p class="small room-left" data-room-picture-left hidden></p>
+        </div>
+        <p class="small room-pick-say" data-room-picture-offer="admin" hidden>{picture.adminNote}</p>
+        <p class="small room-pick-say" data-room-picture-offer="new_writer" hidden>{picture.newWriter}</p>
+        <p class="small room-pick-say" data-room-picture-offer="day_used" hidden>{picture.dayUsed}</p>
+        <div class="acct-outlet" data-outlet></div>
+        <p class="small room-note">{words.publicNote}</p>
+        <template data-message="failed">
+          <Notice tone="error" title={words.sendFailedTitle} body="{message}" />
+        </template>
+        <template data-message="picture-failed">
+          <Notice tone="error" title={picture.sendFailedTitle} body="{message}" />
+        </template>
+        <template data-message="session">
+          <Notice tone="error" title={words.sendFailedTitle} body={words.signedOut}>
+            <Button href={signIn} label={words.signInAgain} variant="secondary" />
+          </Notice>
+        </template>
+        <template data-message="closed">
+          <Notice tone="error" title={words.closedTitle} body={words.closedBody} />
+        </template>
+      </form>
+      {/* The question of a report (revision 6). The script sets a copy of it into the note of the one row
+          whose "Report picture" was pressed; the names of its two answers are the contract's. */}
+      <template data-room-report-ask>
+        <span class="room-report-ask">{picture.reportAsk}</span>
+        <span class="room-report-answers">
+          <Button label={picture.reportYes} variant="secondary" size="sm" {...{ [ROOM_PICTURE_DOM.reportYes]: '' }} />
+          <Button label={picture.reportNo} variant="quiet" size="sm" {...{ [ROOM_PICTURE_DOM.reportNo]: '' }} />
+        </span>
+      </template>
+      {/* The caps of a day by holding (docs/contracts/phase-6-holders-2.md sections 2.2 and 7): under whichever
+          part shows, exactly when `me` answers `dayCap`. The script puts the deck's sentence in; until then,
+          and while ROOM_HOLDERS is off, the place stays empty and hidden. */}
+      <p class="small room-day-caps" data-room-day-caps hidden></p>
+    </div>
+  )
+}
+
+<script>
+  import { mountComposer } from './composer.ts';
+
+  void mountComposer();
+</script>

@@ -9,9 +9,17 @@ import {
   meResponseSchema,
   modelKeyResponseSchema,
   nonceResponseSchema,
+  ownerHoldsSettingSchema,
+  pollMeResponseSchema,
+  pollStatusResponseSchema,
+  pollsResponseSchema,
+  pollTallyOutcomeSchema,
+  pollVoteResponseSchema,
   providersResponseSchema,
   seasonsResponseSchema,
   sessionResponseSchema,
+  telegramWebhookAdminResponseSchema,
+  telegramWebhookStateSchema,
 } from '@prix/contracts';
 
 /**
@@ -34,4 +42,13 @@ export const schemas = {
   modelKey: modelKeyResponseSchema,
   holds: holdsResponseSchema,
   apiError: apiErrorSchema,
+  // Phase 6.7, the holders round (docs/contracts/phase-6-holders.md).
+  polls: pollsResponseSchema,
+  pollMe: pollMeResponseSchema,
+  pollStatus: pollStatusResponseSchema,
+  pollVote: pollVoteResponseSchema,
+  pollTallyOutcome: pollTallyOutcomeSchema,
+  ownerHolds: ownerHoldsSettingSchema,
+  telegramWebhookAdmin: telegramWebhookAdminResponseSchema,
+  telegramWebhookState: telegramWebhookStateSchema,
 } as const;

@@ -76,7 +76,12 @@ export async function adminOr404(deps: SocialApiDeps, request: Request): Promise
   return session;
 }
 
-/** Who did what to what: an address, an action name and an id. Nothing private. */
-export function audit(session: SessionRecord, action: string, target: string): void {
-  console.log(JSON.stringify({ event: 'admin_action', admin: session.address, action, target }));
+/**
+ * Who did what to what: an address, an action name and an id. Nothing private. `reports` is the count of
+ * reports of a picture that a hide removed (docs/contracts/phase-6-pictures.md section 9): a number, never
+ * a reporter's address. A line without it is written exactly as before.
+ */
+export function audit(session: SessionRecord, action: string, target: string, reports?: number): void {
+  const line = { event: 'admin_action', admin: session.address, action, target };
+  console.log(JSON.stringify(reports === undefined ? line : { ...line, reports }));
 }

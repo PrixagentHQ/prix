@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { PortfolioState, PriceMap } from './portfolio.ts';
 import type { IsoTime, TickId, UtcDay } from './primitives.ts';
 import {
@@ -11,6 +10,7 @@ import {
   tickIdSchema,
   utcDaySchema,
 } from './primitives.ts';
+import { z } from './zod.ts';
 
 /** What happened to one agent at one tick. */
 export const rowStatusSchema = z.enum(['decided', 'no_decision', 'skipped']);

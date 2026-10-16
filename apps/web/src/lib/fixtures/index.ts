@@ -65,6 +65,8 @@ import { marketPricesResponse, NO_PRICES } from './prices.ts';
  *            error-rate-limited, error-name-taken, error-name-not-allowed,
  *            error-owner-has-agent, error-league-full, error-key-limit-reached,
  *            error-daily-limit, error-no-active-season, error-internal
+ *   tape     tape-<state> names (apps/web/src/arena/tape/fixtures.ts) pass through untouched;
+ *            tape-live also makes the visitor signed-in, as a holder's view is
  *
  * Every league row carries a summary, a creation time and the house mark, and every agent page
  * carries the house mark, as the API sends them since revision 5 (docs/CONTRACTS.md section 17).
@@ -208,8 +210,12 @@ function select(url: URL): Selection {
     else if (HOLDS_NAMES[name]) selection.holds = HOLDS_NAMES[name];
     else if (name === MARKET_NONE) selection.noSeason = true;
     else if (name === 'fail-reads') selection.failReads = true;
-    else if (/^(follow|follows|feed|results|telegram|social)-/.test(name))
-      continue; // a name of the follow transport
+    else if (name === 'tape-live') {
+      // The tape's holder view (apps/web/src/arena/tape/fixtures.ts) is a signed-in wallet's: the masthead
+      // follows, unless a visitor name after it says otherwise (DC-H2-3).
+      if (selection.visitor === 'signed-out') selection.visitor = 'signed-in';
+    } else if (/^(follow|follows|feed|results|telegram|social|tape)-/.test(name))
+      continue; // a name of the follow transport, or of the tape's (apps/web/src/arena/tape/fixtures.ts)
     else selection.unknown.push(name);
   }
   return selection;

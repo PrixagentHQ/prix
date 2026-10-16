@@ -105,7 +105,8 @@ describe('with models that passed the probe', () => {
     expect(detail.war.rules).toMatchObject({ ...WAR_RULES });
     // Section 21: a new war freezes the whole universe, the crypto assets included.
     expect(detail.war.rules.universe).toHaveLength(UNIVERSE_SIZE);
-    expect(detail.war.rules.universe.slice(-2)).toEqual(['BTC', 'ETH']);
+    // A new war freezes the universe of its day: since section 23, the five coins after the Stock Tokens.
+    expect(detail.war.rules.universe.slice(-5)).toEqual(['BTC', 'ETH', 'BNB', 'HYPE', 'SOL']);
     expect(detail.entrants.map((e) => [e.slot, e.modelId])).toEqual([
       ['A', LLAMA],
       ['B', GEMMA],

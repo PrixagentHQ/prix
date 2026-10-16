@@ -1,22 +1,29 @@
 ---
-// The row of links between the three Social list pages: Rivalries, Model wars, Paper managers,
-// the current one marked `aria-current`. Built on the Tabs primitive, under each list page's head.
-// Like the header's Social tab, it renders only while the probe of SOCIAL_ENABLED answers on.
+// The row of links between the Social pages: Rivalries, Model wars, Paper managers and, while the
+// Community chat is on, Chat; the current one marked `aria-current`. Built on the Tabs primitive, under
+// each page's head. Like the header's Social tab, it renders only while the probe of SOCIAL_ENABLED
+// answers on. The entry "Chat" has a probe of its own (docs/contracts/phase-6-room.md section 6): it
+// shows only while the room's status answers on, so a room that is off or cannot be read has no link.
 import { text } from '../../content/index.ts';
 import Tabs from '../../design/Tabs.astro';
 import { socialIsOn } from './client.ts';
+import { roomIsOn } from './room/client.ts';
+import { roomHref } from './room/words.ts';
 import { listHref, rivalriesHref } from './words.ts';
 
 interface Props {
-  current: 'rivalries' | 'wars' | 'managers';
+  current: 'rivalries' | 'wars' | 'managers' | 'chat';
 }
 
 const { current } = Astro.props;
 const on = (await socialIsOn(Astro)) === 'on';
+// Asked only while Phase 6 is on, and kept a minute: the three list pages cost no call for it.
+const chatOn = on && (await roomIsOn(Astro)) === 'on';
 const items = [
   { key: 'rivalries', label: text('social.rivalriesTitle', 'Rivalries'), href: rivalriesHref(Astro.url) },
   { key: 'wars', label: text('social.warsTitle', 'Model wars'), href: listHref(Astro.url, '/wars', 1) },
   { key: 'managers', label: text('social.managersTitle', 'Paper managers'), href: listHref(Astro.url, '/managers', 1) },
+  ...(chatOn ? [{ key: 'chat', label: text('social.roomNav', 'Chat'), href: roomHref(Astro.url) }] : []),
 ].map((item) => ({ label: item.label, href: item.href, current: item.key === current }));
 ---
 
@@ -35,5 +42,26 @@ const items = [
   */
   .social-nav {
     margin-top: var(--space-24);
+  }
+
+  /*
+    Four entries are wider than a 360 pixel phone at the row's 24 pixels between them, and the row
+    scrolls inside itself: the last entry, "Chat", was cut off on its own page. Closer together they
+    fit. Each entry is still 40 pixels tall.
+  */
+  @media (max-width: 24em) {
+    .social-nav :global(.tabs-list) {
+      gap: var(--space-12);
+    }
+  }
+
+  /*
+    Under 352 pixels even that is too wide, and "Chat" was cut to "Cha" at 340: one step closer
+    again. The entries stay apart by more than a word space, so they still read as four.
+  */
+  @media (max-width: 22em) {
+    .social-nav :global(.tabs-list) {
+      gap: var(--space-8);
+    }
   }
 </style>

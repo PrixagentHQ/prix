@@ -58,7 +58,8 @@ const STOCK_TOKENS = UNIVERSE.filter(isStockToken);
 
 /**
  * The addresses of the product itself, lower-cased: the zero address, every feed of the universe
- * (Stock Tokens and crypto assets alike) and every Stock Token. None of them is ever listed.
+ * (Stock Tokens and crypto assets alike, the Arbitrum feeds of SOL, BNB and HYPE included, section 23
+ * rule 12) and every Stock Token. None of them is ever listed.
  */
 const PRODUCT_ADDRESSES: ReadonlySet<string> = new Set([
   ZERO_ADDRESS,

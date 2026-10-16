@@ -1,7 +1,11 @@
 import type {
   AGENT_NAME_MAX,
   AGENT_NAME_MIN,
+  ARBITRUM_CHAIN_ID,
+  ARBITRUM_SEQUENCER_GRACE_SECONDS,
+  CHAIN_ID,
   CRYPTO_FEED_STALE_AFTER_SECONDS,
+  CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
   CRYPTO_UNIVERSE_SIZE,
   FEE_BPS,
   FEED_STALE_AFTER_SECONDS,
@@ -45,8 +49,8 @@ import type {
  */
 export const facts = {
   scoringMethod: 'v1',
-  /** Every symbol of the universe: the Stock Tokens and the crypto assets (section 21). */
-  universeSize: 22,
+  /** Every symbol of the universe: the Stock Tokens and the crypto assets (sections 21 and 23). */
+  universeSize: 25,
   /** STARTING_CASH_MICRO, in whole virtual USD. */
   startingCashUsd: 10_000,
   maxWeightBps: 4_000,
@@ -87,42 +91,82 @@ export const facts = {
 export const roundsPerDay = facts.tickLastHourUtc - facts.tickFirstHourUtc + 1;
 
 /**
- * How the universe splits by kind (docs/CONTRACTS.md section 21). Kept apart from `facts` so that the
- * test which holds every field of `facts` to a constant does not change; the type at the end of this
- * file holds these to the contract.
+ * How the universe splits by kind (docs/CONTRACTS.md sections 21 and 23). Kept apart from `facts` so
+ * that the test which holds every field of `facts` to a constant does not change; the type at the end
+ * of this file holds these to the contract.
  */
 export const universeFacts = {
   stockSize: 20,
-  /** ETH and BTC, with their Chainlink feeds on Robinhood Chain. */
-  cryptoSize: 2,
-  cryptoSymbols: ['ETH', 'BTC'],
+  /** BTC and ETH with their Chainlink feeds on Robinhood Chain; BNB, HYPE and SOL with theirs on Arbitrum One. */
+  cryptoSize: 5,
+  /** In universe order: BTC and ETH (section 21), then BNB, HYPE and SOL (section 23). */
+  cryptoSymbols: ['BTC', 'ETH', 'BNB', 'HYPE', 'SOL'],
 } as const;
 
 /**
- * What the Chainlink feeds of the crypto assets do (docs/CONTRACTS.md section 21, read on chain on
- * 2026-10-09 from Chainlink's feed list for Robinhood Chain). Unlike the Stock Token feeds they publish
- * every day of the week, around the clock. The type at the end of this file checks `staleAfterSeconds`.
+ * The chains Prix reads prices from (docs/CONTRACTS.md section 23). Robinhood Chain carries every Stock
+ * Token, BTC and ETH, and decides whether the market is open. Arbitrum One is read for the prices of
+ * BNB, HYPE and SOL only: their Chainlink feeds exist on no other chain Prix reads. The type at the end
+ * of this file holds the chain IDs and the grace period to the contract.
+ */
+export const chainFacts = {
+  main: { name: 'Robinhood Chain', chainId: 4663 },
+  second: {
+    name: 'Arbitrum One',
+    chainId: 42161,
+    /** The symbols whose feeds are read there, in universe order. */
+    symbols: ['BNB', 'HYPE', 'SOL'],
+    /**
+     * After Arbitrum's sequencer comes back up, its prices are not trusted until it has been up this
+     * long: ARBITRUM_SEQUENCER_GRACE_SECONDS, Chainlink's own grace period for L2 sequencer feeds.
+     */
+    sequencerGraceSeconds: 3_600,
+  },
+} as const;
+
+/**
+ * What the Chainlink feeds of the crypto assets do (docs/CONTRACTS.md sections 21 and 23, read on chain
+ * on 2026-10-09 from Chainlink's feed lists for Robinhood Chain and Arbitrum One). Unlike the Stock
+ * Token feeds they publish every day of the week, around the clock. The type at the end of this file
+ * checks both staleness fields.
  */
 export const cryptoFeedFacts = {
   /** A feed publishes a new price when the price has moved this much since the last one. */
+  deviationBpsBySymbol: { BTC: 50, ETH: 50, BNB: 10, HYPE: 50, SOL: 10 },
+  /** The largest value of `deviationBpsBySymbol`. */
   deviationBps: 50,
   /** A feed publishes at least this often, every day of the week. */
   heartbeatHours: 24,
-  /** The Standard Proxy of each feed on Robinhood Chain. */
+  /** The Standard Proxy of each feed, on the chain that `chainFacts` names for it. */
   feeds: {
-    ETH: '0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9',
     BTC: '0xa2c5184bF03d373Dc9dE4876eb4Bce595B460251',
+    ETH: '0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9',
+    BNB: '0x6970460aabF80C5BE983C6b74e5D06dEDCA95D4A',
+    HYPE: '0xf9ce4fE2F0EcE0362cb416844AE179a49591D567',
+    SOL: '0x24ceA4b8ce57cdA5058b924B9B9987992450590c',
   },
   readOn: '2026-10-09',
-  /** 25 hours, as for a Stock Token feed: its own constant, which can tighten once real gaps are measured. */
+  /** BTC and ETH: 25 hours, as for a Stock Token feed. CRYPTO_FEED_STALE_AFTER_SECONDS. */
   staleAfterSeconds: 90_000,
   /**
-   * The longest gap between two prices of each feed over its last 240 updates, measured on chain on
-   * 2026-10-09 (docs/reviews/crypto-design-2026-10-09.md).
+   * The staleness of each crypto feed: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL. A feed older than its
+   * value halts its own symbol for the round and nothing else.
+   */
+  staleAfterSecondsBySymbol: { BNB: 21_600, BTC: 90_000, ETH: 90_000, HYPE: 43_200, SOL: 7_200 },
+  /**
+   * BTC and ETH: the longest gap between two prices of each feed over its last 240 updates, measured on
+   * chain on 2026-10-09 (docs/reviews/crypto-design-2026-10-09.md).
    */
   longestGapSeconds: { ETH: 86_427, BTC: 83_817 },
   gapsMeasuredOn: '2026-10-09',
   gapsSampleUpdates: 240,
+  /**
+   * BNB, HYPE and SOL: the longest gap between two prices of each feed over 15 days on Arbitrum One,
+   * measured on 2026-10-09 (docs/DECISIONS.md D-127, docs/CONTRACTS.md section 23).
+   */
+  arbitrumLongestGapSeconds: { BNB: 9_816, HYPE: 22_601, SOL: 4_023 },
+  arbitrumGapsMeasuredOn: '2026-10-09',
+  arbitrumGapsSampleDays: 15,
 } as const;
 
 /**
@@ -154,8 +198,31 @@ export const links = {
    * documentation sends its readers here for all of them. Opened and read on 2026-10-06.
    */
   stockTokenDisclosure: 'https://docs.robinhood.com/rhj',
+  /**
+   * FOREHEAD, a browser game of Prix's founder. It is served from its own Worker, not from
+   * this site, and the footer links it in the same tab. Added on 2026-10-14 (D-146).
+   */
+  forehead: 'https://forehead.prixagent.com',
   supportEmail: 'support@prixagent.com',
   supportMailto: 'mailto:support@prixagent.com',
+} as const;
+
+/**
+ * FOREHEAD's own two thresholds for its cosmetics, in whole $PRIX. They are the game's, not Prix's:
+ * Prix's tiers are a share of the supply, set elsewhere, and never named beside these. Read on
+ * 2026-10-14 from GET https://forehead.prixagent.com/api/token/status, which answered
+ * `"tiers":{"holder":"10000","whale":"1000000"}` for the token at 0xa74aC6E9f2F8493344923c23972D496364241044
+ * on chain 4663. Nothing checks them at compile time: when the game changes them, they change here.
+ * The token page shows them through `grouped`, in the slot `{amount}` of `token.foreheadUnlockLower`
+ * and `token.foreheadUnlockHigher`.
+ */
+export const foreheadFacts = {
+  /** From this many whole $PRIX: four more outfit colours and a gold outline on the name tag. */
+  lowerTokens: 10_000,
+  /** From this many whole $PRIX: also three hats and a frame for the kill-cam photo. */
+  higherTokens: 1_000_000,
+  readFrom: 'https://forehead.prixagent.com/api/token/status',
+  readOn: '2026-10-14',
 } as const;
 
 const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
@@ -208,6 +275,10 @@ export type FactsMatchContract = [
   Holds<Same<typeof facts.maxHaltedFeeds, typeof MAX_HALTED_FEEDS>>,
   Holds<Same<typeof facts.feedStaleAfterSeconds, typeof FEED_STALE_AFTER_SECONDS>>,
   Holds<Same<typeof cryptoFeedFacts.staleAfterSeconds, typeof CRYPTO_FEED_STALE_AFTER_SECONDS>>,
+  Holds<Same<typeof cryptoFeedFacts.staleAfterSecondsBySymbol, typeof CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL>>,
+  Holds<Same<typeof chainFacts.main.chainId, typeof CHAIN_ID>>,
+  Holds<Same<typeof chainFacts.second.chainId, typeof ARBITRUM_CHAIN_ID>>,
+  Holds<Same<typeof chainFacts.second.sequencerGraceSeconds, typeof ARBITRUM_SEQUENCER_GRACE_SECONDS>>,
   Holds<Same<typeof facts.marketQuietAfterSeconds, typeof MARKET_QUIET_AFTER_SECONDS>>,
   Holds<Same<typeof facts.suspectMoveBps, typeof SUSPECT_MOVE_BPS>>,
   Holds<Same<typeof facts.minPriceMicro, typeof MIN_PRICE_MICRO>>,

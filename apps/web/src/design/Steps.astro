@@ -1,6 +1,8 @@
 ---
 // Steps that happen in order. The only place besides ranks where a numeral marks content.
-// The default slot holds one action under the steps.
+// The default slot holds one action under the steps. Each step's numeral is drawn by CSS, so the
+// step carries data-crawler-wall: the crawler (section 30) treats it as a figure and never draws
+// over it.
 interface Props {
   items: Array<{ title: string; body: string }>;
   /** The heading level of each step's title. */
@@ -14,7 +16,7 @@ const Heading = `h${level}` as 'h2' | 'h3' | 'h4';
 <ol class="steps" role="list">
   {
     items.map((item) => (
-      <li>
+      <li data-crawler-wall>
         <Heading class="title">{item.title}</Heading>
         <p class="prose">{item.body}</p>
       </li>

@@ -1,5 +1,5 @@
-import type { MarketStatus } from '@prix/contracts';
-import { TICK_FIRST_HOUR_UTC, TICK_LAST_HOUR_UTC } from '@prix/contracts';
+import type { Division, MarketStatus } from '@prix/contracts';
+import { OPEN_DAILY_TICK_HOUR_UTC, TICK_FIRST_HOUR_UTC, TICK_LAST_HOUR_UTC } from '@prix/contracts';
 
 /**
  * Where the league stands on its schedule (docs/CONTRACTS.md section 10): rounds start on the
@@ -48,6 +48,20 @@ export function nextRoundToday(now: number): string | null {
   const day = new Date(now).toISOString().slice(0, 10);
   const at = Math.max(Math.floor(now / HOUR_MS) * HOUR_MS + HOUR_MS, hourOf(day, TICK_FIRST_HOUR_UTC));
   return at > hourOf(day, TICK_LAST_HOUR_UTC) ? null : new Date(at).toISOString();
+}
+
+/**
+ * The next round in which a division's agents decide, today, or null when none is left today.
+ * Pro agents decide every hour of the window; Open agents decide only at the daily tick, the first
+ * round from OPEN_DAILY_TICK_HOUR_UTC (packages/runtime scheduler.ts, apps/api routes-public.ts).
+ * Once that hour has passed, the page cannot know whether the daily tick is still to come today,
+ * so it names the next trading day.
+ */
+export function nextRoundTodayFor(division: Division, now: number): string | null {
+  if (division === 'pro') return nextRoundToday(now);
+  if (!weekday(now)) return null;
+  const at = hourOf(new Date(now).toISOString().slice(0, 10), OPEN_DAILY_TICK_HOUR_UTC);
+  return now < at ? new Date(at).toISOString() : null;
 }
 
 /**

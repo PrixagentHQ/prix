@@ -1,0 +1,30 @@
+/*
+  The crawler's layer (docs/DESIGN.md section 30). crawler/crawler.ts puts it in `main` right after
+  the field of characters, only once the gate (crawler/gate.ts) has let it in. It fills `main` and
+  clips to it, so the crawler can never widen the page; it takes no pointer and is hidden from
+  assistive technology. Over the page's content, under the toast (z-index 20); the header and the
+  footer are outside `main`, so it is never over them. One small canvas inside it, moved by its
+  transform only.
+*/
+.crawler {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.crawler > canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+
+/* Never printed, and gone at once for a reader who asks for less motion (the module also leaves). */
+@media print, (prefers-reduced-motion: reduce) {
+  .crawler {
+    display: none;
+  }
+}

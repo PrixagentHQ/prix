@@ -1,0 +1,267 @@
+---
+// /admin/holders (docs/contracts/phase-6-holders.md sections 4.4 and 7), for a wallet the API lists as an
+// administrator: set the Telegram webhook and see the three fields Telegram answered, see the hourly watch
+// of the webhook, and count a closed holders' poll when its scheduled count has not run. Whether a wallet is
+// an administrator is the API's answer, and the API checks it again on every call (an admin route answers the
+// generic 404 to anyone else). Any other wallet is told the page is not for it, and the route file sends that
+// with status 403. No secret is ever on this page: the webhook's answer is its url, the updates waiting and
+// the last error, as the API gives them.
+import { HOLDER_POLLS, pollStateAt } from '@prix/contracts';
+import { formatDateTimeUtc } from '../../../content/format.ts';
+import { text } from '../../../content/index.ts';
+import Button from '../../../design/Button.astro';
+import DefinitionList from '../../../design/DefinitionList.astro';
+import Layout from '../../../design/Layout.astro';
+import Notice from '../../../design/Notice.astro';
+import type { PageAccount } from '../../../lib/account.ts';
+import AccountCard from '../../AccountCard.astro';
+import PageHead from '../../PageHead.astro';
+import SessionGate from '../../SessionGate.astro';
+import type { Session } from '../../session.ts';
+import { herePath, signInHref } from '../../session.ts';
+import { goToAccountLabel } from '../../words.ts';
+import { fetchWebhookWatch } from './admin-client.ts';
+import { closedPollsAt, timeWithoutZone } from './view.ts';
+import '../../account.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+}
+
+const { account, session } = Astro.props;
+const here = herePath(Astro.url);
+const admin = session.state === 'signed-in' && session.me.isAdmin;
+const watch = admin ? await fetchWebhookWatch(Astro) : null;
+const closed = closedPollsAt(new Date(), HOLDER_POLLS, pollStateAt);
+
+const title = text('admin.holdersTitle', 'Holders’ poll and Telegram');
+const none = text('admin.holdersWebhookNone', 'None');
+const stepWords = {
+  results: text('admin.holdersTallyStepResults', 'reading the saved results'),
+  list: text('admin.holdersTallyStepList', 'listing the votes'),
+  read: text('admin.holdersTallyStepRead', 'reading holdings from the chain'),
+  block: text('admin.holdersTallyStepBlock', 'the chain answered from another block'),
+  write: text('admin.holdersTallyStepWrite', 'saving the result'),
+};
+const outcomes = {
+  done: {
+    tone: 'status',
+    words: text('admin.holdersTallyDone', 'Counted. The result is saved and shows on the poll’s page.'),
+  },
+  already: {
+    tone: 'status',
+    words: text('admin.holdersTallyAlready', 'This poll was counted before. Its result stays as it was.'),
+  },
+  waiting: {
+    tone: 'error',
+    words: text('admin.holdersTallyWaiting', 'Not counted: $PRIX tiers are off. Nothing was saved.'),
+  },
+  open: {
+    tone: 'error',
+    words: text(
+      'admin.holdersTallyOpen',
+      'Too soon to count. A poll is counted from a minute to about an hour after its close. Try again later.',
+    ),
+  },
+  failed: {
+    tone: 'error',
+    words: text(
+      'admin.holdersTallyFailed',
+      'Not counted, and nothing was saved. It stopped while {step}. Try again in a few minutes.',
+    ),
+  },
+} as const;
+---
+
+<Layout
+  title={title}
+  description={text('admin.holdersDescription', 'Set the Telegram webhook and count a closed holders’ poll.')}
+  account={account}
+  signInHref={signInHref(here)}
+  noindex
+>
+  <PageHead
+    title={title}
+    back={{ href: '/admin', label: text('nav.admin', 'Admin') }}
+    intro={admin
+      ? text(
+          'admin.holdersIntro',
+          'Two tools for the holders’ features: the Telegram webhook, set before linking a chat opens, and the count of a closed poll, for when the scheduled count has not run.',
+        )
+      : text('admin.intro', 'This page is for the people who run Prix.')}
+  />
+
+  <div class="page section">
+    {
+      !admin ? (
+        <div class="acct-column">
+          {session.state !== 'signed-in' ? (
+            <AccountCard title={text('nav.signIn', 'Sign in')} headingId="holders-sign-in-heading">
+              <SessionGate session={session} steps />
+            </AccountCard>
+          ) : (
+            <AccountCard>
+              <Notice
+                tone="status"
+                title={text('admin.notAdminTitle', 'This wallet is not an administrator')}
+                body={text(
+                  'admin.notAdminBody',
+                  'Nothing on this page is available to the wallet you signed in with. Your agent and your model keys are on your account page.',
+                )}
+              >
+                <Button href="/account" label={goToAccountLabel()} variant="secondary" />
+              </Notice>
+            </AccountCard>
+          )}
+        </div>
+      ) : (
+        <div class="acct-cards">
+          <AccountCard
+            title={text('admin.holdersWebhookTitle', 'Telegram webhook')}
+            headingId="holders-webhook-heading"
+            intro={text(
+              'admin.holdersWebhookIntro',
+              'Points the bot’s webhook at Prix with Prix’s own secret and drops any update that was waiting. Set it before the bot’s name is added, and again whenever the watch below says it moved.',
+            )}
+          >
+            <div class="stack-16" data-holders-webhook>
+              <p>
+                <Button
+                  variant="secondary"
+                  label={text('admin.holdersWebhookSet', 'Set the webhook')}
+                  busyLabel={text('admin.holdersWebhookSetting', 'Setting the webhook')}
+                  data-holders-webhook-set
+                />
+              </p>
+              <div class="outlet" data-outlet></div>
+              <template data-message="set">
+                <Notice
+                  tone="status"
+                  title={text('admin.holdersWebhookDoneTitle', 'Webhook set')}
+                  body={text('admin.holdersWebhookDoneBody', 'Telegram answered with these three fields.')}
+                />
+                <DefinitionList
+                  labelWidth="8.5rem"
+                  items={[
+                    { term: text('admin.holdersWebhookUrl', 'Webhook address'), value: '{url}' },
+                    { term: text('admin.holdersWebhookPending', 'Updates waiting'), value: '{pending}' },
+                    { term: text('admin.holdersWebhookLastError', 'Last error'), value: '{lastError}' },
+                  ]}
+                />
+              </template>
+              <template data-message="failed">
+                <Notice
+                  tone="error"
+                  title={text('admin.holdersWebhookFailedTitle', 'The webhook was not set')}
+                  body={text('admin.holdersWebhookFailedBody', 'Telegram did not confirm it. Wait a minute and set it again.')}
+                />
+              </template>
+              <template data-message="session">
+                <Notice
+                  tone="error"
+                  title={text('account.sessionEndedTitle', 'You are signed out')}
+                  body={text('errors.sessionEnded', 'Your session has ended. Sign in again to continue.')}
+                >
+                  <Button href={signInHref(here)} label={text('nav.signIn', 'Sign in')} variant="secondary" />
+                </Notice>
+              </template>
+              <span hidden data-holders-none>{none}</span>
+            </div>
+          </AccountCard>
+
+          <AccountCard title={text('admin.holdersWatchTitle', 'Webhook watch')} headingId="holders-watch-heading">
+            {watch?.ok ? (
+              watch.data.moved && watch.data.movedAt ? (
+                <Notice
+                  tone="error"
+                  title={text(
+                    'admin.holdersWatchMoved',
+                    'Prix saw the webhook pointing somewhere else at {time} UTC. Linking a Telegram chat is closed until the webhook is set again.',
+                    { time: timeWithoutZone(formatDateTimeUtc(watch.data.movedAt)) },
+                  )}
+                />
+              ) : (
+                <Notice
+                  tone="status"
+                  title={text('admin.holdersWatchQuiet', 'Prix has not seen the webhook point anywhere else.')}
+                />
+              )
+            ) : (
+              <Notice
+                tone="error"
+                title={text('admin.holdersWatchFailed', 'The watch was not loaded. Reload the page to try again.')}
+              >
+                <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+              </Notice>
+            )}
+          </AccountCard>
+
+          <AccountCard
+            title={text('admin.holdersTallyTitle', 'Count a closed poll')}
+            headingId="holders-tally-heading"
+            intro={text(
+              'admin.holdersTallyIntro',
+              'Counts a closed poll now, the same way the scheduled count does. Use it when the poll still shows that its count could not be completed.',
+            )}
+          >
+            {closed.length === 0 ? (
+              <Notice tone="empty" title={text('admin.holdersTallyNoPoll', 'No poll has closed yet.')} />
+            ) : (
+              <ul class="stack-16 holders-tally-list" data-step-words={JSON.stringify(stepWords)}>
+                {closed.map((poll) => (
+                  <li class="stack-8" data-holders-tally={poll.id}>
+                    <p class="body">{poll.question}</p>
+                    <p>
+                      <Button
+                        variant="secondary"
+                        label={text('admin.holdersTallyRun', 'Count this poll')}
+                        busyLabel={text('admin.holdersTallyRunning', 'Counting the poll')}
+                        data-holders-tally-run={poll.id}
+                      />
+                    </p>
+                    <div class="outlet" data-outlet></div>
+                    {Object.entries(outcomes).map(([name, outcome]) => (
+                      <template data-message={name}>
+                        <Notice tone={outcome.tone} title={outcome.words} />
+                      </template>
+                    ))}
+                    <template data-message="request">
+                      <Notice
+                        tone="error"
+                        title={text('admin.holdersTallyRequestFailed', 'The count did not run. Reload the page and try again.')}
+                      />
+                    </template>
+                    <template data-message="session">
+                      <Notice
+                        tone="error"
+                        title={text('account.sessionEndedTitle', 'You are signed out')}
+                        body={text('errors.sessionEnded', 'Your session has ended. Sign in again to continue.')}
+                      >
+                        <Button href={signInHref(here)} label={text('nav.signIn', 'Sign in')} variant="secondary" />
+                      </Notice>
+                    </template>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </AccountCard>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .holders-tally-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+</style>
+
+<script>
+  import { mountHoldersAdmin } from './admin.ts';
+
+  mountHoldersAdmin();
+</script>

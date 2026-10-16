@@ -1,0 +1,32 @@
+---
+// The holders' tape, /tape (docs/contracts/phase-6-holders-2.md, section 3.2): the layout around TapeBody,
+// which holds every word and row of the page. Drawn on the server with its one read; it ships no script.
+//
+// The route file (pages/tape.astro, platform's) answers the site's 404 for a tape that is off and sends any
+// other failure with the API's status; the body then shows that failure in words.
+import { herePath, signInHref } from '../../account/session.ts';
+import Layout from '../../design/Layout.astro';
+import type { PageAccount } from '../../lib/account.ts';
+import { fetchTape } from './client.ts';
+import TapeBody from './TapeBody.astro';
+import { tapeDescription, tapeTitle } from './words.ts';
+
+interface Props {
+  /** The signed-in wallet for the masthead, as the route file read it. */
+  account: PageAccount | null;
+}
+
+const { account } = Astro.props;
+// Made once per request: the route file asked it already.
+const result = await fetchTape(Astro);
+---
+
+<Layout
+  title={tapeTitle()}
+  description={tapeDescription()}
+  current="league"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+>
+  <TapeBody result={result} />
+</Layout>

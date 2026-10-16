@@ -13,6 +13,9 @@
 //
 // `series={false}` drops the line column of the list form and its gap, for a board whose
 // agents have no line to show; the facts move left into its place. The cards form is unchanged.
+//
+// `data-crawler-rows`: each agent's card straight inside is a row the crawler may read from its
+// edge (docs/DESIGN.md section 30). The cards are the page's, so the board marks itself.
 interface Props {
   form?: 'list' | 'cards';
   /** The column heads of the list form, in order: rank, agent, figure, line, fact one, fact two. `line` is not shown without `series`. */
@@ -41,6 +44,7 @@ const {
   id={id}
   aria-label={label}
   data-board
+  data-crawler-rows
   {...rest}
 >
   <div class="board-head" aria-hidden="true">

@@ -7,11 +7,14 @@ import type {
   DataHandlers,
   LeagueResponse,
   MarketSnapshotResponse,
+  PortfolioState,
   Season,
   SeasonsResponse,
   Store,
 } from '@prix/contracts';
 import { DataFailure, isHouseOwner, isVisibleAt, LEAGUE_PAGE_SIZE, PROVIDERS, SCORING_METHOD } from '@prix/contracts';
+import type { LiveDelay } from '../league/delay.ts';
+import { delayAgentRows, delayStandingRows, NO_LIVE_DELAY } from '../league/delay.ts';
 import {
   currentSeason,
   pricesOf,
@@ -53,8 +56,13 @@ async function modelOf(
 /**
  * `deps.houseOwners` is `ApiConfig.houseOwners`, so that a league row and an agent read of the
  * data API carry the same `house` mark as the public API. Absent means there are no house agents.
+ *
+ * `delay` is the publication delay of Prix Live (docs/CONTRACTS.md section 24.8): today's rows of a
+ * linked agent, and the holdings they left, wait for 20:00 UTC in every read here, and so in MCP,
+ * which calls these handlers. No caller is exempt: a key is not a session, and a stored answer is
+ * shared by every caller with the same delay.
  */
-export function createDataHandlers(deps: DataDeps): DataHandlers {
+export function createDataHandlers(deps: DataDeps, delay: LiveDelay = NO_LIVE_DELAY): DataHandlers {
   const { store, scoring, sim, houseOwners } = deps;
   const trust = createTrustHandlers(deps);
   const typed = <T>(
@@ -86,15 +94,20 @@ export function createDataHandlers(deps: DataDeps): DataHandlers {
         const tick = processing.find((entry) => entry.seasonId === seasonId && (division === 'pro' || entry.daily));
         const round =
           tick === undefined ? null : { tickId: tick.id, pending: await store.countPendingAgents(tick.id, division) };
+        const shown = sources.slice(0, LEAGUE_PAGE_SIZE);
+        const rows = await delayStandingRows(
+          delay,
+          shown,
+          shown.map((source) => toStandingRow(scoring, state, source, houseOwners, sim)),
+          now,
+        );
         return {
           season,
           division,
           seasonEnded: nowIso >= season.endsAt,
           market,
           state,
-          rows: sources
-            .slice(0, LEAGUE_PAGE_SIZE)
-            .map((source) => toStandingRow(scoring, state, source, houseOwners, sim)),
+          rows,
           page,
           hasMore: sources.length > LEAGUE_PAGE_SIZE,
           round,
@@ -112,13 +125,22 @@ export function createDataHandlers(deps: DataDeps): DataHandlers {
       ]);
       if (record === null) throw agentNotFound();
       const model = await modelOf(store, agent, rows);
-      const delay = caller?.entitlements.feedDelaySeconds ?? 0;
-      const visible = rows.filter((row) => isVisibleAt(row.createdAt, now, delay)).slice(0, AGENT_PAGE_DECISIONS);
-      const tick = record.lastTickId === null ? null : await store.getTick(record.lastTickId);
-      if (record.lastTickId !== null && tick === null) throw new Error('the tick of an agent row is missing');
+      const feedDelay = caller?.entitlements.feedDelaySeconds ?? 0;
+      const live = await delayAgentRows(delay, agent.id, rows, record.lastTickId, now, false);
+      const visible = live.rows
+        .filter((row) => isVisibleAt(row.createdAt, now, feedDelay))
+        .slice(0, AGENT_PAGE_DECISIONS);
+      const shown: { portfolio: PortfolioState; asOfTickId: string | null } =
+        live.holdings.kind === 'row'
+          ? { portfolio: live.holdings.row.portfolio, asOfTickId: live.holdings.row.tickId }
+          : live.holdings.kind === 'start'
+            ? { portfolio: sim.newPortfolio(), asOfTickId: null }
+            : { portfolio: record.portfolio, asOfTickId: record.lastTickId };
+      const tick = shown.asOfTickId === null ? null : await store.getTick(shown.asOfTickId);
+      if (shown.asOfTickId !== null && tick === null) throw new Error('the tick of an agent row is missing');
       const { holdings, cashWeightBps } = valueHoldings(
         sim,
-        record.portfolio,
+        shown.portfolio,
         tick === null ? {} : pricesOf(tick.snapshot),
       );
       return {
@@ -137,9 +159,9 @@ export function createDataHandlers(deps: DataDeps): DataHandlers {
         rankedCount: state?.rankedCount ?? 0,
         stats: record.stats,
         holdings,
-        cashMicro: record.portfolio.cashMicro,
+        cashMicro: shown.portfolio.cashMicro,
         cashWeightBps,
-        asOfTickId: record.lastTickId,
+        asOfTickId: shown.asOfTickId,
         decisions: visible.map(toDecisionPublic),
         method: state?.method ?? SCORING_METHOD,
         house: isHouseOwner(houseOwners, agent.owner),
@@ -158,13 +180,15 @@ export function createDataHandlers(deps: DataDeps): DataHandlers {
             ? await currentSeason(store, now.toISOString())
             : await store.getSeason(input.season);
         if (season === null) throw seasonNotFound();
-        const delay = caller?.entitlements.feedDelaySeconds ?? 0;
+        const feedDelay = caller?.entitlements.feedDelaySeconds ?? 0;
         const rows = await store.listDecisions(agent.id, season.id, input.limit + DECISIONS_EXTRA);
-        const visible = rows.filter((row) => isVisibleAt(row.createdAt, now, delay)).slice(0, input.limit);
+        // `lastTickId` null: this read shows no holdings, only rows.
+        const live = await delayAgentRows(delay, agent.id, rows, null, now, false);
+        const visible = live.rows.filter((row) => isVisibleAt(row.createdAt, now, feedDelay)).slice(0, input.limit);
         return {
           agentId: agent.id,
           seasonId: season.id,
-          delayedBySeconds: delay,
+          delayedBySeconds: feedDelay,
           decisions: visible.map(toDecisionPublic),
         };
       },
@@ -179,6 +203,9 @@ export function createDataHandlers(deps: DataDeps): DataHandlers {
       return {
         market,
         season,
+        // Field by field on purpose: the stored snapshot's block numbers and `otherChains` (which
+        // endpoint answered or confirmed, section 23) are never public. `prices` holds every symbol of
+        // the tick, the Arbitrum coins included.
         snapshot:
           tick === null
             ? null

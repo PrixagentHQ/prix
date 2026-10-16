@@ -5,6 +5,7 @@
 // returns is what the scheduler would have recorded. README.md says how to run it.
 import type { ChatMessage, ModelResponse } from '@prix/contracts';
 import {
+  ARBITRUM_CHAIN_ID,
   HOUSE_MAX_OUTPUT_TOKENS,
   parseDecisionOutput,
   STARTING_CASH_MICRO,
@@ -23,25 +24,55 @@ interface Env {
 const MICRO = 1_000_000;
 
 /**
- * Made-up crypto rows, the same on every call. Plausible prices, and returns that put neither coin
- * among the five strongest names of 20 days or the three weakest of 5 days, so that the good answers
- * of the stock samples in README.md stay what they were at 20 symbols.
+ * Made-up crypto rows, the same on every call. Plausible prices, and returns that put no coin among
+ * the five strongest names of 5 or 20 days or the three weakest of 1 or 5 days, so that the good
+ * answers of the stock samples in README.md stay what they were at 20 symbols, and a house strategy
+ * that ranks every symbol has no reason to choose a coin.
  */
 const CRYPTO_SAMPLE: Readonly<Record<string, { usd: number; day1Bps: number; day5Bps: number; day20Bps: number }>> = {
   BTC: { usd: 62_000, day1Bps: 40, day5Bps: 120, day20Bps: 300 },
   ETH: { usd: 2_400, day1Bps: -30, day5Bps: -100, day20Bps: 200 },
+  BNB: { usd: 600, day1Bps: 20, day5Bps: -50, day20Bps: 100 },
+  HYPE: { usd: 40, day1Bps: -40, day5Bps: 80, day20Bps: 350 },
+  SOL: { usd: 150, day1Bps: 60, day5Bps: 150, day20Bps: 250 },
 };
 
+/** The coins whose feeds are on Arbitrum One (docs/CONTRACTS.md section 23): BNB, HYPE and SOL. */
+const SECOND_CHAIN: ReadonlySet<string> = new Set(
+  UNIVERSE.filter((token) => token.kind === 'crypto' && token.chainId === ARBITRUM_CHAIN_ID).map(
+    (token) => token.symbol,
+  ),
+);
+
+/**
+ * The made-up markets. Only the rows of BNB, HYPE and SOL differ:
+ * - "full": every symbol has a price and three returns.
+ * - "new": their first trading day in the league. They are priced and trade, and their returns are
+ *   null (section 21, rule 5: no price is backfilled).
+ * - "unread": the Arbitrum read gave nothing in this round (section 23, rule 7). The scheduler values
+ *   them at their last trusted price, so they are priced, not fresh and listed in "halted". Their
+ *   returns are the ones the league has from earlier days.
+ */
+const MARKETS = ['full', 'new', 'unread'] as const;
+type Market = (typeof MARKETS)[number];
+
+function isMarket(value: string): value is Market {
+  return (MARKETS as readonly string[]).includes(value);
+}
+
 /** Made-up prices and returns, the same on every call, so that two runs can be compared. */
-function sampleMarket(now: string) {
+function sampleMarket(now: string, market: Market) {
   const prices = UNIVERSE.map((token, i) => ({
     symbol: token.symbol,
     priceMicro: (CRYPTO_SAMPLE[token.symbol]?.usd ?? 50 + i * 37) * MICRO,
     updatedAt: now,
     ageSeconds: 120,
-    fresh: true,
+    fresh: !(market === 'unread' && SECOND_CHAIN.has(token.symbol)),
   }));
   const returns = UNIVERSE.map((token, i) => {
+    if (market === 'new' && SECOND_CHAIN.has(token.symbol)) {
+      return { symbol: token.symbol, day1Bps: null, day5Bps: null, day20Bps: null };
+    }
     const crypto = CRYPTO_SAMPLE[token.symbol];
     return {
       symbol: token.symbol,
@@ -50,7 +81,9 @@ function sampleMarket(now: string) {
       day20Bps: crypto?.day20Bps ?? ((i * 271) % 3000) - 1500,
     };
   });
-  return { prices, returns };
+  // The symbols that do not trade in this round are the ones that are not fresh.
+  const halted = prices.filter((point) => !point.fresh).map((point) => point.symbol);
+  return { prices, returns, halted };
 }
 
 /** Neurons from token counts at the listed prices, for an answer that reported none. */
@@ -86,7 +119,9 @@ export default {
 
     const symbols = UNIVERSE.map((token) => token.symbol);
     const now = new Date().toISOString();
-    const { prices, returns } = sampleMarket(now);
+    const market = url.searchParams.get('market') ?? 'full';
+    if (!isMarket(market)) return json({ error: `market is one of ${MARKETS.join(', ')}` }, 400);
+    const { prices, returns, halted } = sampleMarket(now, market);
     const priceOf = (symbol: string) => prices.find((price) => price.symbol === symbol)?.priceMicro ?? MICRO;
     // "held" is a portfolio of 10,000 USD with 20% NVDA, 30% SPY and 50% cash.
     const holdings: Record<string, number> = held
@@ -104,13 +139,13 @@ export default {
             now,
             prices,
             returns,
-            halted: [],
+            halted,
             portfolio: { cashMicro, holdings },
             equityMicro: STARTING_CASH_MICRO,
             strategy,
           });
 
-    if (mode === 'messages') return json({ messages });
+    if (mode === 'messages') return json({ market, halted, messages });
 
     // "raw" skips the adapter and shows what Workers AI itself returns.
     if (mode === 'raw') {
@@ -167,10 +202,14 @@ export default {
       jsonDecision: mode === 'decision',
     });
     const ms = Date.now() - started;
-    if (!response.ok) return json({ model: modelId, mode, ms, label: model.label, failure: response });
+    if (!response.ok) return json({ model: modelId, mode, market, ms, label: model.label, failure: response });
     return json({
       model: modelId,
       mode,
+      market,
+      halted,
+      // The crypto symbols of the universe, so that run.mjs can say whether a decision holds a coin.
+      coins: UNIVERSE.filter((token) => token.kind === 'crypto').map((token) => token.symbol),
       ms,
       label: model.label,
       inputTokens: response.inputTokens,

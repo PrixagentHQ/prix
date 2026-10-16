@@ -1,5 +1,11 @@
 import type { PricePoint, UniverseToken } from '@prix/contracts';
-import { isStockToken, MARKET_QUIET_AFTER_SECONDS, MAX_HALTED_FEEDS, MIN_PRICE_MICRO } from '@prix/contracts';
+import {
+  ARBITRUM_CHAIN_ID,
+  isStockToken,
+  MARKET_QUIET_AFTER_SECONDS,
+  MAX_HALTED_FEEDS,
+  MIN_PRICE_MICRO,
+} from '@prix/contracts';
 import { UNIVERSE } from '@prix/market';
 import type { FeedRead } from '@prix/market/rules';
 import {
@@ -34,6 +40,7 @@ const COIN: UniverseToken = {
   feedDecimals: 8,
   sourceUrl: 'https://docs.chain.link/data-feeds/price-feeds/addresses?network=robinhood',
   readOn: '2026-10-09',
+  chainId: 4663,
 };
 const read = (patch: Partial<FeedRead> & { answer?: bigint; updatedAt?: number } = {}): FeedRead => ({
   round: { answer: patch.answer ?? 18_241_000_000n, updatedAt: BigInt(patch.updatedAt ?? NOW - 60) },
@@ -257,68 +264,103 @@ describe('nodeIsCurrent', () => {
   });
 });
 
+/**
+ * The universe read on Robinhood Chain: what `buildSnapshot` judges. SOL, BNB and HYPE come from their
+ * own Arbitrum read (section 23), so they are left out here.
+ */
+const ROBINHOOD_UNIVERSE: readonly UniverseToken[] = UNIVERSE.filter(
+  (token) => token.kind !== 'crypto' || token.chainId !== ARBITRUM_CHAIN_ID,
+);
+
+type SnapshotInput = Parameters<typeof buildSnapshot>[0];
+
+/**
+ * The input of `buildSnapshot` with one crypto staleness for every coin. `buildSnapshot` is internal to
+ * packages/market: section 23 turned its crypto threshold into a table by symbol, so the input carries
+ * both the table and the stage 1 number until the stage 2 market is the only one.
+ */
+function input(
+  fields: Omit<SnapshotInput, 'cryptoStaleAfterSeconds' | 'cryptoStaleAfterSecondsBySymbol'> & { cryptoStale: number },
+): SnapshotInput {
+  const { cryptoStale, ...rest } = fields;
+  const bySymbol = Object.fromEntries(['BTC', 'ETH', 'BNB', 'HYPE', 'SOL'].map((symbol) => [symbol, cryptoStale]));
+  return {
+    ...rest,
+    cryptoStaleAfterSeconds: cryptoStale,
+    cryptoStaleAfterSecondsBySymbol: bySymbol,
+  } as unknown as SnapshotInput;
+}
+
 describe('buildSnapshot and closedSnapshot', () => {
   const now = new Date(NOW * 1_000);
-  const reads = UNIVERSE.map((token) => ({
+  const reads = ROBINHOOD_UNIVERSE.map((token) => ({
     ...read({ answer: 100n * 10n ** BigInt(token.feedDecimals) }),
     decimals: token.feedDecimals,
   }));
 
   it('builds an open snapshot, one price per token in universe order', () => {
-    const snapshot = buildSnapshot({
-      now,
-      universe: UNIVERSE,
-      blockNumber: 12_345n,
-      reads,
-      staleAfterSeconds: 90_000,
-      cryptoStaleAfterSeconds: 90_000,
-      quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
-    });
+    const snapshot = buildSnapshot(
+      input({
+        now,
+        universe: ROBINHOOD_UNIVERSE,
+        blockNumber: 12_345n,
+        reads,
+        staleAfterSeconds: 90_000,
+        cryptoStale: 90_000,
+        quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
+      }),
+    );
     expect(snapshot).toMatchObject({ open: true, closedReason: null, blockNumber: 12_345, takenAt: now.toISOString() });
-    expect(snapshot.prices.map((point) => point.symbol)).toEqual(UNIVERSE.map((token) => token.symbol));
+    expect(snapshot.prices.map((point) => point.symbol)).toEqual(ROBINHOOD_UNIVERSE.map((token) => token.symbol));
     expect(snapshot.prices.every((point) => point.priceMicro === 100_000_000)).toBe(true);
     expect(snapshot.prices.every((point) => point.fresh)).toBe(true);
   });
 
-  it('judges a crypto entry by cryptoStaleAfterSeconds and a Stock Token by staleAfterSeconds', () => {
-    const snapshot = buildSnapshot({
-      now,
-      universe: [TOKEN, COIN],
-      blockNumber: 1n,
-      reads: [read({ updatedAt: NOW - 100 }), read({ updatedAt: NOW - 100 })],
-      staleAfterSeconds: 200,
-      cryptoStaleAfterSeconds: 99,
-      quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
-    });
+  it("judges a crypto entry by its symbol's staleness and a Stock Token by staleAfterSeconds", () => {
+    const snapshot = buildSnapshot(
+      input({
+        now,
+        universe: [TOKEN, COIN],
+        blockNumber: 1n,
+        reads: [read({ updatedAt: NOW - 100 }), read({ updatedAt: NOW - 100 })],
+        staleAfterSeconds: 200,
+        cryptoStale: 99,
+        quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
+      }),
+    );
     expect(snapshot.open).toBe(true);
     expect(snapshot.prices.map((point) => point.fresh)).toEqual([true, false]);
   });
 
   it('keeps the market open when a crypto read is missing, and halts that symbol', () => {
-    const snapshot = buildSnapshot({
-      now,
-      universe: [TOKEN, COIN],
-      blockNumber: 1n,
-      reads: [read()],
-      staleAfterSeconds: 90_000,
-      cryptoStaleAfterSeconds: 90_000,
-      quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
-    });
+    const snapshot = buildSnapshot(
+      input({
+        now,
+        universe: [TOKEN, COIN],
+        blockNumber: 1n,
+        reads: [read()],
+        staleAfterSeconds: 90_000,
+        cryptoStale: 90_000,
+        quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
+      }),
+    );
     expect(snapshot).toMatchObject({ open: true, closedReason: null });
     expect(snapshot.prices.map((point) => point.fresh)).toEqual([true, false]);
   });
 
   it('treats a missing Stock Token read as a failed one, which closes the market', () => {
-    const snapshot = buildSnapshot({
-      now,
-      universe: UNIVERSE,
-      blockNumber: 1n,
-      // The last Stock Token, and the crypto entries after it, have no read.
-      reads: reads.slice(0, UNIVERSE.filter(isStockToken).length - 1),
-      staleAfterSeconds: 90_000,
-      cryptoStaleAfterSeconds: 90_000,
-      quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
-    });
+    const snapshot = buildSnapshot(
+      input({
+        now,
+        universe: ROBINHOOD_UNIVERSE,
+        blockNumber: 1n,
+        // The last Stock Token, and the crypto entries after it, have no read.
+        reads: reads.slice(0, ROBINHOOD_UNIVERSE.filter(isStockToken).length - 1),
+        staleAfterSeconds: 90_000,
+        cryptoStale: 90_000,
+        quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
+      }),
+    );
     expect(snapshot.closedReason).toBe('feed_invalid');
   });
 
@@ -335,15 +377,17 @@ describe('buildSnapshot and closedSnapshot', () => {
 describe('agreedSnapshot: the Stock Tokens must agree; a crypto difference only unreads the coin', () => {
   const now = new Date(NOW * 1_000);
   const build = (coinAnswer: bigint, stockAnswer = 18_241_000_000n) =>
-    buildSnapshot({
-      now,
-      universe: [TOKEN, COIN],
-      blockNumber: 1n,
-      reads: [read({ answer: stockAnswer }), read({ answer: coinAnswer })],
-      staleAfterSeconds: 90_000,
-      cryptoStaleAfterSeconds: 90_000,
-      quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
-    });
+    buildSnapshot(
+      input({
+        now,
+        universe: [TOKEN, COIN],
+        blockNumber: 1n,
+        reads: [read({ answer: stockAnswer }), read({ answer: coinAnswer })],
+        staleAfterSeconds: 90_000,
+        cryptoStale: 90_000,
+        quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
+      }),
+    );
   const cryptoSymbols = new Set([COIN.symbol]);
 
   it('returns the first snapshot unchanged when the two agree on every point', () => {

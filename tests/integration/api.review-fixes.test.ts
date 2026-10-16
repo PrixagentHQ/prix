@@ -55,7 +55,7 @@ describe('sign-in limits and sign-out', () => {
 
 describe('agent names that look like the product', () => {
   // A reserved name may be refused by the schema before the word list is asked (400), or by the list (409).
-  it.each(['Prix Alpha', 'Pons', 'King', 'House'])('refuses the reserved name %s', async (name) => {
+  it.each(['Prix Alpha', 'Pons', 'House'])('refuses the reserved name %s', async (name) => {
     const api = createApi();
     const client = await api.signedIn(wallet);
     const reply = await client.post('/api/agents', body(name));

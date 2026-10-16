@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { agentNameSchema, promptSchema, summaryStatusSchema } from './agents.ts';
 import type { ApiDeps } from './api.ts';
 import {
@@ -31,6 +30,7 @@ import type { CreateHouseModel, CreateOwnModel, WorkersAiLike } from './schedule
 import type { AgentStats, ScoringEngine, StandingConfidence } from './scoring.ts';
 import { agentStatsSchema, dailyPointSchema, rowStatusSchema } from './scoring.ts';
 import type { Store } from './store.ts';
+import { z } from './zod.ts';
 
 /**
  * Phase 6, the social strategy layer. docs/contracts/phase-6-social.md says what these mean and what
@@ -1250,7 +1250,35 @@ export interface SocialStore {
 
 // --- scheduled work ----------------------------------------------------------------------------------
 
-export const socialJobNameSchema = z.enum(['model_war', 'rank_tape', 'rivalry_match', 'strategy_dna', 'manager_value']);
+/**
+ * The sixth name, `x_recheck`, is Phase 6.2's (phase6-voices.ts): the daily recheck of linked X accounts.
+ * The seventh, `room_prune`, is Phase 6.3's (phase6-room.ts): it deletes the room's oldest messages.
+ * The eighth, `room_picture_sweep`, is Phase 6.4's (phase6-room-pictures.ts): it deletes the bytes of
+ * removed pictures that a KV delete failed for. In the entry's list of jobs it stands before `room_prune`,
+ * which stays the last job of the step.
+ *
+ * Phase 6.4, revision 3: this schema lists the names in the order the phases added them, so
+ * `room_picture_sweep` is its eighth name. Phase 6.7 (the holders contract, revision 4, HB3-3) adds `poll_tally`
+ * as the ninth, and Phase 6.8 `holders_lounge_sweep` as the tenth and last, so the sweep is no longer the last. Nothing reads the order of this list: the order
+ * the jobs run in is the entry's list, where the tally and the sweep stand before the prune.
+ */
+export const socialJobNameSchema = z.enum([
+  'model_war',
+  'rank_tape',
+  'rivalry_match',
+  'strategy_dna',
+  'manager_value',
+  'x_recheck',
+  'room_prune',
+  'room_picture_sweep',
+  /** Phase 6.7: the holders' poll's count after its close (docs/contracts/phase-6-holders.md section 5). */
+  'poll_tally',
+  // Phase 6.8, the holders' second wave (docs/contracts/phase-6-holders-2.md section 4.6): the lounge's
+  // daily sweep, appended after the names already here (after the first wave's `poll_tally` once both are
+  // merged). In the entry's list it stands before `room_picture_sweep` (after `poll_tally` once both are
+  // merged), and `room_prune` stays last.
+  'holders_lounge_sweep',
+]);
 export type SocialJobName = z.infer<typeof socialJobNameSchema>;
 
 /**

@@ -56,8 +56,8 @@ describe('GET /api/market/prices', () => {
     expect(body.prices).toHaveLength(UNIVERSE_SIZE);
     expect(body.prices.map((entry) => entry.symbol)).toEqual(UNIVERSE.map((token) => token.symbol));
     expect(body.prices.map((entry) => entry.name)).toEqual(UNIVERSE.map((token) => token.name));
-    // Section 21: the 20 Stock Tokens by symbol, then BTC and ETH.
-    expect(body.prices.slice(-2).map((entry) => entry.symbol)).toEqual(['BTC', 'ETH']);
+    // Sections 21 and 23: the 20 Stock Tokens by symbol, then BTC and ETH, then BNB, HYPE and SOL.
+    expect(body.prices.slice(-5).map((entry) => entry.symbol)).toEqual(['BTC', 'ETH', 'BNB', 'HYPE', 'SOL']);
     const nvda = body.prices.find((entry) => entry.symbol === 'NVDA');
     expect(nvda).toEqual({
       symbol: 'NVDA',

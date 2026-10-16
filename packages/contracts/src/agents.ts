@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import {
   AGENT_NAME_MAX,
   AGENT_NAME_MIN,
@@ -9,6 +8,7 @@ import {
   SUMMARY_MAX,
 } from './constants.ts';
 import { addressSchema, amountSchema, divisionSchema, idSchema, isoTimeSchema, utcDaySchema } from './primitives.ts';
+import { z } from './zod.ts';
 
 /**
  * The key that makes two agent names "the same": lower case, letters and digits only.
@@ -21,10 +21,15 @@ export function agentNameKey(name: string): string {
 const RESERVED_KEYS = new Set(RESERVED_AGENT_NAMES.map(agentNameKey));
 const RESERVED_FRAGMENTS = ['official', 'admin', 'moderator', 'support', 'staff'];
 
-/** True for a name that would pass for the product, its staff or a partner. */
+/**
+ * True for a name that would pass for the product, its staff or a partner. "prix" anywhere in the key
+ * (2026-10-14): since the home page shows the board first, "Run by Prix", "Team Prix" or "Example by
+ * Prix" at rank 1 would sit above the rows that carry Prix's own chip. A name like "Grand Prix" is
+ * refused with them; that is the price of the rule.
+ */
 export function isReservedAgentName(name: string): boolean {
   const key = agentNameKey(name);
-  if (RESERVED_KEYS.has(key) || key.startsWith('prix')) return true;
+  if (RESERVED_KEYS.has(key) || key.includes('prix')) return true;
   return RESERVED_FRAGMENTS.some((fragment) => key.includes(fragment));
 }
 

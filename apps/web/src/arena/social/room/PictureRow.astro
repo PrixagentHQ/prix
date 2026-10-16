@@ -1,0 +1,98 @@
+---
+// A picture message, in the place of a message's text (docs/contracts/phase-6-pictures.md, section 11).
+// What a reader gets before any click: that this is a picture from a user which Prix has not looked at,
+// what the file is by the server's own figures, and one button. No picture, no address of one and no
+// request: the page asks for a picture only after "Show picture", through ./pictures.ts.
+//
+//   offer   the note, the facts, "Show picture"
+//   closed  the note, the facts, why no picture is shown now (pictures are off, or resting)
+//   said    one sentence: hidden after reports, or no longer available
+//
+// The message's own text is never printed here: for a picture it is a word of the contract, not something
+// the writer said. Everything in this block is Prix speaking. A row of the note and the facts is set
+// apart from the lines users write by a rule at its left and a smaller size; a row of one sentence by its
+// grey alone.
+//
+// "Show picture" is described by its row's writer and time (`describedBy`, the ids of those two
+// elements), since every such button of the list has the same name.
+//
+// "Report" and the place of its answer stand in every row whose picture is in the state `shown`, from
+// the first byte. The stylesheet shows the button only while the picture is shown and the list carries
+// the account's mark; the click, the question it opens and the answer are the account's, which writes
+// both into the one empty element rendered here. Nothing here handles them.
+import type { RoomPictureView, RoomWithPicturesResponse } from '@prix/contracts';
+import { ROOM_PICTURE_DOM, ROOM_PICTURE_ROW_NOTE } from '@prix/contracts';
+import Button from '../../../design/Button.astro';
+import { type PictureWords, pictureAlt, pictureRow } from './words.ts';
+import './pictures.css';
+
+interface Props {
+  /** The picture as the read gave it: the server's figures and its state. */
+  picture: RoomPictureView;
+  /** The read's `pictures`: whether a picture may be shown now. Absent while the read carries none. */
+  pictures: RoomWithPicturesResponse['pictures'];
+  /** The writer's short address, for the words that stand in a shown picture's place. */
+  authorShort: string;
+  /** The words every row shares, read once by the list. */
+  words: PictureWords;
+  /** The word that names this part of a message for a screen reader, as on a message of text. */
+  label: string;
+  /** The ids of the row's writer and time, which describe its "Show picture" button. */
+  describedBy: string;
+}
+
+const { picture, pictures, authorShort, words, label, describedBy } = Astro.props;
+const row = pictureRow(picture, pictures);
+---
+
+<div class:list={['room-picture', row.kind !== 'said' && 'room-picture--file']}>
+  {
+    row.kind === 'said' ? (
+      <p class="room-picture-said">
+        <span class="visually-hidden">{label} </span>
+        {row.sentence}
+      </p>
+    ) : (
+      <>
+        <div class="room-picture-about">
+          <p class="room-picture-note">
+            <span class="visually-hidden">{label} </span>
+            {ROOM_PICTURE_ROW_NOTE}
+          </p>
+          <p class="room-picture-facts figures">{row.facts}</p>
+        </div>
+        <div class="room-picture-controls">
+          {row.kind === 'offer' ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              label={words.show}
+              data-room-picture-toggle=""
+              data-hide-label={words.hide}
+              {...{ 'aria-describedby': describedBy }}
+            />
+          ) : (
+            <p class="room-picture-said">{row.sentence}</p>
+          )}
+          {row.kind === 'offer' && (
+            <p class="room-picture-said" role="status" tabindex="-1" data-room-picture-failed hidden>
+              {words.loadFailed}
+            </p>
+          )}
+          <Button variant="quiet" size="sm" label={words.report} {...{ [ROOM_PICTURE_DOM.report]: '' }} />
+        </div>
+        <p class="room-picture-answer" role="status" {...{ [ROOM_PICTURE_DOM.reportNote]: '' }} />
+        {row.kind === 'offer' && (
+          <div
+            class="room-picture-frame"
+            data-room-picture-frame
+            data-width={picture.width}
+            data-height={picture.height}
+            data-alt={pictureAlt(authorShort)}
+            hidden
+          />
+        )}
+      </>
+    )
+  }
+</div>

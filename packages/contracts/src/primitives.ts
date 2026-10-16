@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod.ts';
 
 /** A wallet or contract address: 0x followed by 40 lower-case hex characters. */
 export const addressSchema = z.string().regex(/^0x[0-9a-f]{40}$/, 'Expected a lower-case 0x address.');

@@ -6,6 +6,15 @@ import { registerManagerAdminRoutes, registerManagerRoutes } from './routes-mana
 import { registerRivalryRoutes } from './routes-rivalries.ts';
 import { registerWarAdminRoutes, registerWarRoutes } from './routes-wars.ts';
 
+// Phase 6.3, the room (docs/contracts/phase-6-room.md): its own switch, its own two factories. Phase 6.4,
+// the pictures in it (docs/contracts/phase-6-pictures.md): a switch of their own, two factories more.
+export {
+  createRoomAdminRoutes,
+  createRoomPictureAdminRoutes,
+  createRoomPictureRoutes,
+  createRoomRoutes,
+} from './room/index.ts';
+
 /**
  * Phase 6, the social strategy layer: docs/contracts/phase-6-social.md section 6. Every path is
  * under `/social`, with the `/api` prefix removed as in the other route files. The operator mounts

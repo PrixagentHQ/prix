@@ -10,6 +10,8 @@ import type { Hono } from 'hono';
 import { failures, json } from '../errors.ts';
 import { readSession, requireSession } from '../guard.ts';
 import { matches, readQuery } from '../input.ts';
+import type { LiveDelay } from '../league/delay.ts';
+import { delayFeedItems, NO_LIVE_DELAY } from '../league/delay.ts';
 import { readSessionToken } from '../session.ts';
 import type { FeedCursorSigner } from './feed-cursor.ts';
 import { createFeedCursorSigner } from './feed-cursor.ts';
@@ -43,9 +45,27 @@ async function withSignedCursor<T extends { nextCursor: string | null }>(
   return { ...page, nextCursor: await signer.sign({ tickId, agentId }) };
 }
 
-export function registerFeedRoutes(routes: Hono, deps: FollowApiDeps): void {
+export function registerFeedRoutes(routes: Hono, deps: FollowApiDeps, delay: LiveDelay = NO_LIVE_DELAY): void {
   // Built once with the routes; the key is derived on first use and kept for the life of the isolate.
   const signer = createFeedCursorSigner(deps.config.nonceSecret);
+
+  /**
+   * The Live publication delay (docs/CONTRACTS.md section 24.8): today's rounds of a linked agent stay
+   * out of a feed until 20:00 UTC, except for the agent's own owner. The owner is looked up only for
+   * an agent that has something held back, so a feed without one costs no extra read.
+   */
+  async function withLiveDelay<T extends { items: { agentId: string; tickId: string }[] }>(
+    feed: T,
+    viewer: string | null,
+  ): Promise<T> {
+    const isOwner = async (agentId: string): Promise<boolean> => {
+      if (viewer === null) return false;
+      const agent = await deps.store.getAgent(agentId);
+      return agent !== null && agent.owner.toLowerCase() === viewer.toLowerCase();
+    };
+    const items = await delayFeedItems(delay, feed.items, deps.now(), isOwner);
+    return items.length === feed.items.length ? feed : { ...feed, items };
+  }
 
   routes.get('/agents/:id/feed', async (c) => {
     const id = c.req.param('id');
@@ -55,9 +75,11 @@ export function registerFeedRoutes(routes: Hono, deps: FollowApiDeps): void {
     // and it is always the answer for a viewer who is not signed in.
     const hasCookie = readSessionToken(c.req.raw) !== null;
     const session = hasCookie ? await readSession(deps, c.req.raw) : null;
-    const feed = await deps.feed.agentFeed(id, session?.address ?? null, query);
+    const viewer = session?.address ?? null;
+    const feed = await deps.feed.agentFeed(id, viewer, query);
     if (feed === null) throw failures.agentNotFound();
-    return json<AgentFeedResponse>(await withSignedCursor(signer, feed), 200, hasCookie ? 'private' : 'public');
+    const delayed = await withLiveDelay(feed, viewer);
+    return json<AgentFeedResponse>(await withSignedCursor(signer, delayed), 200, hasCookie ? 'private' : 'public');
   });
 
   // The league feed is the same for everyone (docs/CONTRACTS.md section 17). This route reads no
@@ -66,7 +88,7 @@ export function registerFeedRoutes(routes: Hono, deps: FollowApiDeps): void {
   // parameter for a delay.
   routes.get('/feed/league', async (c) => {
     const query = await readFeedQuery(signer, c.req.url);
-    const feed = await deps.feed.leagueFeed(query);
+    const feed = await withLiveDelay(await deps.feed.leagueFeed(query), null);
     return json<LeagueFeedResponse>(await withSignedCursor(signer, feed), 200, 'public');
   });
 
@@ -74,7 +96,7 @@ export function registerFeedRoutes(routes: Hono, deps: FollowApiDeps): void {
     // The cursor is checked before the session is read: a refused cursor costs no database read.
     const query = await readFeedQuery(signer, c.req.url);
     const session = await requireSession(deps, c.req.raw);
-    const feed = await deps.feed.followingFeed(session.address, query);
+    const feed = await withLiveDelay(await deps.feed.followingFeed(session.address, query), session.address);
     return json<FollowingFeedResponse>(await withSignedCursor(signer, feed), 200, 'private');
   });
 }

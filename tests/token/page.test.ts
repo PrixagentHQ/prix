@@ -58,13 +58,15 @@ describe('the token page promises no return', () => {
 
   it('says the token carries no promise of return, no rights to Prix and no link to any agent decisions', () => {
     expect(whole).toMatch(/not a promise of return/i);
-    expect(whole).toMatch(/no rights to Prix/i);
+    // The holders' round reworded it "no rights in Prix" (the poll gives a vote on a paper league only).
+    expect(whole).toMatch(/no rights (?:to|in) Prix/i);
     expect(whole).toMatch(/no (?:link|connection) to any agent.s decisions/i);
   });
 
   it('says it gives no share of revenue and is no advice', () => {
     expect(whole).toMatch(/no share of revenue/i);
-    expect(whole).toMatch(/not advice/i);
+    // D-168, second pass (W168-1): `token.notAdvice` says "Nothing an agent decides is advice."
+    expect(whole).toMatch(/nothing an agent decides is advice/i);
   });
 
   it('names the risks and the one address that counts, and names no other token', () => {

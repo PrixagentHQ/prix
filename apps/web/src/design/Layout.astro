@@ -18,8 +18,10 @@ import './primitives.css';
 import './board.css';
 import './ascii/ascii.css';
 import './ground/ground.css';
+import './crawler/crawler.css';
 import './motion.css';
 import './print.css';
+import { links } from '../content/facts.ts';
 import { text } from '../content/index.ts';
 import appleTouchIcon from './apple-touch-icon.png?url&no-inline';
 // The two faces (this one and Inter, below), the same files the stylesheets name (ascii/ascii.css,
@@ -69,6 +71,23 @@ interface Props {
    * site never passes it; the visitor's choice decides.
    */
   theme?: 'dark' | 'light';
+  /**
+   * The footer's disclaimer, when a page needs its own. Without it every page prints
+   * `common.disclaimer`, which names both: the league is paper, and in Prix Live an owner's agent
+   * trades real money in the owner's own Safe (D-168).
+   */
+  disclaimer?: string;
+  /**
+   * The home page only (R17): its hero carries "How it works", so the header leaves it out at
+   * every width, and under 720 pixels the header leaves out the search field, which the page
+   * sets under its board (docs/DESIGN.md section 5.3).
+   */
+  home?: boolean;
+  /**
+   * The specimen's only: lets the crawler onto a page outside its list. A page of the site never
+   * passes it; the list below decides (docs/DESIGN.md section 30).
+   */
+  crawler?: boolean;
 }
 
 const {
@@ -80,6 +99,9 @@ const {
   signInHref = '/sign-in',
   noindex = false,
   theme: forced,
+  disclaimer,
+  home = false,
+  crawler: crawlerForced,
 } = Astro.props;
 
 // Dark unless the visitor chose light. A build with sample data also takes `?theme=light`, so a
@@ -111,6 +133,7 @@ const printedAddress = `${canonical.host}${canonical.pathname === '/' ? '' : can
 const tokenAddress = await readTokenAddress(Astro);
 const developersOn = await readDevelopersOn(Astro);
 const socialOn = await readSocialOn(Astro);
+const pollsOn = await readPollsOn(Astro);
 async function readTokenAddress(context: typeof Astro): Promise<string | null> {
   try {
     const { readTokenInfoCached } = await import('../site/token/read-token.ts');
@@ -145,6 +168,17 @@ async function readSocialOn(context: typeof Astro): Promise<boolean> {
     return false;
   }
 }
+// The holders' poll is linked from the footer only while its status probe answers on
+// (docs/contracts/phase-6-holders.md section 4.5, revision 4, HB3-1). The probe is the poll page's own,
+// kept 60 seconds in isolate memory; 'off' and 'failed' both leave the footer as it was. It never throws.
+async function readPollsOn(context: typeof Astro): Promise<boolean> {
+  try {
+    const { pollsIsOn } = await import('../site/polls/read-polls.ts');
+    return (await pollsIsOn(context)) === 'on';
+  } catch {
+    return false;
+  }
+}
 // The season archive and the season results belong to the league; the developer pages and the trust
 // lookup belong to Developers. A page that passes nothing, or the retired 'archive', still lands there.
 // The three list pages of Phase 6 and their detail pages belong to Social, whatever the page passes
@@ -159,6 +193,18 @@ const section = /^\/(rivalries|wars|managers)(\/|$)/.test(path)
         : current
     : current;
 const mark = (key: Props['current'], href: string) => (section === key ? (path === href ? 'page' : 'true') : undefined);
+
+// The crawler (docs/DESIGN.md section 30, D-154): on these five pages only, and never on one sent
+// with an error's status. Everywhere else it does not exist: every /live page, the account, an
+// agent's page, the builder, sign-in, the admin pages, the chat and the error pages. The layout
+// marks `main`; crawler/gate.ts decides whether and when to load it, and the page's source credits
+// the idea it follows.
+const CRAWLER_PAGES = ['/', '/league', '/listed', '/methodology', '/token'];
+const crawlerOn =
+  crawlerForced ??
+  (CRAWLER_PAGES.includes(path.length > 1 ? path.replace(/\/+$/u, '') : path) && (Astro.response.status ?? 200) < 400);
+const CRAWLER_CREDIT =
+  '<!-- The crawler on this page follows the idea of "Web crawlers" by Slava Rybin (@rybinfx), 2026-10-01, https://x.com/rybinfx/status/2105700296760688790. Drawn and coded by Prix. -->';
 
 // The search field shows the text the league page was asked for.
 const asked = path.startsWith('/league') ? (Astro.url.searchParams.get('q') ?? '').slice(0, 64) : '';
@@ -203,7 +249,7 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
   <body>
     <a class="skip" href="#main">{text('common.skipToContent', 'Skip to the main content')}</a>
 
-    <header class="top">
+    <header class:list={['top', home && 'top--home']}>
       <div class="page top-bar">
         <a class="wordmark" href="/" aria-label={text('nav.homeLabel', 'Prix, home')}>
           <PrixMark />
@@ -241,6 +287,16 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+          </a>
+          <a
+            class="top-x top-gh"
+            href="https://github.com/PrixagentHQ/prix"
+            rel="noopener noreferrer"
+            aria-label={text('nav.githubLabel', 'Prix on GitHub')}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
             </svg>
           </a>
           {
@@ -293,7 +349,8 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
       </div>
     </header>
 
-    <main id="main">
+    {crawlerOn && <Fragment set:html={CRAWLER_CREDIT} />}
+    <main id="main" class:list={[home && 'main--home']} data-crawler={crawlerOn ? '' : undefined}>
       <div class="ground" aria-hidden="true" set:html={FIELD_MARKUP} />
       <slot />
     </main>
@@ -306,7 +363,13 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
             <span>{text('common.siteName', 'Prix')}</span>
           </a>
           <p class="foot-disclaimer">
-            {text('common.disclaimer', 'Paper trading simulation. Not investment advice. No real orders are placed.')}
+            {
+              disclaimer ??
+                text(
+                  'common.disclaimer',
+                  'The league is a paper trading simulation, where no real orders are placed. In Prix Live, an owner’s agent trades real money in the owner’s own Safe. Not investment advice.',
+                )
+            }
           </p>
           {
             tokenAddress ? (
@@ -331,6 +394,21 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
         <nav aria-label={text('nav.footerLabel', 'Footer')}>
           <ul class="foot-list" role="list">
             <li><a href="/methodology">{text('nav.methodology', 'Methodology')}</a></li>
+            <li><a href="/live">{text('nav.live', 'Prix Live')}</a></li>
+            {/* FOREHEAD, the founder's game on its own Worker under prixagent.com (D-146). Same tab and
+                no rel: the page is Prix's own site, `noopener` does nothing without a new tab, and the
+                origin the referrer policy sends tells FOREHEAD's logs a visit came from Prix. */}
+            <li><a href={links.forehead}>{text('nav.forehead', 'Play FOREHEAD')}</a></li>
+            {
+              pollsOn && (
+                <li>
+                  <a href="/polls">{text('polls.navLink', "Holders' poll")}</a>
+                </li>
+              )
+            }
+            <li>
+              <a href="https://github.com/PrixagentHQ/prix" rel="noopener noreferrer">{text('nav.github', 'GitHub')}</a>
+            </li>
             {
               socialOn && (
                 <>
@@ -367,6 +445,7 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
 
     <script>
       import './ground/fit.ts';
+      import './crawler/gate.ts';
     </script>
 
     <script>

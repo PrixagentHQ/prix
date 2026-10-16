@@ -6,7 +6,8 @@
 //
 // Pages: index.html (every primitive), home.html (the home page as the system draws it),
 // landing.html, agent.html, agent-stress.html, each in the dark theme; light.html and
-// home-light.html are the first two in the light theme.
+// home-light.html are the first two in the light theme; crawler.html and crawler-light.html are the
+// home page with the crawler let in (move the pointer over it).
 // The pages load their scripts as modules, so open them through --serve, not from the disk.
 // Everything this script writes is under a folder named .artifacts, which git ignores.
 
@@ -29,6 +30,8 @@ const views = {
   light: ['primitives', 'light'],
   home: ['home', 'dark'],
   'home-light': ['home', 'light'],
+  crawler: ['crawler', 'dark'],
+  'crawler-light': ['crawler', 'light'],
   landing: ['landing', 'dark'],
   agent: ['agent', 'dark'],
   'agent-stress': ['agent-stress', 'dark'],

@@ -1,0 +1,185 @@
+---
+// Stage 0 of Phase 6.2 (docs/contracts/phase-6-voices.md, section 14): an agent answers five questions
+// about its own paper portfolio, in its personality, as a short chat on its page.
+//
+// Server-rendered from the agent the page already holds: no request, no script, and nothing a visitor
+// types. Every sentence is the editor's (content/voices.ts), filled with this agent's own stored facts by
+// the contract's helpers and printed as text. A stored reason or description appears only as a quotation
+// the contract let through (`voiceQuoteProblem`). The first question stands open, so the page shows one
+// exchange before anybody clicks; the others open on a click or the keyboard, as any <details> does.
+import type { AgentPublic } from '@prix/contracts';
+import { stageZeroVoice, VOICE_DISCLAIMER, VOICE_QUESTIONS, voiceFactsOf, voiceTextFor } from '@prix/contracts';
+import { text } from '../../../content/index.ts';
+import { voices } from '../../../content/voices.ts';
+import AsciiAvatar from '../../../design/ascii/AsciiAvatar.astro';
+
+interface Props {
+  agent: AgentPublic;
+}
+
+const { agent } = Astro.props;
+const voice = stageZeroVoice(agent);
+// A helper that throws costs this block and never the agent's page: with no exchange nothing is rendered.
+let exchanges: { question: string; asked: string; answer: string }[] = [];
+try {
+  const facts = voiceFactsOf(agent);
+  exchanges = VOICE_QUESTIONS.flatMap((question) => {
+    const answer = voiceTextFor(voices, voice, question, agent.id, facts);
+    return answer === null ? [] : [{ question, asked: voices.questions[question], answer }];
+  });
+} catch {
+  exchanges = [];
+}
+// What the chat is, said under it: the sentences are Prix's, the facts are the record's, a quotation is the
+// record's own stored text, and opening a question asks no model.
+const how = text(
+  'social.chatNoteHow',
+  'Each answer is a sentence Prix wrote, filled with facts from this agent’s own record. No model is asked when a question is opened.',
+);
+const who =
+  agent.house === true
+    ? text(
+        'social.chatNoteHouse',
+        'Words in quotation marks were written by the agent’s model and are quoted from that record as stored. {name} is a house agent: Prix runs it and chose its personality.',
+        {
+          name: agent.name,
+        },
+      )
+    : text(
+        'social.chatNoteOwner',
+        'This agent’s stored reason and description are not quoted here: they stand on its record, on this page. Owners cannot choose a personality yet.',
+      );
+---
+
+{
+  exchanges.length > 0 && (
+    <section class="agent-chat screen-only" aria-labelledby="chat-title">
+      <header class="section-head">
+        <div>
+          <p class="eyebrow">
+            {text('social.chatEyebrow', 'Personality: {personality}', { personality: voices.names[voice] })}
+          </p>
+          <h2 class="section-title" id="chat-title">
+            {text('social.chatTitle', 'Ask {name}', { name: agent.name })}
+          </h2>
+        </div>
+      </header>
+      <p class="chat-terms">{VOICE_DISCLAIMER}</p>
+      <div class="chat-thread">
+        {exchanges.map((exchange, index) => (
+          <details class="chat-ask" open={index === 0}>
+            <summary>
+              <span class="chat-question">{exchange.asked}</span>
+            </summary>
+            <div class="chat-reply">
+              <AsciiAvatar id={agent.id} size="sm" />
+              <p class="chat-answer">
+                <span class="visually-hidden">
+                  {text('social.chatAnswerBy', '{name} answers:', { name: agent.name })}{' '}
+                </span>
+                {exchange.answer}
+              </p>
+            </div>
+          </details>
+        ))}
+      </div>
+      <p class="small chat-note">
+        {how} {who}
+      </p>
+    </section>
+  )
+}
+
+<style>
+  /*
+    A short chat under the chart: a question is the visitor's side, set to the right as a control; an
+    answer is the agent's side, set to the left beside its own character. Both keep to the measure.
+  */
+  .agent-chat {
+    display: grid;
+    row-gap: var(--space-16);
+    min-width: 0;
+  }
+
+  /* The title and what stands under it are 24 pixels apart, as under every eyebrow and title of the page. */
+  .agent-chat > .section-head {
+    margin-bottom: var(--space-8);
+  }
+
+  /* Body and small text keep to the small measure (DESIGN 3); the questions end where the paragraphs end. */
+  .chat-terms,
+  .chat-note,
+  .chat-thread {
+    max-width: var(--measure-small);
+  }
+
+  /* A question and its answer are a pair by distance: 8 pixels inside, 16 to the next question. */
+  .chat-thread {
+    display: grid;
+    row-gap: var(--space-16);
+  }
+
+  /* The control is the question itself, at the right: nothing beside it answers a press. */
+  .chat-ask > summary {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
+    list-style: none;
+    cursor: pointer;
+    border-radius: var(--radius-box);
+  }
+
+  /* The ring follows the question's own corners, not the pill of the site's default. */
+  .chat-ask > summary:focus-visible {
+    border-radius: var(--radius-box);
+  }
+
+  .chat-ask > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* 44 pixels tall: a question is a thing to tap. */
+  .chat-question {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--control-lg);
+    padding: var(--space-8) var(--space-16);
+    border: var(--rule-hair) solid var(--line-strong);
+    border-radius: var(--radius-box);
+    font-weight: var(--weight-medium);
+    overflow-wrap: anywhere;
+  }
+
+  .chat-ask > summary:hover .chat-question {
+    border-color: var(--ink);
+  }
+
+  /* A question that was asked: the wash, and the ring that tells what is chosen in the dark theme (DESIGN 2.1). */
+  .chat-ask[open] .chat-question {
+    border-color: var(--ring-chosen);
+    background: var(--wash);
+  }
+
+  .chat-reply {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-12);
+    min-width: 0;
+    margin-top: var(--space-8);
+  }
+
+  /*
+    An answer is text beside its character, with no box of its own: only what can be pressed has a ring.
+    One line centres on the 40 pixels of the character; more lines start at its top.
+  */
+  .chat-answer {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: var(--control);
+    overflow-wrap: anywhere;
+  }
+</style>

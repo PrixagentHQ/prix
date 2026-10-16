@@ -1,10 +1,10 @@
-import { z } from 'zod';
 import { agentStatusSchema, pausedReasonSchema, summaryStatusSchema } from './agents.ts';
 import { LEAGUE_MAX_PAGE } from './constants.ts';
 import type { EntitlementsPort } from './entitlements.ts';
 import { marketStatusSchema } from './market.ts';
 import type { KeySealer } from './models.ts';
 import { modelKeyPublicSchema, providerIdSchema } from './models.ts';
+import type { OwnerHoldsStore } from './phase6-holders.ts';
 import type { SimEngine } from './portfolio.ts';
 import { fillSchema } from './portfolio.ts';
 import {
@@ -29,6 +29,7 @@ import {
 } from './scoring.ts';
 import type { Store } from './store.ts';
 import { seasonSchema, symbolHoldSchema } from './ticks.ts';
+import { z } from './zod.ts';
 
 /**
  * The HTTP API, version 1 of Phase 1. Every route lives under /api. Requests and responses
@@ -193,6 +194,14 @@ export const agentPublicSchema = z.strictObject({
   scoreMilli: signedAmountSchema.nullable().optional(),
   confidence: standingConfidenceSchema.nullable().optional(),
   scoredDay: utcDaySchema.nullable().optional(),
+  /**
+   * Phase 6.7 (docs/contracts/phase-6-holders.md, part B): true when the owner's STORED tier is 2 or above,
+   * read with `cachedOnly` (`ownerHoldsOf`), and the owner has turned the mark on from /account/token
+   * (`users.show_holds`, off by default; revision 2); false otherwise, for a house agent and while gating is off. Sent only by
+   * `GET /api/agents/:id`; the data API never sends it. Optional so that a page built for it can read an
+   * API that does not send it yet.
+   */
+  ownerHolds: z.boolean().optional(),
 });
 export type AgentPublic = z.infer<typeof agentPublicSchema>;
 
@@ -349,6 +358,12 @@ export interface ApiDeps {
    * docs/contracts/README.md, the seam.
    */
   entitlements?: EntitlementsPort;
+  /**
+   * The owner's choice to show "Owner holds $PRIX" (docs/contracts/phase-6-holders.md section 3, revision 3,
+   * HB-3). routes-public.ts and the token routes read it; while it is absent `ownerHolds` is false and both
+   * owner-holds routes answer the generic 404. platform passes it from apps/api/src/index.ts.
+   */
+  ownerHolds?: OwnerHoldsStore;
 }
 
 /** What `createApp` in `apps/api/src/http` returns. */

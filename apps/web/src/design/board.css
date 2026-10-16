@@ -1953,3 +1953,495 @@
 .ticker-change.loss {
   color: var(--red);
 }
+
+/*
+  ---------- Standings: the board of the home page's hero (R17, DESIGN.md 12.2) ----------
+  A short table of agents on one shared scale. Phone first: under 720 a row is a grid (rank,
+  animal, name over its chips, the figure over its line); from 720 it is a table row with its
+  column heads and its facts. The dashed start line stands at one height in every row, because
+  every line is drawn on the board's one scale: that is the signature of the home page.
+*/
+.standings.card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.standings-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-12);
+  padding: var(--space-12) var(--space-16) var(--space-8);
+}
+
+.standings-title {
+  color: var(--ink);
+  font-size: var(--text-16);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-16);
+}
+
+.standings-meta {
+  grid-column: 1 / -1;
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-13);
+}
+
+/* A link in words; no arrow is drawn after it. */
+.standings-more {
+  color: var(--blue);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-14);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.standings-more:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-hair);
+  text-underline-offset: 0.2em;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.standings-table thead th {
+  padding: var(--space-6) var(--space-8);
+  color: var(--grey);
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.standings-table tbody :is(td, th) {
+  padding: var(--space-8) var(--space-4);
+  border-top: var(--rule-hair) solid var(--line);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.standings-table :is(td, th):first-child {
+  padding-left: var(--space-16);
+}
+
+.standings-table :is(td, th):last-child {
+  padding-right: var(--space-16);
+}
+
+.standings-table .num {
+  text-align: right;
+}
+
+.standings-table tbody tr:hover {
+  background: var(--wash);
+}
+
+.standings-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 1.375rem;
+  color: var(--grey);
+  font-size: var(--text-14);
+  font-weight: var(--weight-strong);
+}
+
+th.st-name {
+  min-width: 0;
+  font-weight: var(--weight-strong);
+}
+
+.st-name a {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-name a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-hair);
+  text-underline-offset: 0.2em;
+}
+
+.standings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+/*
+  A chip stays inside its name cell: never wider than the cell, its words wrap within it, so a long
+  state ("No decision in the last round") never runs over the line beside it on a phone. Its whole
+  text stays in the page, for assistive technology too.
+*/
+.standings-chips .chip {
+  max-width: 100%;
+  padding-inline: var(--space-6);
+  white-space: normal;
+  text-wrap: balance;
+}
+
+.st-figure .figures {
+  color: var(--ink);
+  font-size: var(--text-16);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-16);
+}
+
+.st-figure .figures.gain,
+.st-line .spark.gain {
+  color: var(--green);
+}
+
+.st-figure .figures.loss,
+.st-line .spark.loss {
+  color: var(--red);
+}
+
+.st-fact .figures {
+  color: var(--grey);
+  font-weight: var(--weight-medium);
+}
+
+.st-fact {
+  display: none;
+}
+
+.st-line .spark {
+  display: block;
+  width: 100%;
+  height: 1.5rem;
+}
+
+.standings-state {
+  padding: var(--space-16);
+  border-top: var(--rule-hair) solid var(--line);
+}
+
+.standings-foot {
+  padding: var(--space-12) var(--space-16);
+  border-top: var(--rule-hair) solid var(--line);
+}
+
+.standings-key {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  max-width: 34rem;
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-13);
+}
+
+.standings-dash {
+  flex: none;
+  width: 1.5rem;
+  height: 0.25rem;
+}
+
+.standings-dash line {
+  stroke: var(--grey);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+}
+
+@media (max-width: 44.99em) {
+  .standings-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .standings-table,
+  .standings-table tbody {
+    display: block;
+  }
+
+  .standings-table tbody tr {
+    display: grid;
+    grid-template-columns: 1.75rem 2.875rem minmax(0, 1fr) 4.75rem;
+    grid-template-areas:
+      "rank mark name figure"
+      "rank mark name line";
+    align-items: center;
+    column-gap: var(--space-4);
+    padding: var(--space-6) var(--space-16);
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .standings-table tbody :is(td, th),
+  .standings-table tbody :is(td, th):first-child,
+  .standings-table tbody :is(td, th):last-child {
+    padding: 0;
+    border-top: 0;
+  }
+
+  .standings-table tbody .st-rank {
+    grid-area: rank;
+  }
+
+  .standings-table tbody .st-mark {
+    grid-area: mark;
+  }
+
+  .standings-table tbody .st-name {
+    grid-area: name;
+  }
+
+  .standings-table tbody .st-figure {
+    grid-area: figure;
+    align-self: end;
+  }
+
+  .standings-table tbody .st-line {
+    grid-area: line;
+    align-self: start;
+  }
+
+  .standings-table tbody .st-fact {
+    display: none;
+  }
+}
+
+@media (min-width: 45em) {
+  .standings-head,
+  .standings-foot,
+  .standings-state {
+    padding-inline: var(--space-24);
+  }
+
+  .standings-head {
+    padding-top: var(--space-16);
+  }
+
+  .standings-table :is(td, th) {
+    padding-inline: var(--space-8);
+  }
+
+  .standings-table tbody :is(td, th) {
+    padding-block: var(--space-12);
+  }
+
+  .standings-table :is(td, th):first-child {
+    padding-left: var(--space-24);
+  }
+
+  .standings-table :is(td, th):last-child {
+    padding-right: var(--space-24);
+  }
+
+  /*
+    A column's width holds its padding. The rank's holds its head, "Rank", whole beside the 24 at
+    the card's edge. Rank, animal, line and figure take 360; the name takes the rest.
+  */
+  .st-rank {
+    width: 4rem;
+  }
+
+  .st-mark {
+    width: 3.5rem;
+  }
+
+  .st-line {
+    width: 9rem;
+  }
+
+  .st-figure {
+    width: 6rem;
+  }
+
+  .st-line .spark {
+    height: 2.5rem;
+  }
+
+  .st-figure .figures {
+    font-size: var(--text-20);
+    line-height: var(--leading-20);
+    letter-spacing: -0.01em;
+  }
+}
+
+/*
+  The facts come by the board's own width, not the window's: beside the decisions from 960 the
+  board is narrower than it is at 768. From 44rem (704) two facts of 96 each leave the name at
+  least 160; under it the facts are left out and the agent's page has them.
+*/
+.standings {
+  container: standings / inline-size;
+}
+
+@media (min-width: 45em) {
+  @container standings (min-width: 44rem) {
+    .st-fact {
+      display: table-cell;
+      width: 6rem;
+    }
+  }
+}
+
+/*
+  ---------- The home page's hero: the sentence, the subhead and the one action (R17) ----------
+  The sentence says what Prix is; it is a definition, not a slogan (DESIGN.md 5.3). The action
+  stands right under the subhead and its Prix Live line (R19), left-aligned, at every width; "How
+  it works" is a quiet link beside it.
+*/
+.hero-say {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.hero-title {
+  max-width: 21em;
+  color: var(--ink);
+  font-family: var(--sans-display);
+  font-size: var(--text-28);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-28);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.hero-sub {
+  max-width: var(--measure);
+  color: var(--grey);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+}
+
+.hero-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-12) var(--space-16);
+  margin-top: var(--space-16);
+}
+
+.hero-act .button {
+  flex: 1 1 auto;
+}
+
+.hero-how {
+  flex: none;
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+}
+
+/*
+  R19 (second pass): one quiet line under the subhead: a link to Prix Live in the hero's link style (ink
+  600, the hairline underline only on hover), then its risk as plain text in the same ink at 400,
+  so the risk is never fainter than the offer of real money. In the subhead's size. Never a
+  button: the hero keeps one primary. The page sets no rule of its own here.
+*/
+.hero-real {
+  max-width: var(--measure);
+  color: var(--ink);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+}
+
+.hero-real a {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+}
+
+.hero-real a:hover,
+.hero-how:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-hair);
+  text-underline-offset: 0.2em;
+}
+
+/*
+  The board and the latest decisions: one column on a phone (the board, the search field, the
+  decisions), side by side from 960 (the board, and the decisions beside it).
+*/
+.hero-live {
+  display: grid;
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.hero-live > .search {
+  max-width: none;
+}
+
+.hero-decisions-title {
+  color: var(--ink);
+  font-size: var(--text-16);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-16);
+}
+
+.hero-decisions-note {
+  margin-top: var(--space-2);
+  color: var(--grey);
+  font-size: var(--text-13);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-13);
+}
+
+.hero-decisions .feed {
+  margin-top: var(--space-12);
+}
+
+/* The page's own search field is a phone's: from 720 the header holds it. */
+@media (min-width: 45em) {
+  .hero-live > .home-search {
+    display: none;
+  }
+}
+
+@media (min-width: 45em) {
+  .hero-title {
+    font-size: var(--text-40);
+    line-height: var(--leading-40);
+    letter-spacing: -0.025em;
+  }
+
+  .hero-sub,
+  .hero-real {
+    font-size: var(--text-16);
+    line-height: var(--leading-16);
+  }
+
+  .hero-act .button {
+    flex: none;
+  }
+}
+
+@media (min-width: 60em) {
+  .hero-live {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+    align-items: start;
+    margin-top: var(--space-32);
+  }
+
+  /* The decisions' title stands on the board's title's line: the card's own 16 above it. */
+  .hero-decisions {
+    padding-top: var(--space-16);
+  }
+}
+
+@media (min-width: 75em) {
+  .hero-live {
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    gap: var(--space-48);
+  }
+}

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createClaimVerifier, createReputationApp } from '../../apps/api/src/http/reputation/index.ts';
 import { createApi, SITE_ORIGIN } from '../support/api.ts';
 import { testWallet } from '../support/eth.ts';
+import { ARBITRUM_FEEDS } from '../support/fake-arbitrum.ts';
 import { reputationDeps, stubReputation } from './support.ts';
 
 /**
@@ -57,8 +58,21 @@ const STOCKS = UNIVERSE.filter(isStockToken);
 
 describe('the addresses of the product cannot be listed', () => {
   it('the universe has the crypto assets this test covers', () => {
-    expect(CRYPTO.map((entry) => entry.symbol).sort()).toEqual(['BTC', 'ETH']);
+    expect(CRYPTO.map((entry) => entry.symbol).sort()).toEqual(['BNB', 'BTC', 'ETH', 'HYPE', 'SOL']);
   });
+
+  // Section 23, rule 12: the three Arbitrum One feeds too, by the addresses the contract gives,
+  // whatever the universe holds.
+  for (const [symbol, feed] of Object.entries(ARBITRUM_FEEDS)) {
+    it(`the ${symbol} feed proxy on Arbitrum One (section 23)`, async () => {
+      const claimMessage = await harness();
+      const reply = await claimMessage(feed);
+      expect(reply.status, JSON.stringify(reply.json)).toBe(400);
+      expect(reply.json.error.code).toBe('invalid_input');
+      expect(reply.json.error.field).toBe('wallet');
+      expect(reply.json.error.message).toMatch(PRODUCT_REFUSAL);
+    });
+  }
 
   for (const asset of CRYPTO) {
     it(`the ${asset.symbol} feed proxy`, async () => {

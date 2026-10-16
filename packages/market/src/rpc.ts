@@ -59,6 +59,8 @@ export function movesToNextEndpoint(failure: Failure): boolean {
 /**
  * JSON-RPC over fetch. Tries the urls in order, 8 s each, no retry, and moves to the next url only
  * when `movesToNextEndpoint` says so. At most `RPC_MAX_RESPONSE_BYTES` of an answer are read.
+ * A redirect is never followed (`redirect: 'manual'`, as the snapshot's reads; `./redirect.ts`): the
+ * 3xx is one request and an `http` failure with its code, which does not move to the next endpoint.
  * Throws ChainUnavailableError and nothing else; it never carries a URL, which may hold a key.
  */
 export function createRpc(urls: readonly string[], fetchFn: typeof fetch = fetch): Rpc {
@@ -70,9 +72,11 @@ export function createRpc(urls: readonly string[], fetchFn: typeof fetch = fetch
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (response.status !== 200) {
+        // A redirect ends here too (`./redirect.ts`): a 3xx, or 0 where a runtime hides its status.
         await response.body?.cancel().catch(() => undefined);
         return { ok: false, failure: { kind: 'http', code: response.status } };
       }

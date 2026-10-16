@@ -13,10 +13,18 @@ import type {
   MeResponse,
   ModelKeyResponse,
   NonceResponse,
+  OwnerHoldsSetting,
+  PollMeResponse,
+  PollsResponse,
+  PollTallyOutcome,
+  PollVoteBody,
+  PollVoteResponse,
   ProvidersResponse,
   SeasonsResponse,
   SessionResponse,
   SetHiddenInput,
+  TelegramWebhookAdminResponse,
+  TelegramWebhookState,
   UpdateAgentInput,
   VerifyInput,
 } from '@prix/contracts';
@@ -93,11 +101,32 @@ export interface Api {
   holds(): Promise<ApiResult<HoldsResponse>>;
   /** POST /api/admin/holds/:symbol/release */
   releaseHold(symbol: string): Promise<ApiResult<null>>;
+
+  // Phase 6.7, the holders round (docs/contracts/phase-6-holders.md). Each answers the generic 404 while its
+  // route is not mounted; a page reads `status` for that (e.g. `ownerHoldsRouteOn`, the poll's status probe).
+  /** GET /api/polls: public, cached 30 seconds, no per-wallet data. */
+  polls(): Promise<ApiResult<PollsResponse>>;
+  /** GET /api/polls/status: `{ on: true }` while POLLS_ENABLED is on, the generic 404 otherwise. */
+  pollsStatus(): Promise<ApiResult<{ on: true }>>;
+  /** GET /api/polls/me: a session; never on a timer (section 4.5). */
+  pollsMe(): Promise<ApiResult<PollMeResponse>>;
+  /** POST /api/polls/:id/vote. A refusal is `invalid_input` with a field of POLL_REFUSALS. */
+  vote(pollId: string, input: PollVoteBody): Promise<ApiResult<PollVoteResponse>>;
+  /** GET /api/token/me/owner-holds: the wallet's choice of the mark. 404 while the route is not mounted. */
+  ownerHolds(): Promise<ApiResult<OwnerHoldsSetting>>;
+  /** PUT /api/token/me/owner-holds: changes the choice and answers the stored one. */
+  setOwnerHolds(input: OwnerHoldsSetting): Promise<ApiResult<OwnerHoldsSetting>>;
+  /** POST /api/admin/polls/:id/tally: an admin runs a closed poll's tally; answers its outcome. */
+  adminTallyPoll(pollId: string): Promise<ApiResult<PollTallyOutcome>>;
+  /** POST /api/admin/telegram/webhook: prix-api sets its webhook and answers the three fields the founder pastes back. */
+  adminSetTelegramWebhook(): Promise<ApiResult<TelegramWebhookAdminResponse>>;
+  /** GET /api/admin/telegram/webhook: the webhook's watch. */
+  adminTelegramWebhook(): Promise<ApiResult<TelegramWebhookState>>;
 }
 
 /** One request to the API, before a transport sends it. */
 export interface ApiCall {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   /** Path and query, for example /api/league?division=open. */
   path: string;
   /** The JSON body, for a request that has one. */
@@ -280,5 +309,23 @@ export function createApi(context?: ApiContext): Api {
     setAgentHidden: (id, input) => writeForNothing('POST', `/api/admin/agents/${segment(id)}/hidden`, input),
     holds: () => read<HoldsResponse>('/api/admin/holds', 'holds'),
     releaseHold: (symbol) => writeForNothing('POST', `/api/admin/holds/${segment(symbol)}/release`),
+    polls: () => read<PollsResponse>('/api/polls', 'polls'),
+    pollsStatus: () => read<{ on: true }>('/api/polls/status', 'pollStatus'),
+    // Not remembered within a render: a vote changes it, and the control asks it once when it opens.
+    pollsMe: () => sendForData<PollMeResponse>(context, { method: 'GET', path: '/api/polls/me' }, 'pollMe'),
+    vote: (pollId, input) => write<PollVoteResponse>('POST', `/api/polls/${segment(pollId)}/vote`, input, 'pollVote'),
+    ownerHolds: () =>
+      sendForData<OwnerHoldsSetting>(context, { method: 'GET', path: '/api/token/me/owner-holds' }, 'ownerHolds'),
+    setOwnerHolds: (input) => write<OwnerHoldsSetting>('PUT', '/api/token/me/owner-holds', input, 'ownerHolds'),
+    adminTallyPoll: (pollId) =>
+      write<PollTallyOutcome>('POST', `/api/admin/polls/${segment(pollId)}/tally`, undefined, 'pollTallyOutcome'),
+    adminSetTelegramWebhook: () =>
+      write<TelegramWebhookAdminResponse>('POST', '/api/admin/telegram/webhook', undefined, 'telegramWebhookAdmin'),
+    adminTelegramWebhook: () =>
+      sendForData<TelegramWebhookState>(
+        context,
+        { method: 'GET', path: '/api/admin/telegram/webhook' },
+        'telegramWebhookState',
+      ),
   };
 }

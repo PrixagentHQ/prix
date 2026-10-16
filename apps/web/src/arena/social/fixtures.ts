@@ -22,6 +22,8 @@ import type {
   WarStanding,
 } from '@prix/contracts';
 import { WAR_MODELS, WAR_RULES } from '@prix/contracts';
+import { tapeAnswer } from '../tape/fixtures.ts';
+import { roomAnswer } from './room/fixtures.ts';
 
 /**
  * SAMPLE DATA. Used only when the site is built with PRIX_FIXTURES=1; a production build never
@@ -53,6 +55,9 @@ import { WAR_MODELS, WAR_RULES } from '@prix/contracts';
  *   social-forbidden  every admin write answers the generic 404 of the administrator check.
  *   social-error      every Phase 6 read and write fails with 500.
  *   social-off        the switch is off: every Phase 6 read answers 404.
+ *
+ * The Community chat has its own group, `social-room-<state>`, listed in ./room/fixtures.ts. With none
+ * of its names the chat is on with a short sample; `social-off` and `social-error` take it with them.
  *
  * Detail reads answer 404 for an id the sample does not have.
  */
@@ -1005,6 +1010,10 @@ export function socialAnswer(fixture: string | null, path: string): SocialFixtur
   const url = new URL(path, 'https://fixture.invalid');
   const page = Number(url.searchParams.get('page') ?? '1') || 1;
   const route = url.pathname;
+  // The holders' tape is on only while Phase 6 is; its own states are in ../tape/fixtures.ts.
+  if (route === '/api/tape') return tapeAnswer(fixture);
+  // The Community chat has a group of states of its own (./room/fixtures.ts lists them).
+  if (route === '/api/social/room' || route.startsWith('/api/social/room/')) return roomAnswer(fixture, route);
   const notFound: SocialFixtureAnswer = {
     kind: 'error',
     status: 404,

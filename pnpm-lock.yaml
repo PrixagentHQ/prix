@@ -130,6 +130,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.4
+      viem:
+        specifier: ^2.57.3
+        version: 2.57.3(typescript@7.0.2)(zod@4.6.5)
 
   tools/house-probe:
     dependencies:

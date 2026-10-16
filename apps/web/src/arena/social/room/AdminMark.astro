@@ -1,0 +1,44 @@
+---
+// The admin's mark of the Community chat (docs/contracts/phase-6-room.md, section 3): the Prix mark with
+// the word beside it, in a ring of its own. It stands beside the writer of a message from an admin wallet,
+// and once above the messages with the sentence that only this mark is Prix.
+//
+// It is an element of its own and never part of a message's text: a message can hold the word "Prix",
+// and a short address can be ground to look like an admin's, but no text draws the mark. Whether a
+// message carries it is the server's `admin`, never something this page works out.
+import { text } from '../../../content/index.ts';
+import PrixMark from '../../../design/PrixMark.astro';
+---
+
+<span class="room-mark">
+  <PrixMark />
+  <span aria-hidden="true">{text('social.roomAdminMark', 'Prix')}</span>
+  <span class="visually-hidden">{text('social.roomAdminMarkLabel', 'Written from an admin wallet of Prix')}</span>
+</span>
+
+<style>
+  /*
+    A ring and the wash, where a chip is a quiet fill: the one thing in the list that is not text.
+    The drawn mark is what tells it from a word, so it is never left out.
+  */
+  .room-mark {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-8) var(--space-2) var(--space-6);
+    border-radius: var(--radius-pill);
+    background: var(--wash);
+    box-shadow: inset 0 0 0 var(--rule-hair) var(--ring-chosen);
+    color: var(--ink);
+    font-size: var(--text-12);
+    font-weight: var(--weight-strong);
+    line-height: var(--leading-12);
+    white-space: nowrap;
+  }
+
+  .room-mark :global(.prix-mark) {
+    width: var(--space-12);
+    height: var(--space-12);
+  }
+</style>

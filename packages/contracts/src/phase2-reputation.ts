@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { agentNameSchema } from './agents.ts';
 import type { ApiDeps } from './api.ts';
 import type { EntitlementsPort } from './entitlements.ts';
@@ -19,6 +18,7 @@ import { unrankedReasonSchema } from './scoring.ts';
 import type { Store } from './store.ts';
 import type { DecisionRow, Season, Tick } from './ticks.ts';
 import { seasonSchema } from './ticks.ts';
+import { z } from './zod.ts';
 
 /**
  * Phase 2, Reputation. docs/contracts/phase-2-reputation.md says what these mean and what the rules are.

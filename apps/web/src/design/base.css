@@ -423,6 +423,23 @@ main {
   overflow-x: clip;
 }
 
+/*
+  R17: the home page (`Layout home`). The tape of prices (`.home-tape`, straight inside `main`)
+  follows the hero in the document, so a phone reads the sentence, the action and the board
+  first; from 720 it stands above the hero, under the header, as the founder's tape did (R6).
+  Every child of this `main` is a full-width band, so a column of flex items lays out as blocks.
+*/
+@media (min-width: 45em) {
+  main.main--home {
+    display: flex;
+    flex-direction: column;
+  }
+
+  main.main--home > .home-tape {
+    order: -1;
+  }
+}
+
 /* A block of a page: its heading, then what it holds. */
 .section {
   margin-top: var(--section-gap);
@@ -473,12 +490,17 @@ main {
   the stacking context of `main`, the field at -1, so the field shows on the hero's open ground
   and under none of its cards. In dark the raised surface is the black of the page and the light
   is off: the field is the light of the head.
+
+  R17: the light is a wash from the top that is the same at every point of a row, so the band
+  reaches both edges of the window as one surface at every width. The light in the top right
+  corner it replaced was an ellipse sized to the band: on a phone, where the band is four times
+  taller than wide, it stood as a grey column at the right edge and read as a seam.
 */
 .zone--hero::before {
   position: absolute;
   z-index: -2;
   inset: 0;
-  background: radial-gradient(ellipse 70% 100% at 85% 0%, var(--hero-tint), transparent 75%), var(--raised);
+  background: linear-gradient(var(--hero-tint), transparent 24rem), var(--raised);
   content: "";
   pointer-events: none;
 }

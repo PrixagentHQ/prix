@@ -80,8 +80,9 @@ describe('market body cap: the snapshot read', { timeout: 5_000 }, () => {
     expect(stream.pulled()).toBeLessThanOrEqual(RPC_MAX_RESPONSE_BYTES + 2 * 16 * 1024);
   });
 
-  it('reads an honest answer for all 22 feeds, far under the cap', async () => {
-    expect(UNIVERSE).toHaveLength(22);
+  it('reads an honest answer for every feed of the universe, far under the cap', async () => {
+    // Section 23: 25 symbols, of which the Robinhood read carries 22.
+    expect(UNIVERSE).toHaveLength(25);
     const reads = UNIVERSE.map((token) => ({
       round: { answer: 2n ** 255n - 1n, updatedAt: 2n ** 255n - 1n },
       decimals: 255,
@@ -100,7 +101,7 @@ describe('market body cap: the snapshot read', { timeout: 5_000 }, () => {
       new Response(answer, { status: 200, headers: { 'content-type': 'application/json' } });
     const outcome = await readSnapshot(URL_A, UNIVERSE, fetchFn);
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.reads.reads).toHaveLength(22);
+    if (outcome.ok) expect(outcome.reads.reads).toHaveLength(UNIVERSE.length);
   });
 
   it('stops reading a body that lies about a small Content-Length', async () => {

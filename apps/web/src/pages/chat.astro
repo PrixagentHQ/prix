@@ -1,0 +1,27 @@
+---
+import { readSession } from '../account/session.ts';
+import { statusOf } from '../arena/social/client.ts';
+import { fetchRoom, roomIsOn } from '../arena/social/room/client.ts';
+import RoomPage from '../arena/social/room/RoomPage.astro';
+import { readAccount } from '../lib/account.ts';
+
+// The status is decided here, because a component cannot set it. The Community chat exists only while
+// its switch is on: for a room that is off this page is the site's 404, and the room's read is not
+// asked. A status that could not be read is 503, and the read is not asked then either. Otherwise the
+// status is the read's own, so its 404 (the room went off a moment ago) is the page's 404 too.
+const room = await roomIsOn(Astro);
+if (room === 'off') return Astro.rewrite('/404');
+if (room === 'failed') {
+  Astro.response.status = 503;
+} else {
+  const result = await fetchRoom(Astro);
+  if (!result.ok && result.status === 404) return Astro.rewrite('/404');
+  Astro.response.status = statusOf(result);
+}
+// The session, read as the admin's route reads it. It decides only what the composer shows: signed out,
+// who may write and a link to sign in. The API checks every send again.
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+---
+
+<RoomPage account={account} signedIn={session.state === 'signed-in'} />

@@ -9,6 +9,7 @@ import {
   type WalletActivityPort,
 } from '@prix/contracts';
 import { RPC_TIMEOUT_MS } from './chain.ts';
+import { isRedirect } from './redirect.ts';
 import { UNIVERSE } from './universe.ts';
 
 /** keccak256("Transfer(address,address,uint256)") */
@@ -42,7 +43,10 @@ function tooLarge(message: string): boolean {
 export function createWalletActivityReader(config: WalletActivityConfig): WalletActivityPort {
   const doFetch = config.fetch ?? fetch;
 
-  /** One batched request, endpoints tried in order. Results by request id, or a failure. */
+  /**
+   * One batched request, endpoints tried in order. Results by request id, or a failure. An endpoint
+   * that answers with a redirect is one request and a failed endpoint: the redirect is not followed.
+   */
   async function batch(calls: { method: string; params: unknown[] }[]): Promise<Rpc[] | Failure> {
     const body = JSON.stringify(calls.map((c, id) => ({ jsonrpc: '2.0', id, method: c.method, params: c.params })));
     for (const url of config.rpcUrls) {
@@ -51,8 +55,14 @@ export function createWalletActivityReader(config: WalletActivityConfig): Wallet
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body,
+          redirect: 'manual',
           signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
         });
+        if (isRedirect(res)) {
+          // Never followed, and its body is not an answer (`./redirect.ts`): this endpoint failed.
+          await res.body?.cancel().catch(() => undefined);
+          continue;
+        }
         const json: unknown = await res.json().catch(() => null);
         const items = Array.isArray(json) ? (json as Rpc[]) : json && typeof json === 'object' ? [json as Rpc] : null;
         if (items?.some((i) => i?.error && tooLarge(String(i.error.message ?? '')))) return 'window_too_large';

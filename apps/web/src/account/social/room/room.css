@@ -1,0 +1,329 @@
+/*
+  The composer of the Community chat and its admins' page. Both are built from the primitives of
+  apps/web/src/design and the cards of account.css; this file only places them. Every value is a
+  token, never a colour of its own, so both follow the theme (docs/DESIGN.md). Nothing here moves.
+*/
+
+/* ---------- The composer ---------- */
+
+.room-composer {
+  max-width: var(--measure);
+}
+
+/* Signed in, one part shows at a time, so the parts themselves keep no distance: what is inside one does. */
+.room-composer > .room-sentence + *,
+.room-composer > [data-room-state] > * + * {
+  margin-top: var(--space-12);
+}
+
+/* On a narrow phone the label of the link takes two lines: two even ones, never one word alone on the second. */
+.room-composer .acct-actions > .button {
+  text-wrap: balance;
+}
+
+/* A sentence that says who may write, or why this wallet may not: body size, in ink, never a grey note. */
+.room-sentence {
+  max-width: var(--measure);
+}
+
+/* One line of up to 280 characters takes the width of a line of prose, and so does what a send ended as. */
+.room-form .field,
+.room-form .notice {
+  max-width: var(--measure);
+}
+
+/*
+  A refused text: its first sentence stands beside the field, heavier, as every error of a field does.
+  What follows it says which words the rule means and what to do: sentences, so regular weight, in ink,
+  at the small measure.
+*/
+.room-refusal-more {
+  max-width: var(--measure-small);
+  color: var(--ink);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-regular);
+}
+
+/* The rest of a refusal and the count sit close under the field they are about. */
+.room-form .room-refusal-more,
+.room-form .room-count {
+  margin-top: var(--space-4);
+}
+
+/* ---------- A picture in the composer ---------- */
+
+/*
+  A chosen picture stands where the line of text stood: the picture as it will be sent, what the file
+  is, the way to take it out again, and the contract's note. The preview is a canvas, held small; its
+  own pixels are the script's, the size on the page is this rule's. It never grows past its pixels.
+  A picture has square corners everywhere on the site, and a hairline edge so that it does not merge
+  with the page.
+
+  Every class here is of the family `room-pick`: the rows of the list on the same page are the other
+  owner's, and that owner's family is the other one (apps/web/src/arena/social/room/pictures.css).
+  Under one name each rule fell on both.
+*/
+.room-pick {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-8);
+  max-width: var(--measure);
+}
+
+.room-pick-preview {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 14rem;
+  outline: var(--rule-hair) solid var(--line-strong);
+  outline-offset: calc(var(--rule-hair) * -1);
+}
+
+/* What the file is: figures that line up, in ink. It is what the server will read of it too. */
+.room-pick-facts {
+  color: var(--ink);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.room-pick-facts:empty {
+  display: none;
+}
+
+/* The contract's note that the picture will be public: body size, in ink. It is not the quietest text of the form. */
+.room-pick-note {
+  max-width: var(--measure);
+  color: var(--ink);
+}
+
+/* Why this wallet adds no picture: a sentence in ink at the small measure, never a grey note. */
+.room-pick-say {
+  color: var(--ink);
+}
+
+/* A file the page refused: what is wrong, heavier, then what a picture may be. Directly under the buttons. */
+.room-pick-problem {
+  max-width: var(--measure-small);
+}
+
+/* What is left of the day, of messages and of pictures: one stack of two lines under the buttons. */
+.room-left-lines {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The question of a report, set into a row's note: the sentence, then its two answers on a line of their own. */
+.room-report-ask {
+  display: block;
+  color: var(--ink);
+}
+
+.room-report-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+}
+
+.room-report-answers:empty {
+  display: none;
+}
+
+.room-left,
+.room-note {
+  color: var(--grey);
+}
+
+/* Until the API has said what is left of the day, the sentence keeps its room and shows nothing. */
+.room-left[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.room-note {
+  max-width: var(--measure-small);
+}
+
+/* The caps of a day by tier, under whichever part of the composer shows: a grey note like the one above it. */
+.room-composer > .room-day-caps {
+  margin-top: var(--space-12);
+  max-width: var(--measure-small);
+  color: var(--grey);
+}
+
+/* ---------- The admins' page ---------- */
+
+/*
+  A list set directly into a card keeps the card's own distance under the title. `.acct-list` takes every
+  margin off after the card has set it, so the title stood on the first row and read as a title with a date.
+*/
+.acct-card > .room-admin-list {
+  margin-top: var(--space-16);
+}
+
+.room-admin-row {
+  display: grid;
+  gap: var(--space-8);
+}
+
+/* When it was written, and by whom: the whole address, in figures that line up down the list. */
+.room-admin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-12);
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.room-admin-author {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+/* A message is text: it wraps anywhere, so one long word never widens the page. */
+.room-line {
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+/* A message the public does not see reads quieter. The chips beside it say why. */
+.room-admin-row--off > .room-line {
+  color: var(--grey);
+}
+
+.room-admin-controls {
+  align-items: flex-start;
+}
+
+/* An open question takes the row to itself, so its two sentences have the width to be read. */
+.room-admin-controls > [data-confirm]:has(> [data-confirm-panel]:not([hidden])) {
+  flex-basis: 100%;
+}
+
+/* While one question is open, the row's other control waits: beside the question it read as a third answer. */
+.room-admin-controls:has([data-confirm-panel]:not([hidden]))
+> [data-confirm]:not(:has(> [data-confirm-panel]:not([hidden]))) {
+  display: none;
+}
+
+.room-admin-controls .mgr-confirm {
+  max-width: var(--measure);
+  margin-top: 0;
+}
+
+.room-admin-pager {
+  margin-top: var(--space-16);
+}
+
+/* ---------- Pictures on the admins' page ---------- */
+
+/* Whether pictures are on, and the one control that changes it. */
+.room-switch {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.room-switch-by {
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+/* What a picture's file is: the server's own numbers, lined up down the list. */
+.room-admin-facts {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.room-admin-hash {
+  font-variant-numeric: tabular-nums lining-nums;
+  overflow-wrap: anywhere;
+}
+
+/* The wallets that reported a picture: whole addresses, one a line, under one label. */
+.room-reporters {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.room-reporters-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+  The look. Nothing of a picture is in the page before "Show picture". The image is then held small,
+  and blurred until "Unblur picture": whoever moderates may meet a picture nobody should have to see
+  whole. The blur is the image's own, cut at the edge of its place, and it does not move.
+
+  A second press on the same spot never unblurs (docs/contracts/phase-6-pictures.md sections 11 and 17).
+  "Show picture" and "Hide picture" lie in one cell, each as wide as the wider of the two, and the one
+  that is not offered is only invisible: so the one that is offered stands exactly where the other
+  stood. "Unblur picture" has its own place beside them, kept from the start, so nothing moves when it
+  appears. A step that is away cannot be pressed, focused or read out.
+*/
+.room-look {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-8);
+}
+
+.room-look-first {
+  display: inline-grid;
+}
+
+.room-look-first > [data-room-look-step] {
+  display: grid;
+  grid-area: 1 / 1;
+}
+
+[data-room-look-step][data-room-look-away] {
+  visibility: hidden;
+}
+
+/*
+  The picture's place, under the buttons. The script gives it the picture's proportion and width from
+  the server's two numbers when "Show picture" is pressed, so it has the picture's shape before a byte
+  arrives, and no control moves when the bytes come. It is as large as the unblurred picture will be:
+  at most as tall as a picture in the public list, never wider than its column or than its own pixels.
+  Square corners and a hairline edge, as every picture on the site.
+*/
+.room-look-place {
+  width: min(100%, calc(20rem * var(--room-look-ratio, 1)), var(--room-look-width, 100%));
+  aspect-ratio: var(--room-look-ratio, auto);
+  overflow: hidden;
+  background: var(--wash);
+  outline: var(--rule-hair) solid var(--line-strong);
+  outline-offset: calc(var(--rule-hair) * -1);
+  line-height: 0;
+}
+
+/* Unblurred, the picture fills its place: what an admin decides on must be readable. */
+.room-look-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Blurred, it stays small, in the corner of its place. */
+.room-look--blurred {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 12rem;
+  filter: blur(1.25rem);
+}
+
+.room-look-failed,
+.room-look-none {
+  color: var(--ink);
+}

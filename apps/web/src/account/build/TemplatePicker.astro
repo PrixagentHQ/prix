@@ -1,0 +1,165 @@
+---
+// "Start from a template" (D-155): Prix's own starting texts, above the prompt field of the Build
+// page, and in the sign-in card of the same page for a reader who has not signed in. Each is a
+// button with a title and one line saying what the template does, never how well. Its text travels
+// in an attribute, which Astro escapes, and the script reads it back as plain text (picker.ts).
+// Signed in, a choice fills the field; signed out, it is kept in this tab's builder draft for the
+// field after the sign-in, and the status line says so: it rides at the bottom of the window while
+// the section is in view (on a phone the eight boxes are taller than the window), and a plain
+// "Sign in to continue" link beside it leads to the card's Sign in button. A text the person wrote is
+// replaced only after the question below says so and they answer it. The section says once that a
+// template is a starting text, not advice. No template is marked as chosen.
+import Button from '../../design/Button.astro';
+import { fill } from '../dom.ts';
+import { holderTemplates, holderTemplateWords, strategyTemplates, templateWords } from './templates.ts';
+import './templates.css';
+
+interface Props {
+  /** The prefix of the section's ids, for its title, its hint, its note, its lines and its question. */
+  id?: string;
+  /** The sign-in card's section: a choice is kept for after the sign-in, not put in a field. */
+  signedOut?: boolean;
+  /**
+   * Signed out: the id of the sign-in card's heading. The status line's "Sign in" link points
+   * there, and pressing it moves focus to that card's Sign in button.
+   */
+  signInId?: string;
+  /**
+   * Whether the server read this session's entitlements at tier 1 or above (D-161). Then the eight
+   * holder templates follow the first eight in the same section and behave exactly as they do.
+   * Otherwise one quiet line says they exist and links to the token page, and no holder
+   * template's title or text is in the page. The page passes what the server read, never anything
+   * the request carries.
+   */
+  holder?: boolean;
+}
+
+const { id = 'templates', signedOut = false, signInId = 'step-sign-in', holder = false } = Astro.props;
+const templates = strategyTemplates();
+// Read only when the server said so: a page under tier 1 never builds these strings at all.
+const forHolders = holder ? holderTemplates() : [];
+const holderWords = holderTemplateWords();
+const holderTitleId = `${id}-holder-title`;
+const holderHintId = `${id}-holder-hint`;
+const words = templateWords();
+const titleId = `${id}-title`;
+const hintId = `${id}-hint`;
+const noteId = `${id}-note`;
+const questionId = `${id}-question`;
+const consequenceId = `${id}-consequence`;
+// Only what the script shows: the sentences with a name in them.
+const scriptWords = signedOut
+  ? { consequence: words.consequenceSignedOut, kept: words.kept, notKept: words.notKept }
+  : { consequence: words.consequence, filled: words.filled };
+// The link carries the next step itself; the status sentence before it only says what was kept.
+const signInLabel = words.keptSignIn;
+---
+
+<section
+  class:list={['tpl', { 'tpl-signed-out': signedOut }]}
+  aria-labelledby={titleId}
+  aria-describedby={`${hintId} ${noteId}`}
+  data-templates
+  data-templates-keep={signedOut ? '' : undefined}
+  data-words={JSON.stringify(scriptWords)}
+>
+  <div class="tpl-head">
+    <h3 class="tpl-title" id={titleId}>{words.title}</h3>
+    <p class="tpl-note" id={noteId}>{words.note}</p>
+  </div>
+  <p class="tpl-hint" id={hintId}>{signedOut ? words.hintSignedOut : words.hint}</p>
+  <ul class="tpl-list" role="list" aria-labelledby={titleId}>
+    {
+      templates.map((template) => (
+        <li>
+          <button
+            class="tpl-item"
+            type="button"
+            aria-label={fill(words.use, { title: template.title })}
+            aria-describedby={`${id}-line-${template.id}`}
+            data-template={template.prompt}
+            data-template-id={template.id}
+            data-template-name={template.title}
+          >
+            <span class="tpl-item-title">{template.title}</span>
+            <span class="tpl-item-line" id={`${id}-line-${template.id}`}>
+              {template.line}
+            </span>
+          </button>
+        </li>
+      ))
+    }
+  </ul>
+  {
+    holder ? (
+      <>
+        <h4 class="tpl-subtitle" id={holderTitleId}>
+          {holderWords.title}
+        </h4>
+        <p class="tpl-hint tpl-holder-hint" id={holderHintId}>
+          {holderWords.hint}
+        </p>
+        <ul
+          class="tpl-list tpl-list-holder"
+          role="list"
+          aria-labelledby={holderTitleId}
+          aria-describedby={holderHintId}
+          data-templates-holder
+        >
+          {forHolders.map((template) => (
+            <li>
+              <button
+                class="tpl-item"
+                type="button"
+                aria-label={fill(words.use, { title: template.title })}
+                aria-describedby={`${id}-line-${template.id}`}
+                data-template={template.prompt}
+                data-template-id={template.id}
+                data-template-name={template.title}
+              >
+                <span class="tpl-item-title">{template.title}</span>
+                <span class="tpl-item-line" id={`${id}-line-${template.id}`}>
+                  {template.line}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </>
+    ) : (
+      <p class="tpl-locked" data-templates-locked>
+        {holderWords.locked} <a href="/token">{holderWords.lockedLink}</a>
+      </p>
+    )
+  }
+  <div
+    class="tpl-confirm stack-16"
+    role="group"
+    aria-labelledby={questionId}
+    aria-describedby={consequenceId}
+    tabindex="-1"
+    hidden
+    data-template-confirm
+  >
+    <div class="stack-4">
+      <p class="body" id={questionId}><strong>{words.question}</strong></p>
+      <p class="body" id={consequenceId} data-template-consequence></p>
+    </div>
+    <p class="tpl-confirm-actions">
+      <Button label={words.replace} variant="secondary" size="sm" data-template-replace />
+      <Button label={words.keep} variant="quiet" size="sm" data-template-keep />
+    </p>
+  </div>
+  {
+    signedOut ? (
+      <p class="tpl-status">
+        <span role="status" data-template-status></span>{' '}
+        <a href={`#${signInId}`} hidden data-template-sign-in>
+          {signInLabel}
+        </a>
+      </p>
+    ) : (
+      <p class="visually-hidden" role="status" data-template-status></p>
+    )
+  }
+</section>

@@ -1,6 +1,6 @@
 import type { Division, FeedItem, FeedPage, LeagueResponse, MarketPricesResponse, StandingRow } from '@prix/contracts';
-import { STARTING_CASH_MICRO } from '@prix/contracts';
-import { facts, universeFacts } from '../../content/facts.ts';
+import { STARTING_CASH_MICRO, STOCK_UNIVERSE_SIZE } from '@prix/contracts';
+import { facts } from '../../content/facts.ts';
 import {
   formatCount,
   formatDelay,
@@ -274,24 +274,37 @@ export function holdingsOf(row: StandingRow) {
 // --- the price strip ----------------------------------------------------------------------------
 
 /**
+ * The kind of the symbol at `index` of an answer in universe order. The universe lists the Stock
+ * Tokens first and then every crypto asset (docs/CONTRACTS.md sections 21 and 23), so the position
+ * gives the kind for any number of coins, and no list of coins is kept here to fall out of date.
+ */
+export function kindAt(index: number): 'stock' | 'crypto' {
+  return index < STOCK_UNIVERSE_SIZE ? 'stock' : 'crypto';
+}
+
+/**
  * What the price strip shows, from GET /api/market/prices: each symbol's reference price in USD,
- * its change on the day with its sign, and a price whose feed was stale marked in words. Null
- * when there is nothing to show: the read failed, or no round has read prices yet. Every figure
- * is the API's, formatted; nothing is worked out here.
+ * its change on the day with its sign, and, for a symbol whose feed was not fresh at the round,
+ * that it was not traded in that round. Null when there is nothing to show: the read failed, or no
+ * round has read prices yet. The symbols are the API's, in its order (the Stock Tokens, then the
+ * crypto assets); nothing is counted, sorted or worked out here.
+ *
+ * A symbol that is not fresh is halted: valued at its last trusted price and not traded (sections
+ * 21 and 23). The strip states that consequence in plain words and never the cause (a paused or
+ * late feed, or a second chain that could not be read): the methodology explains the cause.
  */
 export function tickerOf(prices: MarketPricesResponse | null) {
   if (!prices || prices.tickId === null || prices.prices.length === 0) return null;
-  const items = prices.prices.map((entry) => {
+  const items = prices.prices.map((entry, index) => {
     // "$181.20": the dollar sign, then the deck's slot. A plain string, not a template literal.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: `{price}` is a slot of text(), and `$` is the currency sign.
     const price = text('league.tickerPrice', '${price}', { price: formatUsdMicro(entry.priceMicro) });
-    // The kind draws the hairline between the Stock Tokens and the crypto assets (section 21).
-    const crypto = (universeFacts.cryptoSymbols as readonly string[]).includes(entry.symbol);
     return {
       symbol: entry.symbol,
       name: entry.name,
-      kind: crypto ? ('crypto' as const) : ('stock' as const),
-      price: entry.fresh ? price : text('league.tickerPriceStale', '{price} (stale)', { price }),
+      // The kind draws the hairline between the Stock Tokens and the crypto assets.
+      kind: kindAt(index),
+      price: entry.fresh ? price : text('league.tickerPriceHalted', '{price}, not traded this round', { price }),
       change: entry.changeBps === null ? null : formatPercentBps(entry.changeBps),
       tone: entry.changeBps === null ? ('flat' as const) : (toneOf(entry.changeBps) ?? ('flat' as const)),
     };

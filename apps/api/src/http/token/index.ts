@@ -2,6 +2,7 @@ import type { ApiDeps, TokenApiDeps } from '@prix/contracts';
 import { Hono } from 'hono';
 import { registerTokenAdminRoutes } from './admin.ts';
 import { registerTokenMeRoutes } from './me.ts';
+import { registerOwnerHoldsRoutes } from './owner-holds.ts';
 import { registerTokenPublicRoutes } from './public.ts';
 
 /**
@@ -13,6 +14,8 @@ export function createTokenRoutes(deps: ApiDeps & { token: TokenApiDeps }, admin
   const app = new Hono();
   registerTokenPublicRoutes(app, deps);
   registerTokenMeRoutes(app, deps);
+  // Phase 6.7, part B: the mark's switch, whatever POLLS_ENABLED says (docs/contracts/phase-6-holders.md section 3).
+  registerOwnerHoldsRoutes(app, deps);
   registerTokenAdminRoutes(app, deps, admins);
   return app;
 }

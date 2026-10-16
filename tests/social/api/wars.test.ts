@@ -55,7 +55,7 @@ describe('POST /api/social/admin/wars', () => {
     expect(body.war.strategySha256).toMatch(/^[0-9a-f]{64}$/);
     // Section 21: a new war freezes the whole universe, the crypto assets included.
     expect(body.war.rules.universe).toHaveLength(UNIVERSE_SIZE);
-    expect(body.war.rules.universe).toEqual(expect.arrayContaining(['BTC', 'ETH']));
+    expect(body.war.rules.universe).toEqual(expect.arrayContaining(['BTC', 'ETH', 'BNB', 'HYPE', 'SOL']));
     expect(body.entrants.map((e) => [e.slot, e.modelId])).toEqual([
       ['A', WORKERS[0]],
       ['B', WORKERS[1]],

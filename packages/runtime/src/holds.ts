@@ -29,10 +29,23 @@ export function unavailableSnapshot(takenAt: IsoTime): MarketSnapshot {
   };
 }
 
-/** The crypto assets of the universe (section 21). Every other symbol counts as a Stock Token. */
-const CRYPTO_SYMBOLS: ReadonlySet<TokenSymbol> = new Set(
+/**
+ * The crypto assets of the universe: BTC and ETH (section 21), BNB, HYPE and SOL (section 23),
+ * whatever chain their feed is on. Every other symbol counts as a Stock Token. Exported so a check
+ * can compare it with the contract's crypto symbols.
+ */
+export const CRYPTO_SYMBOLS: ReadonlySet<TokenSymbol> = new Set(
   UNIVERSE.filter((token) => token.kind === 'crypto').map((token) => token.symbol),
 );
+
+/**
+ * True when the market read a usable price for the point: fresh, or priced at MIN_PRICE_MICRO or
+ * more. An unread feed (a crypto feed with an invalid answer, or every Arbitrum point when that
+ * chain's read failed, sections 21 and 23) comes as `priceMicro` 0 and not fresh.
+ */
+function isReadable(point: PricePoint): boolean {
+  return point.fresh || point.priceMicro >= MIN_PRICE_MICRO;
+}
 
 /**
  * Gives every halted point without a readable price a price it can be valued at (section 21, rule
@@ -42,6 +55,8 @@ const CRYPTO_SYMBOLS: ReadonlySet<TokenSymbol> = new Set(
  * takes the symbol's last trusted price, or failing that its price in the latest tick, and stays
  * not fresh: valued, not traded. With neither, no stored tick has ever priced the symbol, so no
  * portfolio can hold it, and the point is left out: nobody can hold or target it in this tick.
+ * An Arbitrum outage longer than TRUSTED_PRICE_LOOKBACK_TICKS leaves no trusted price, and the
+ * coin is then valued at its price in the latest tick, which carried it the same way.
  */
 function priceUnreadPoints(
   prices: readonly PricePoint[],
@@ -51,7 +66,7 @@ function priceUnreadPoints(
   const out: PricePoint[] = [];
   for (const point of prices) {
     // A fresh point always has a price; one below the minimum is a bad value for the comparison.
-    if (point.fresh || point.priceMicro >= MIN_PRICE_MICRO) {
+    if (isReadable(point)) {
       out.push(point);
       continue;
     }
@@ -75,8 +90,10 @@ export interface HeldSnapshot {
   /** Holds that begin with this snapshot. */
   newHolds: SymbolHold[];
   /**
-   * Symbols whose hold an admin has released. This snapshot carries the feed's price for them,
-   * taken without a comparison. The scheduler deletes their rows once the tick exists.
+   * Symbols whose hold an admin has released and whose feed this snapshot read. It carries the
+   * feed's price for them, taken without a comparison. The scheduler deletes their rows once the
+   * tick exists. A released symbol whose feed is unread here (an Arbitrum outage, section 23) is
+   * not listed: its row stays, and the release takes effect at the first tick that reads it.
    */
   released: TokenSymbol[];
 }
@@ -108,7 +125,8 @@ export interface PriceHistory {
  *   closed. It counts as halted: valued, and not traded.
  * - A released hold no longer holds anything. Its symbol takes the feed's price in this snapshot
  *   and is not compared, because the trusted price may still be the old one and the comparison
- *   would only begin the same hold again.
+ *   would only begin the same hold again. When the feed is unread in this snapshot, the symbol
+ *   takes its last known price, not fresh, and the release waits for a tick that reads it.
  * - In a snapshot the market returned open, every other point, fresh or not, is compared with the
  *   last trusted price of its symbol (`Store.getLastTrustedPrices`), not with the latest tick, so
  *   a symbol that was paused or stale for a round is still compared. A move of more than
@@ -118,17 +136,20 @@ export interface PriceHistory {
  *   symbol with no trusted price in the lookback while the latest tick carries it: the hold keeps
  *   its price in the latest tick.
  * - A symbol with no trusted price that the latest tick does not carry (BTC and ETH in their first
- *   round after the deploy) enters priced but not fresh: valued, not traded, and it begins no
+ *   round after the deploy of section 21, BNB, HYPE and SOL in theirs after section 23) enters priced but not fresh: valued, not traded, and it begins no
  *   hold. Its price is the anchor: in the next round, while it is not in
  *   `history.establishedSymbols`, it is compared with that anchor by SUSPECT_MOVE_BPS, and trades
  *   if it passes. Only at the first tick of a league, with no latest tick, is a point taken as it
  *   is with nothing to compare with.
- * - Before any of this, a point without a readable price (an unread crypto feed) takes its last
+ * - Before any of this, a point without a readable price (an unread crypto feed, or every Arbitrum
+ *   point when that chain's read failed, section 23 rule 7) takes its last
  *   trusted price, or its price in the latest tick, and is not fresh; with neither it is left out
  *   (`priceUnreadPoints`). It is then compared like any other point, so it begins no hold.
  * - If more than MAX_HALTED_FEEDS Stock Token symbols are then halted, the market is closed with
- *   `held_for_review`. A crypto symbol never counts: its hold halts that symbol alone (section 21). Only a snapshot the market returned open can get that reason; one the
- *   market closed keeps the market's own reason.
+ *   `held_for_review`. A crypto symbol never counts, whatever its feed chain: its hold or its
+ *   unread feed halts that symbol alone (sections 21 and 23, rule 10). Only a snapshot the market
+ *   returned open can get that reason; one the market closed keeps the market's own reason.
+ * - Every other field of the market's snapshot, `otherChains` included, passes through unchanged.
  */
 export function applyHolds(
   market: MarketSnapshot,
@@ -194,9 +215,16 @@ export function applyHolds(
     return { ...point, priceMicro: kept, fresh: false };
   });
 
+  // A release is used up only by a tick that read its feed; one that did not keeps it for the next.
+  const read = new Set(market.prices.filter(isReadable).map((point) => point.symbol));
+  const used = released.filter((symbol) => read.has(symbol));
   const halted = prices.filter((point) => !point.fresh && !cryptoSymbols.has(point.symbol)).length;
   if (market.open && halted > MAX_HALTED_FEEDS) {
-    return { snapshot: { ...market, open: false, closedReason: 'held_for_review', prices }, newHolds, released };
+    return {
+      snapshot: { ...market, open: false, closedReason: 'held_for_review', prices },
+      newHolds,
+      released: used,
+    };
   }
-  return { snapshot: { ...market, prices }, newHolds, released };
+  return { snapshot: { ...market, prices }, newHolds, released: used };
 }

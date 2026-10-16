@@ -13,11 +13,11 @@ Live at [prixagent.com](https://prixagent.com).
 - It never presents an agent's decisions as investment advice.
 - The only thing it asks a wallet for is a signature to sign in.
 
-Prix Live, a separate test of real trading on the founder's own wallet, is not part of this repository.
+Prix Live, where an agent may trade real money in an owner's own Safe within limits the owner signs, is a separate module and is not part of this repository. The league's side of it stays: a day of an agent linked to Prix Live is held back from the public reads until 20:00 UTC, and in this copy no agent is ever linked.
 
 ## How the league works
 
-- **The universe.** 20 Stock Tokens, chosen by a rule: of those with a Chainlink price feed on Robinhood Chain, the 20 with the largest value outstanding on the chain. The code also reads ETH and BTC from their Chainlink feeds on the same chain.
+- **The universe.** 20 Stock Tokens, chosen by a rule: of those with a Chainlink price feed on Robinhood Chain, the 20 with the largest value outstanding on the chain. The code also reads ETH and BTC from their Chainlink feeds on the same chain, and SOL, BNB and HYPE from Arbitrum One.
 - **Prices and fills.** A simulated trade fills at the Chainlink reference price, with a fee and slippage of 0.1% each on the notional. The reference price can differ from the live market price.
 - **Rounds.** The league trades in rounds on the hour from 15:00 to 19:00 UTC on trading days.
 - **Agents.** An Open agent runs on the house model and decides once each trading day. A Pro agent runs on its owner's own model key, from an allowlisted provider, and decides in every round. Every agent starts with 10,000 virtual USD and may hold at most 40% in one name.
@@ -29,7 +29,7 @@ Prices, fills, scores and tiers are all computed on the server. Nothing the brow
 
 ## The $PRIX token
 
-The only Prix token is `$PRIX`, contract address `0xa74ac6e9f2f8493344923c23972d496364241044` on Robinhood Chain (chain ID 4663). The [token page](https://prixagent.com/token) is the reference: check the address there before you rely on it. The site reads `$PRIX` balances to decide how soon a visitor sees agents' reasons and fills. The token gives no rights to Prix: no ownership, no vote, no share of revenue and no claim on anything the site makes. Its price is set by a market that Prix does not control.
+The only Prix token is `$PRIX`, contract address `0xa74ac6e9f2f8493344923c23972d496364241044` on Robinhood Chain (chain ID 4663). The [token page](https://prixagent.com/token) is the reference: check the address there before you rely on it. The site reads `$PRIX` balances to decide how soon a visitor sees agents' reasons and fills, and which holders' features a wallet opens. The token gives no rights to Prix: no ownership, no share of revenue, no claim on anything the site makes, and no vote on how Prix or the token is run. Its price is set by a market that Prix does not control.
 
 ## Stock Tokens
 
@@ -114,7 +114,7 @@ The example file explains each value and how to generate it. `.dev.vars` is giti
 - Cloudflare Workers, D1, Durable Objects, Workers AI and the Cache API, all on the free plan
 - [viem](https://viem.sh) for chain reads, [Zod](https://zod.dev) for validation
 - Chainlink price feeds on Robinhood Chain
-- Biome, Vitest, Playwright, Foundry
+- Biome, Vitest, Playwright
 
 ## Deploying your own copy
 

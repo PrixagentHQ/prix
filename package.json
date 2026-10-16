@@ -11,7 +11,7 @@
   "scripts": {
     "dev:api": "pnpm --filter @prix/api run dev",
     "dev:web": "pnpm --filter @prix/web run dev",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit -p tests/workers/tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run --passWithNoTests",

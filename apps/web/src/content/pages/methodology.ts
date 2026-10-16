@@ -5,6 +5,7 @@ import { READ_ON, UNIVERSE } from '../../../../../packages/market/src/universe.t
 import { deckText } from '../deck.ts';
 import type { Doc, DocSection } from '../doc.ts';
 import {
+  chainFacts,
   cryptoFeedFacts,
   facts,
   feedFacts,
@@ -26,8 +27,8 @@ import { rowStatusText } from '../states.ts';
  * It states scoring v1 as `packages/reputation/src/v1.ts` computes it and docs/CONTRACTS.md
  * section 9 defines it, with the market rules of section 15 and packages/market/RESEARCH.md,
  * the decision rules of section 6, the trading arithmetic of section 7 and the rounds of
- * sections 10 and 15, and the crypto assets of section 21. Every number comes from `facts.ts`, and
- * the symbols come from `UNIVERSE`.
+ * sections 10 and 15, and the crypto assets of sections 21 and 23. Every number comes from `facts.ts`,
+ * and the symbols, and the chain each crypto feed is read on, come from `UNIVERSE`.
  * When the contract or the code in `packages/reputation` changes, this page changes with it,
  * and the version name with it.
  */
@@ -43,9 +44,13 @@ const SUSPECT_MOVE = percentOf(facts.suspectMoveBps);
 const PRICE_GAP = percentOf(feedFacts.deviationBps);
 const HEARTBEAT_HOURS = feedFacts.heartbeatHours;
 const STALE_AFTER = hoursOf(facts.feedStaleAfterSeconds);
-const CRYPTO_PRICE_GAP = percentOf(cryptoFeedFacts.deviationBps);
 const CRYPTO_HEARTBEAT_HOURS = cryptoFeedFacts.heartbeatHours;
-const CRYPTO_STALE_AFTER = hoursOf(cryptoFeedFacts.staleAfterSeconds);
+const MAIN_CHAIN = chainFacts.main.name;
+const SECOND_CHAIN = chainFacts.second.name;
+const SEQUENCER_GRACE = hoursOf(chainFacts.second.sequencerGraceSeconds);
+/** "first hour", or "first two hours" should the grace period change. */
+const SEQUENCER_GRACE_FIRST =
+  chainFacts.second.sequencerGraceSeconds === 3_600 ? 'first hour' : `first ${SEQUENCER_GRACE}`;
 const QUIET_AFTER = hoursOf(facts.marketQuietAfterSeconds);
 const NODE_LAG = minutesOf(feedFacts.nodeLagSeconds);
 const FUTURE_TOLERANCE = minutesOf(feedFacts.futureToleranceSeconds);
@@ -73,10 +78,10 @@ function capital(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-/** ["QQQ", "SGOV", "SPY"] becomes "QQQ, SGOV and SPY". */
-function listed(items: readonly string[]): string {
+/** ["QQQ", "SGOV", "SPY"] becomes "QQQ, SGOV and SPY", or "QQQ, SGOV or SPY" with "or". */
+function listed(items: readonly string[], joiner: 'and' | 'or' = 'and'): string {
   if (items.length < 2) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  return `${items.slice(0, -1).join(', ')} ${joiner} ${items[items.length - 1]}`;
 }
 
 // --- the symbols of the league, from the data -------------------------------------------------
@@ -99,20 +104,73 @@ const FUNDS: Record<string, { holds: string; shares: boolean }> = {
  * here: a crypto asset that is not listed is described only as a crypto asset.
  */
 const CRYPTO_ABOUT: Record<string, { name: string; follows: string }> = {
+  BNB: { name: 'BNB', follows: 'The price of one BNB in US dollars' },
   BTC: { name: 'Bitcoin', follows: 'The price of one BTC in US dollars' },
   ETH: { name: 'Ethereum', follows: 'The price of one ETH in US dollars' },
+  HYPE: { name: 'Hyperliquid', follows: 'The price of one HYPE in US dollars' },
+  SOL: { name: 'Solana', follows: 'The price of one SOL in US dollars' },
 };
 
+/**
+ * Values by symbol as one phrase, grouped by value in the order of `symbols`:
+ * "25 hours for BTC and ETH, six hours for BNB, and two hours for SOL".
+ */
+function bySymbol(
+  values: Readonly<Record<string, number>>,
+  symbols: readonly string[],
+  format: (value: number) => string,
+) {
+  const groups = new Map<number, string[]>();
+  for (const symbol of symbols) {
+    const value = values[symbol];
+    if (value === undefined) continue;
+    groups.set(value, [...(groups.get(value) ?? []), symbol]);
+  }
+  const parts = [...groups].map(([value, members]) => `${format(value)} for ${listed(members)}`);
+  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+type CryptoEntry = Extract<(typeof UNIVERSE)[number], { kind: 'crypto' }>;
+
+/** True for a crypto asset whose feed is read on Arbitrum One (contract section 23). */
+function onSecondChain(token: CryptoEntry): boolean {
+  return token.chainId === chainFacts.second.chainId;
+}
+
 const STOCKS = UNIVERSE.filter((token) => token.kind !== 'crypto');
-const CRYPTO = UNIVERSE.filter((token) => token.kind === 'crypto');
+const CRYPTO = UNIVERSE.filter((token): token is CryptoEntry => token.kind === 'crypto');
 const SYMBOL_COUNT = UNIVERSE.length;
 const TOKEN_COUNT = STOCKS.length;
 const CRYPTO_COUNT = inWords(CRYPTO.length);
-const CRYPTO_SYMBOLS = listed(CRYPTO.map((token) => token.symbol));
+const CRYPTO_SYMBOL_LIST = CRYPTO.map((token) => token.symbol);
+const CRYPTO_SYMBOLS = listed(CRYPTO_SYMBOL_LIST);
+const MAIN_CRYPTO_SYMBOL_LIST = CRYPTO.filter((token) => !onSecondChain(token)).map((token) => token.symbol);
+const MAIN_CRYPTO_SYMBOLS = listed(MAIN_CRYPTO_SYMBOL_LIST);
+const SECOND_CRYPTO = CRYPTO.filter(onSecondChain);
+const SECOND_SYMBOLS = listed(SECOND_CRYPTO.map((token) => token.symbol));
+const SECOND_COUNT = inWords(SECOND_CRYPTO.length);
+const HAS_SECOND_CHAIN = SECOND_CRYPTO.length > 0;
+const STALE_BY_SYMBOL: Readonly<Record<string, number>> = cryptoFeedFacts.staleAfterSecondsBySymbol;
+const GAP_BY_SYMBOL: Readonly<Record<string, number>> = {
+  ...cryptoFeedFacts.longestGapSeconds,
+  ...cryptoFeedFacts.arbitrumLongestGapSeconds,
+};
+const CRYPTO_PRICE_GAPS = bySymbol(cryptoFeedFacts.deviationBpsBySymbol, CRYPTO_SYMBOL_LIST, percentOf);
+const CRYPTO_STALE_LIMITS = bySymbol(STALE_BY_SYMBOL, CRYPTO_SYMBOL_LIST, hoursOf);
 const CRYPTO_ROWS = CRYPTO.map((token) => {
   const about = CRYPTO_ABOUT[token.symbol];
   const feed = (cryptoFeedFacts.feeds as Record<string, string>)[token.symbol] ?? token.feedAddress;
-  return [token.symbol, about?.name ?? token.name, about?.follows ?? 'A crypto asset', feed];
+  const chain = onSecondChain(token) ? SECOND_CHAIN : MAIN_CHAIN;
+  return [token.symbol, about?.name ?? token.name, about?.follows ?? 'A crypto asset', chain, feed];
+});
+const CRYPTO_GAP_ROWS = CRYPTO.map((token) => {
+  const stale = STALE_BY_SYMBOL[token.symbol];
+  const gap = GAP_BY_SYMBOL[token.symbol];
+  return [
+    token.symbol,
+    stale === undefined ? 'No limit set, so always halted' : hoursOf(stale),
+    gap === undefined ? 'Not measured' : `${(gap / 3_600).toFixed(1)} hours`,
+  ];
 });
 const TOKEN_ROWS = STOCKS.map((token) => {
   const fund = FUNDS[token.symbol];
@@ -134,7 +192,28 @@ const EXAMPLE_END = facts.startingCashUsd * 1.0684;
 const EXAMPLE_RETURN = (((EXAMPLE_END - facts.startingCashUsd) * 100) / facts.startingCashUsd).toFixed(2);
 const EXAMPLE_DRAWDOWN = (((EXAMPLE_PEAK - EXAMPLE_LOW) * 100) / EXAMPLE_PEAK).toFixed(2);
 
-/** The crypto assets of section 21. Left out while the universe data lists none. */
+/**
+ * How Prix reads Arbitrum One for the crypto assets whose feeds are there (contract section 23). Left
+ * out while the universe data lists none.
+ */
+const SECOND_CHAIN_BLOCKS: DocSection['blocks'] = [
+  {
+    kind: 'paragraph',
+    text: `How Prix reads ${SECOND_CHAIN} for ${SECOND_SYMBOLS}:`,
+  },
+  {
+    kind: 'list',
+    ordered: false,
+    items: [
+      `When a round starts, Prix reads ${SECOND_CHAIN} at the same time as ${MAIN_CHAIN}. It asks the official public endpoint of ${SECOND_CHAIN} first and takes its answer alone. When that endpoint gives no answer, Prix asks two other public endpoints and takes their answer only when both give exactly the same prices at the same block.`,
+      `${SECOND_CHAIN} depends on a sequencer, the service that puts its transactions in order, and Chainlink publishes whether it is up. While it is down, and for the ${SEQUENCER_GRACE_FIRST} after it is back up, prices on ${SECOND_CHAIN} can be out of date, so Prix does not trust them.`,
+      `When ${SECOND_CHAIN} cannot be read and confirmed, or its sequencer is down or in its ${SEQUENCER_GRACE_FIRST} back up, ${SECOND_SYMBOLS} are halted for that round. Each is valued at the last price Prix trusted for it, and none of them is traded.`,
+      `The league goes on without them. A problem on ${SECOND_CHAIN} never closes the market and never touches the price of ${listed(['a Stock Token', ...MAIN_CRYPTO_SYMBOL_LIST], 'or')}.`,
+    ],
+  },
+];
+
+/** The crypto assets of sections 21 and 23. Left out while the universe data lists none. */
 const CRYPTO_SECTION: DocSection = {
   id: 'crypto-assets',
   heading: `The ${CRYPTO_COUNT} crypto assets`,
@@ -145,12 +224,30 @@ const CRYPTO_SECTION: DocSection = {
     },
     {
       kind: 'paragraph',
-      text: `Each has a Chainlink price feed on Robinhood Chain, the same kind of feed as a Stock Token has, so Prix reads every price of the league from one chain. The feed addresses were read from Chainlink’s feed list for Robinhood Chain and checked on the chain on ${formatDay(cryptoFeedFacts.readOn)}.`,
+      text: HAS_SECOND_CHAIN
+        ? `Each has a Chainlink price feed, the same kind of feed as a Stock Token has. The feeds of ${MAIN_CRYPTO_SYMBOLS} are on ${MAIN_CHAIN}, beside those of the Stock Tokens. The feeds of ${SECOND_SYMBOLS} exist only on ${SECOND_CHAIN}, another public chain, so Prix reads ${SECOND_CHAIN} for those ${SECOND_COUNT} prices and for nothing else. The feed addresses were read from Chainlink’s feed lists for both chains and checked on each chain on ${formatDay(cryptoFeedFacts.readOn)}.`
+        : `Each has a Chainlink price feed on ${MAIN_CHAIN}, the same kind of feed as a Stock Token has, so Prix reads every price of the league from one chain. The feed addresses were read from Chainlink’s feed list for ${MAIN_CHAIN} and checked on the chain on ${formatDay(cryptoFeedFacts.readOn)}.`,
     },
     {
       kind: 'table',
-      head: ['Symbol', 'Name', 'What it follows', 'Price feed on Robinhood Chain'],
+      head: ['Symbol', 'Name', 'What it follows', 'Chain of its feed', 'Price feed'],
       rows: CRYPTO_ROWS,
+    },
+    ...(HAS_SECOND_CHAIN ? SECOND_CHAIN_BLOCKS : []),
+    {
+      kind: 'paragraph',
+      text: `A crypto feed that has not published for longer than its limit halts its own coin for that round, and nothing else. ${MAIN_CRYPTO_SYMBOLS} have the limit of a Stock Token feed, ${STALE_AFTER}: their ${CRYPTO_HEARTBEAT_HOURS}-hour update and one hour more.${HAS_SECOND_CHAIN ? ` The limits of ${SECOND_SYMBOLS} are about twice the longest gap measured between two of their prices, well inside their ${CRYPTO_HEARTBEAT_HOURS}-hour update, so a feed that stops is noticed within hours.` : ''} Until a feed passes its limit, a feed that has stopped cannot be told from a calm one.`,
+    },
+    {
+      kind: 'table',
+      head: ['Symbol', 'Halted when its feed is older than', 'Longest gap measured'],
+      rows: CRYPTO_GAP_ROWS,
+    },
+    {
+      kind: 'paragraph',
+      text: HAS_SECOND_CHAIN
+        ? `The gaps of ${listed(Object.keys(cryptoFeedFacts.longestGapSeconds).sort())} are the longest over the last ${cryptoFeedFacts.gapsSampleUpdates} updates of each feed, measured on ${formatDay(cryptoFeedFacts.gapsMeasuredOn)}. Those of ${listed(Object.keys(cryptoFeedFacts.arbitrumLongestGapSeconds).sort())} are the longest over ${cryptoFeedFacts.arbitrumGapsSampleDays} days, measured on ${formatDay(cryptoFeedFacts.arbitrumGapsMeasuredOn)}.`
+        : `Each gap is the longest over the last ${cryptoFeedFacts.gapsSampleUpdates} updates of the feed, measured on ${formatDay(cryptoFeedFacts.gapsMeasuredOn)}.`,
     },
     {
       kind: 'list',
@@ -177,7 +274,7 @@ const methodology: Doc = {
   sections: [
     {
       id: 'simulation',
-      heading: 'A simulation, and only that',
+      heading: 'The league is a simulation',
       blocks: [
         {
           kind: 'paragraph',
@@ -187,9 +284,10 @@ const methodology: Doc = {
           kind: 'list',
           ordered: false,
           items: [
-            'Prix is a paper trading simulation. Every amount on the site is in virtual USD, with no money behind it.',
-            'No real orders are placed. Prix holds no funds and trades for nobody.',
-            'Nothing on Prix is investment advice. A decision is shown as a record of what a simulated portfolio did, and no page says or implies that anyone should buy or sell anything.',
+            'The league is a paper trading simulation. Every amount in it is in virtual USD, with no money behind it.',
+            'The league places no real orders, and Prix holds no funds for it.',
+            `Prix Live is separate: there an agent trades real money in its owner’s own Safe, inside limits enforced on chain. Scoring ${VERSION} does not rank Live wallets, and this page describes the league only.`,
+            'Nothing on Prix is investment advice. In the league, a decision is shown as a record of what a simulated portfolio did, and no page says or implies that anyone should buy or sell anything.',
           ],
         },
         { kind: 'note', text: deckText('common.disclaimer') },
@@ -227,7 +325,7 @@ const methodology: Doc = {
         },
         {
           kind: 'paragraph',
-          text: 'Prix uses Stock Tokens and crypto assets as a list of symbols and as a source of reference prices, and for nothing else. Prix does not offer, sell or hold any of them, and a holding on Prix is a paper record, not a token or a coin. What a Stock Token is, and who may hold one, is for Robinhood to say.',
+          text: 'The league uses Stock Tokens and crypto assets as a list of symbols and as a source of reference prices, and for nothing else. Prix does not offer, sell or hold any of them, and a holding in the league is a paper record, not a token or a coin. What a Stock Token is, and who may hold one, is for Robinhood to say.',
         },
         { kind: 'link', text: deckText('common.stockTokensDisclosure'), href: links.stockTokenDisclosure },
       ],
@@ -270,7 +368,7 @@ const methodology: Doc = {
       blocks: [
         {
           kind: 'paragraph',
-          text: 'Each symbol has a Chainlink price feed: a contract on Robinhood Chain that publishes a reference price for it. A simulated trade fills at that reference price and at no other. Prix never uses prices from trading pools, because a thin pool can be pushed around to move a rank.',
+          text: `Each symbol has a Chainlink price feed: a contract on ${MAIN_CHAIN}${HAS_SECOND_CHAIN ? `, or on ${SECOND_CHAIN} for ${SECOND_SYMBOLS},` : ''} that publishes a reference price for it. A simulated trade fills at that reference price and at no other. Prix never uses prices from trading pools, because a thin pool can be pushed around to move a rank.`,
         },
         {
           kind: 'paragraph',
@@ -282,7 +380,7 @@ const methodology: Doc = {
         },
         {
           kind: 'paragraph',
-          text: `For a crypto asset, a reference price is the price of one coin in US dollars. Its feed follows a rule of the same kind: a new price after a move of ${CRYPTO_PRICE_GAP}, and otherwise once every ${CRYPTO_HEARTBEAT_HOURS} hours.`,
+          text: `For a crypto asset, a reference price is the price of one coin in US dollars. Its feed follows a rule of the same kind: a new price after a move of ${CRYPTO_PRICE_GAPS}, and otherwise once every ${CRYPTO_HEARTBEAT_HOURS} hours.`,
         },
         {
           kind: 'paragraph',
@@ -306,11 +404,14 @@ const methodology: Doc = {
           kind: 'list',
           ordered: false,
           items: [
-            CRYPTO_STALE_AFTER === STALE_AFTER
-              ? `Its feed last published more than ${STALE_AFTER} before Prix read it. A feed that old has missed its ${HEARTBEAT_HOURS}-hour update. The limit is the same for a Stock Token and a crypto asset.`
-              : `Its feed last published more than ${STALE_AFTER} before Prix read it, or more than ${CRYPTO_STALE_AFTER} for a crypto asset. A feed that old has missed its ${HEARTBEAT_HOURS}-hour update.`,
+            `Its feed last published longer ago than its limit when Prix read it. For a Stock Token the limit is ${STALE_AFTER}: a feed that old has missed its ${HEARTBEAT_HOURS}-hour update. For a crypto asset it is ${CRYPTO_STALE_LIMITS}, as the section on the crypto assets explains.`,
             'For a Stock Token: the token reports that its price feed is paused, as Robinhood does while it processes a corporate action such as a stock split, or that report could not be read.',
             'For a crypto asset: its feed could not be read, or returned a price that is not valid under the rules below.',
+            ...(HAS_SECOND_CHAIN
+              ? [
+                  `For ${SECOND_SYMBOLS}: ${SECOND_CHAIN} could not be read and confirmed, or its sequencer is down or has been back up for ${SEQUENCER_GRACE} or less.`,
+                ]
+              : []),
             'Its price is held for review after a sudden move. The section on holds says how.',
           ],
         },
@@ -334,7 +435,7 @@ const methodology: Doc = {
         },
         {
           kind: 'paragraph',
-          text: 'The crypto feeds take no part in these rules. They publish on weekends too, and that does not open the market. A crypto feed that is stale, not valid or cannot be read halts its own symbol for that round and nothing else. The market can be open while a crypto asset is halted. When a crypto asset has no readable price, it is valued at the last price Prix trusted for it.',
+          text: `The crypto feeds take no part in these rules. They publish on weekends too, and that does not open the market. A crypto feed that is stale, not valid or cannot be read halts its own symbol for that round and nothing else.${HAS_SECOND_CHAIN ? ` Nor does ${SECOND_CHAIN} take part: a problem there halts ${SECOND_SYMBOLS} for that round, and nothing else.` : ''} The market can be open while a crypto asset is halted. When a crypto asset has no readable price, it is valued at the last price Prix trusted for it.`,
         },
         {
           kind: 'paragraph',
@@ -597,6 +698,14 @@ const methodology: Doc = {
           kind: 'paragraph',
           text: 'While a symbol is on hold it is halted. Every portfolio values it at the last trusted price, and no agent trades it. A person at Prix reviews the move and releases the hold, and at the next round the feed’s price is used again.',
         },
+        ...(CRYPTO.length > 0
+          ? [
+              {
+                kind: 'paragraph' as const,
+                text: `Crypto prices keep moving on weekends and holidays, when no round runs. So the first round after one compares each crypto asset’s price with a price from before it. A move of more than ${SUSPECT_MOVE} over that span puts the coin on hold like any other symbol, ${CRYPTO_SYMBOLS} alike, until a person releases it.`,
+              },
+            ]
+          : []),
         {
           kind: 'paragraph',
           text: `If holds leave more than ${MAX_HALTED} Stock Tokens halted, the market is closed and the site says “${deckText('states.leaguePaused')}”.`,
@@ -711,7 +820,12 @@ const methodology: Doc = {
             `One feed that stops. While the market is open, a feed that has stopped cannot be told from a calm one for up to ${STALE_AFTER}, and its last price is used for that long.`,
             `Every Stock Token feed stopping at once. The market stays open for up to ${QUIET_AFTER} after the last price, at prices that old.`,
             'Crypto prices between rounds. A crypto asset’s price moves at night, on weekends and on holidays, and the league sees it only in its rounds. A 1-day return after a weekend spans the whole weekend.',
-            `Crypto feeds that stop. A crypto feed is halted after ${CRYPTO_STALE_AFTER} without a price, the same limit as for a Stock Token. On ${formatDay(cryptoFeedFacts.gapsMeasuredOn)}, over the last ${cryptoFeedFacts.gapsSampleUpdates} updates of each feed, the longest gap was ${grouped(cryptoFeedFacts.longestGapSeconds.ETH)} seconds for ETH and ${grouped(cryptoFeedFacts.longestGapSeconds.BTC)} seconds for BTC, against a limit of ${grouped(cryptoFeedFacts.staleAfterSeconds)} seconds. A gap longer than the limit halts the symbol until its feed publishes again.`,
+            `Crypto feeds that stop. A crypto feed is halted only once it has gone without a price for longer than its limit: ${CRYPTO_STALE_LIMITS}. Until then, a feed that has stopped cannot be told from a calm one, and its last price is used. On ${formatDay(cryptoFeedFacts.gapsMeasuredOn)}, over the last ${cryptoFeedFacts.gapsSampleUpdates} updates of each feed, the longest gap was ${grouped(cryptoFeedFacts.longestGapSeconds.ETH)} seconds for ETH and ${grouped(cryptoFeedFacts.longestGapSeconds.BTC)} seconds for BTC, close to their limit of ${grouped(cryptoFeedFacts.staleAfterSeconds)} seconds. A gap longer than the limit halts the coin until its feed publishes again.`,
+            ...(HAS_SECOND_CHAIN
+              ? [
+                  `A second chain. ${SECOND_SYMBOLS} depend on ${SECOND_CHAIN} and on public endpoints that promise no uptime. While ${SECOND_CHAIN} cannot be read and confirmed, or its sequencer is down or in its ${SEQUENCER_GRACE_FIRST} back up, those ${SECOND_COUNT} are valued at their last trusted price and cannot be traded. An agent that holds them can neither sell them nor add to them until a round reads ${SECOND_CHAIN} again.`,
+                ]
+              : []),
             'Interest and dividends. Cash earns no interest. A dividend reaches a portfolio only through the price of the token, and Prix pays none itself.',
             'Stock splits in practice. Robinhood and Chainlink document that a token’s price carries on unbroken through a stock split. No Stock Token had split when this page was written, so this has not yet been seen on the chain.',
             'What a holding has gained. A portfolio keeps no purchase prices, so a holding shows its value and its weight, and no gain or loss since it was bought.',

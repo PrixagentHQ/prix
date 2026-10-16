@@ -34,6 +34,8 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Clock"] }],
 
   // Workers Logs. The free plan stores 200,000 log events a day for three days, per account.
+  // Logs only, never traces: a trace records the URL of each fetch, and the bot token is in that URL's path
+  // (docs/contracts/phase-6-holders.md section 7). `observability.traces` stays absent.
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
@@ -69,7 +71,48 @@
     // Phase 6. "true" mounts the public /api/social routes; it turns on with the token launch.
     // Off, they answer the generic 404; the admin routes and the social jobs run either way.
     // Model Wars read the optional secret GROQ_API_KEY, which is never a variable here.
-    "SOCIAL_ENABLED": "true"
+    "SOCIAL_ENABLED": "true",
+    // Phase 6.3, the room ("Community chat"). Its public and writer routes are mounted only while this
+    // and SOCIAL_ENABLED both read "true". Off, they answer the generic 404; the admin's routes and the
+    // prune job run either way. It stays "false" until the gates of docs/contracts/phase-6-room.md
+    // section 12 are met and the founder says go. infra/README.md section 17.
+    "ROOM_ENABLED": "true",
+    // Messages of all wallets in one UTC day. 400 is the default; a figure above 600 is read as 600,
+    // and "0" is a room nobody but an admin writes in. Lowering it and deploying is how the room is slowed.
+    "ROOM_MESSAGES_PER_DAY": "400",
+    // Phase 6.4, pictures in the room (docs/contracts/phase-6-pictures.md). The upload, the bytes and the
+    // report are mounted only while this, ROOM_ENABLED and SOCIAL_ENABLED all read "true". Off, they answer
+    // the generic 404 and the room's read answers as before; the admin's routes and the sweep job run
+    // either way. It stays "false" until every gate of that contract's section 16 holds and the founder says go.
+    // infra/README.md section 18.
+    "ROOM_PICTURES_ENABLED": "true",
+    // Pictures of all wallets in one UTC day. 60 is the default; a figure above 150 is read as 150, and "0"
+    // stops uploads and keeps serving what is there. The first version opens by this variable alone: "5"
+    // for the drill, "20" for the first days, "60" after a week, each on the founder's word (section 15, step 5).
+    "ROOM_PICTURES_PER_DAY": "5",
+    // Pictures shown in one UTC day, all readers together: each is one request of the 100,000 the whole
+    // site has in a day and one of KV's 100,000 reads. 20000 is the default; above 30000 is read as 30000.
+    "ROOM_PICTURE_VIEWS_PER_DAY": "20000",
+    // Phase 6.7, the holders' poll (docs/contracts/phase-6-holders.md section 4.6). The vote, /api/polls,
+    // /api/polls/me and /api/polls/status are mounted only while this reads exactly "true". Off, they answer
+    // the generic 404; the admin's tally route and the poll_tally job run either way. It stays "false" until
+    // the gates of that contract's section 12 hold and the founder says go. infra/README.md section 19.
+    "POLLS_ENABLED": "false",
+    // Phase 6.8, the holders' second wave (docs/contracts/phase-6-holders-2.md section 5). Each stays off
+    // until its gates of section 11 hold and the founder says go; infra/README.md section 21 is the order.
+    // "true", with the room's own switches: the room's Holder mark and its caps of a day by tier (30, 60,
+    // 90, 120). Anything else: no mark, and 30 messages a day for every wallet.
+    "ROOM_HOLDERS": "true",
+    // "true", with SOCIAL_ENABLED: GET /api/tape and the page /tape. Anything else: both are the 404.
+    "TAPE_ENABLED": "true",
+    // The holders' lounge on Telegram: "on" only with the two values below set, the bot configured and both
+    // holders waves merged. The chat id is the Prix Community group's (-100 and its digits) and the link
+    // the one the founder makes with "Request admin approval" on (https://t.me/+ and its code). Neither is a
+    // secret. Empty until the founder gives them; "on" with either empty or wrong logs lounge_config_invalid and
+    // keeps the lounge off.
+    "HOLDERS_LOUNGE": "off",
+    "HOLDERS_LOUNGE_CHAT_ID": "",
+    "HOLDERS_LOUNGE_INVITE_URL": ""
   },
 
   // A deploy is refused while one of these is not set. `RPC_URL` is a third secret and optional.
@@ -87,6 +130,11 @@
     }
   ],
 
+  // The KV namespace for the room's pictures. Replace the id with one of your own account's
+  // (`wrangler kv namespace create`), or remove the line and set ROOM_PICTURES_ENABLED to "false" to keep
+  // pictures off. Never a binding without an id: `wrangler deploy` would create a namespace by itself.
+  "kv_namespaces": [{ "binding": "ROOM_PICTURES", "id": "0407f2417b4e49029d406858639fbe04" }],
+
   "ai": {
     "binding": "AI"
   },
@@ -99,6 +147,10 @@
   "ratelimits": [
     { "name": "RATE_SIGN_IN", "namespace_id": "466301", "simple": { "limit": 20, "period": 60 } },
     { "name": "RATE_WRITE", "namespace_id": "466302", "simple": { "limit": 20, "period": 60 } },
-    { "name": "RATE_READ", "namespace_id": "466303", "simple": { "limit": 300, "period": 60 } }
+    { "name": "RATE_READ", "namespace_id": "466303", "simple": { "limit": 300, "period": 60 } },
+    // Phase 6.4: the `picture` rule of the two bytes routes of the room's pictures, for a network (an IPv4
+    // address or the /48 of an IPv6 one), on top of `read`. `limit` must equal ROOM_PICTURE_RATE_PER_MINUTE
+    // of packages/contracts; apps/api/src/room-entry.d1.test.ts fails when they differ.
+    { "name": "RATE_PICTURE", "namespace_id": "466304", "simple": { "limit": 10, "period": 60 } }
   ]
 }

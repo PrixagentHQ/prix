@@ -1,6 +1,7 @@
 import type { MarketEndpointFailure, MarketSnapshot } from '@prix/contracts';
 import {
-  CRYPTO_FEED_STALE_AFTER_SECONDS,
+  ARBITRUM_CHAIN_ID,
+  CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
   FEED_STALE_AFTER_SECONDS,
   MARKET_QUIET_AFTER_SECONDS,
   marketSnapshotSchema,
@@ -9,6 +10,7 @@ import {
 import { PUBLIC_RPC_URLS, rpcEndpoints, UNIVERSE } from '@prix/market';
 import { createMarketWith, RETRY_PAUSE_MS } from '@prix/market/market';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { TEST_ARBITRUM } from '../support/fake-arbitrum.ts';
 import type { EndpointMode, FeedState } from '../support/fake-rpc.ts';
 import { FakeRpc } from '../support/fake-rpc.ts';
 import { utc } from '../support/fixtures.ts';
@@ -50,6 +52,9 @@ interface Scene {
 function scene(): Scene {
   const rpc = new FakeRpc();
   rpc.blockTimestamp = NOW_SECONDS - 2;
+  // Arbitrum One keeps its own clock here, so a Robinhood node that lags leaves it current: this
+  // suite is about the Robinhood endpoints (section 23 has its own suites).
+  rpc.arbitrum.set({ blockTimestamp: NOW_SECONDS - 1 });
   UNIVERSE.forEach((token, index) => {
     rpc.setFeed(token.feedAddress, {
       answer: BigInt(100 + index) * 10n ** BigInt(token.feedDecimals),
@@ -103,11 +108,17 @@ function scene(): Scene {
       const market = createMarketWith(
         {
           rpcUrls: options.rpcUrls ?? [PRIMARY, FALLBACK],
+          arbitrum: TEST_ARBITRUM,
           staleAfterSeconds: FEED_STALE_AFTER_SECONDS,
-          cryptoStaleAfterSeconds: CRYPTO_FEED_STALE_AFTER_SECONDS,
+          cryptoStaleAfterSecondsBySymbol: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
           quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
           fetch: scriptedFetch,
-          onEndpointFailure: options.hook ?? ((failure) => failures.push(failure)),
+          // The Robinhood endpoints only: an Arbitrum failure carries chainId 42161 (section 23).
+          onEndpointFailure:
+            options.hook ??
+            ((failure) => {
+              if (failure.chainId !== ARBITRUM_CHAIN_ID) failures.push(failure);
+            }),
         },
         {
           pause: async (ms) => {
@@ -380,8 +391,9 @@ describe('market: the report of a failure', () => {
     const market = createMarketWith(
       {
         rpcUrls: [PRIMARY],
+        arbitrum: TEST_ARBITRUM,
         staleAfterSeconds: FEED_STALE_AFTER_SECONDS,
-        cryptoStaleAfterSeconds: CRYPTO_FEED_STALE_AFTER_SECONDS,
+        cryptoStaleAfterSecondsBySymbol: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
         quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
         fetch: async () => new Response('no', { status: 403 }),
       },

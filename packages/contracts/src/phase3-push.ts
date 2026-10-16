@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import type { ApiDeps } from './api.ts';
+import { z } from './zod.ts';
 
 // Browser push for the follow notes. A subscription is the address of a push service that a
 // browser gave the page. The address is untrusted input: the Worker fetches it, so only the hosts

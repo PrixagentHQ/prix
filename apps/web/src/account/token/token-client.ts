@@ -1,6 +1,7 @@
 import type {
   ApiError,
   ApiErrorCode,
+  OwnerHoldsSetting,
   TokenConfigInput,
   TokenConfigResponse,
   TokenMeResponse,
@@ -34,7 +35,7 @@ import { formatHolding, formatUnits } from './format.ts';
  * What this page shows is what the server read. Nothing here decides a tier.
  */
 
-type SchemaName = 'me' | 'config' | 'probe' | 'apiError';
+type SchemaName = 'me' | 'config' | 'probe' | 'ownerHolds' | 'apiError';
 
 async function check<T>(name: SchemaName, body: unknown): Promise<T | undefined> {
   if (!import.meta.env.SSR) return looksRight(name, body) ? (body as T) : undefined;
@@ -43,6 +44,7 @@ async function check<T>(name: SchemaName, body: unknown): Promise<T | undefined>
     me: contracts.tokenMeResponseSchema,
     config: contracts.tokenConfigResponseSchema,
     probe: contracts.tokenProbeResponseSchema,
+    ownerHolds: contracts.ownerHoldsSettingSchema,
     apiError: contracts.apiErrorSchema,
   };
   const parsed = schemas[name].safeParse(body);
@@ -57,6 +59,7 @@ function looksRight(name: SchemaName, body: unknown): boolean {
     return typeof record.tier === 'number' && typeof record.slots === 'object' && record.slots !== null;
   if (name === 'config') return typeof record.config === 'object' && record.config !== null;
   if (name === 'probe') return typeof record.tier === 'number' && typeof record.balance === 'string';
+  if (name === 'ownerHolds') return typeof record.show === 'boolean' && Object.keys(record).length === 1;
   return typeof record.error === 'object' && record.error !== null;
 }
 
@@ -136,6 +139,24 @@ export function refreshTokenMe(context?: ApiContext): Promise<ApiResult<TokenMeR
   return send<TokenMeResponse>(context, { method: 'POST', path: '/api/token/refresh' }, 'me');
 }
 
+/**
+ * GET /api/token/me/owner-holds (docs/contracts/phase-6-holders.md section 3): the wallet's choice to show
+ * "Owner holds $PRIX" on its agents' pages. Its status also says whether the route is there at all
+ * (`ownerHoldsRouteOn`): 404 while the API does not have B's half yet.
+ */
+export function fetchOwnerHolds(context?: ApiContext): Promise<ApiResult<OwnerHoldsSetting>> {
+  return send<OwnerHoldsSetting>(context, { method: 'GET', path: '/api/token/me/owner-holds' }, 'ownerHolds');
+}
+
+/** PUT /api/token/me/owner-holds with `{ show }`. The server books the write and answers the stored choice. */
+export function saveOwnerHolds(show: boolean, context?: ApiContext): Promise<ApiResult<OwnerHoldsSetting>> {
+  return send<OwnerHoldsSetting>(
+    context,
+    { method: 'PUT', path: '/api/token/me/owner-holds', body: { show } },
+    'ownerHolds',
+  );
+}
+
 /** GET /api/admin/token/config. */
 export function fetchTokenConfig(context?: ApiContext): Promise<ApiResult<TokenConfigResponse>> {
   return send<TokenConfigResponse>(context, { method: 'GET', path: '/api/admin/token/config' }, 'config');
@@ -169,9 +190,37 @@ export function refreshAfterSignIn(): void {
   void refreshTokenMe();
 }
 
+/**
+ * The mark's switch (docs/contracts/phase-6-holders.md section 3): a checkbox that saves on change. While the
+ * PUT runs the box is held; on success it shows what the server stored, on a failure it goes back to what it
+ * was and the form's outlet says why. The server decides; the box only asks.
+ */
+export function mountOwnerHolds(
+  form: HTMLElement,
+  save: (show: boolean) => Promise<ApiResult<OwnerHoldsSetting>> = (show) => saveOwnerHolds(show),
+): void {
+  const box = form.querySelector<HTMLInputElement>('input[name="ownerHolds"]');
+  if (!box) return;
+  form.addEventListener('submit', (event) => event.preventDefault());
+  box.addEventListener('change', async () => {
+    const wanted = box.checked;
+    clearMessage(form);
+    box.disabled = true;
+    form.setAttribute('aria-busy', 'true');
+    const result = await save(wanted);
+    box.disabled = false;
+    form.removeAttribute('aria-busy');
+    box.checked = result.ok ? result.data.show : !wanted;
+    if (!result.ok) showFailure(form, result);
+    box.focus({ preventScroll: true });
+  });
+}
+
 /** The tier page: "Check again" asks the server to read the balance again, then shows what it read. */
 export function mountToken(): void {
   showConfirmation();
+  const ownerHolds = document.querySelector<HTMLElement>('[data-owner-holds-form]');
+  if (ownerHolds) mountOwnerHolds(ownerHolds);
   const button = document.querySelector<HTMLButtonElement>('button[data-token-check]');
   const scope = button?.closest<HTMLElement>('[data-scope]');
   if (!button || !scope) return;

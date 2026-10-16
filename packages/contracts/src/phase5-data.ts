@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { RateLimiter } from './api.ts';
 import {
   agentPublicSchema,
@@ -24,6 +23,7 @@ import type { ScoringEngine } from './scoring.ts';
 import { agentStatsSchema, rowStatusSchema } from './scoring.ts';
 import type { Store } from './store.ts';
 import { seasonSchema } from './ticks.ts';
+import { z } from './zod.ts';
 
 /**
  * Phase 5, the data network: a read-only, keyed, metered and cached API under /api/v1, an MCP

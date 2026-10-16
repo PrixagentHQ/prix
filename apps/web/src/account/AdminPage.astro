@@ -77,7 +77,10 @@ const words = {
       </>
     ) : (
       <>
-        <PageHead title={title} intro={text('admin.intro', 'This page is for the people who run Prix.')} />
+        <PageHead title={title} intro={text('admin.intro', 'This page is for the people who run Prix.')}>
+          {/* The admins' other pages, at the end of the head's row. The API checks the wallet again there. */}
+          <Button href="/admin/chat" label={text('social.roomAdminTitle', 'Community chat')} variant="secondary" />
+        </PageHead>
         <div class="page section">
         <div class="acct-column acct-cards">
         <AccountCard

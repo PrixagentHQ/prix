@@ -328,6 +328,8 @@ function coin(symbol: string, n: number): UniverseToken {
     feedDecimals: 8,
     sourceUrl: SOURCE_URL,
     readOn: '2026-10-09',
+    // Section 23: a crypto entry names its feed chain; BTC and ETH are read on Robinhood Chain.
+    chainId: 4663,
   };
 }
 

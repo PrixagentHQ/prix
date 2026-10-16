@@ -3,7 +3,13 @@
  * the product, so only the operator edits this file. docs/CONTRACTS.md explains them.
  */
 
+/** Robinhood Chain: every Stock Token, ETH and BTC, the agent wallets and every on-chain record. */
 export const CHAIN_ID = 4663;
+/**
+ * Arbitrum One, read for the prices of SOL, BNB and HYPE only (section 23): their Chainlink feeds
+ * exist on no other chain we read. Nothing else is ever read or written there.
+ */
+export const ARBITRUM_CHAIN_ID = 42161;
 
 /** One USD is 1,000,000 micro-USD. One share is 1,000,000 micro-shares. */
 export const MICRO = 1_000_000;
@@ -30,8 +36,11 @@ export const MIN_PRICE_MICRO = 10_000;
 
 /** The league trades this many Stock Tokens. */
 export const STOCK_UNIVERSE_SIZE = 20;
-/** And this many crypto assets (section 21: ETH and BTC, with their feeds on Robinhood Chain). */
-export const CRYPTO_UNIVERSE_SIZE = 2;
+/**
+ * And this many crypto assets: ETH and BTC with their feeds on Robinhood Chain (section 21), SOL, BNB
+ * and HYPE with their feeds on Arbitrum One (section 23).
+ */
+export const CRYPTO_UNIVERSE_SIZE = 5;
 /** Every symbol of the universe, plus cash. */
 export const UNIVERSE_SIZE = STOCK_UNIVERSE_SIZE + CRYPTO_UNIVERSE_SIZE;
 /**
@@ -47,10 +56,59 @@ export const MAX_HALTED_FEEDS = 2;
  */
 export const FEED_STALE_AFTER_SECONDS = 90_000;
 /**
- * The crypto feeds of section 21 publish on a 0.5% move or on a 24 hour heartbeat too, every day of
- * the week. Its own constant, so it can tighten once their real gaps are measured.
+ * The crypto feeds of section 21 (ETH and BTC on Robinhood Chain) publish on a 0.5% move or on a 24
+ * hour heartbeat too, every day of the week. Since section 23 it is the value of those two symbols
+ * in CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL, which is what the market reads.
  */
 export const CRYPTO_FEED_STALE_AFTER_SECONDS = 90_000;
+/**
+ * The staleness of each crypto feed, by symbol (section 23). A crypto feed older than its value halts
+ * its own symbol for the tick and nothing else. A crypto symbol missing here is halted at every tick:
+ * the market fails closed.
+ * - BTC, ETH: heartbeat 86,400 s plus one hour, as section 21.
+ * - SOL 7,200 s, BNB 21,600 s, HYPE 43,200 s: about 1.8 to 2.2 times the largest gap between two updates
+ *   measured over 15 days on Arbitrum One (SOL 4,023 s, BNB 9,816 s, HYPE 22,601 s; D-127), far inside
+ *   their 86,400 s heartbeat. A frozen feed is caught within hours, not a day. A gap above the value
+ *   halts that coin for the tick, which costs a trade, never a wrong price.
+ */
+export const CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL = {
+  BNB: 21_600,
+  BTC: CRYPTO_FEED_STALE_AFTER_SECONDS,
+  ETH: CRYPTO_FEED_STALE_AFTER_SECONDS,
+  HYPE: 43_200,
+  SOL: 7_200,
+} as const satisfies Readonly<Record<string, number>>;
+
+/**
+ * Arbitrum's official public endpoint, run by Offchain Labs: a read from it is taken alone, as the
+ * official Robinhood endpoint's is (section 20). Source: https://docs.arbitrum.io/build-decentralized-apps/reference/node-providers,
+ * read 2026-10-09; the page says it has no uptime, latency or rate-limit guarantee.
+ */
+export const ARBITRUM_OFFICIAL_RPC_URL = 'https://arb1.arbitrum.io/rpc';
+/**
+ * The confirming pair, two free public endpoints that need no key, as D-127 names them: PublicNode
+ * (the Arbitrum page above lists it, at arbitrum.publicnode.com) and dRPC
+ * (https://drpc.org/chainlist/arbitrum-mainnet-rpc). Both answered chain ID 42161 and the same feed
+ * answers as the official endpoint at one pinned block on 2026-10-09. A read from one is taken only
+ * when the other gives the same answer at the same L2 block. Neither holds state more than 60 to 120
+ * blocks (15 to 30 seconds) behind its head, and dRPC refuses a JSON-RPC batch of more than 3 calls
+ * (both measured 2026-10-09).
+ */
+export const ARBITRUM_CONFIRMING_RPC_URLS: readonly [string, string] = [
+  'https://arbitrum-one-rpc.publicnode.com',
+  'https://arbitrum.drpc.org',
+];
+/**
+ * After the Arbitrum sequencer comes back up, its feeds are not trusted until it has been up this
+ * long: Chainlink's GRACE_PERIOD_TIME, https://docs.chain.link/data-feeds/l2-sequencer-feeds, read
+ * 2026-10-09. Measured from the snapshot time, as every age is.
+ */
+export const ARBITRUM_SEQUENCER_GRACE_SECONDS = 3_600;
+/**
+ * The most requests one snapshot sends to Arbitrum: each endpoint once, with no retry (section 23).
+ * With Robinhood's reads it keeps a tick inside the 50 subrequests of the free plan.
+ */
+export const ARBITRUM_MAX_REQUESTS_PER_SNAPSHOT = 3;
 /**
  * The market is closed when no Stock Token feed has published for this long. Measured on the chain:
  * on trading days the newest update is at most about two hours old, and during a closure it is at
@@ -153,7 +211,6 @@ export const RESERVED_AGENT_NAMES: readonly string[] = [
   'robinhood',
   'chainlink',
   'pons',
-  'king',
 ];
 
 /**

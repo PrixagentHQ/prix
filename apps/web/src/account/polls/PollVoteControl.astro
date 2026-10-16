@@ -1,0 +1,85 @@
+---
+// The holders' poll's vote control (docs/contracts/phase-6-holders.md section 4.5), for the open poll on
+// /polls. web-site's page puts its list of options inside this control's slot and a `PollVoteOption` in each
+// option; this control holds what is said beneath them and the one script. The script asks GET /api/polls/me
+// once when the control opens, never on a timer, and then shows one of: the vote buttons with "Your vote" on
+// the current choice and `polls.changeNote`; `polls.needTokens`; `polls.gateOff`; `polls.signIn`. Until the
+// answer is there, the buttons are hidden and nothing claims a state.
+//
+// The page grants nothing: the server decides every vote (section 4.3), and a refusal shows its own sentence.
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Button from '../../design/Button.astro';
+import Notice from '../../design/Notice.astro';
+import { herePath, signInHref } from '../session.ts';
+import './polls.css';
+
+interface Props {
+  /** The open poll's id: the control's vote goes to POST /api/polls/:id/vote. */
+  pollId: string;
+  /** `minTokens` of GET /api/polls: the tier-1 amount in whole tokens, never a figure of the page's own. */
+  minTokens: number;
+}
+
+const { pollId, minTokens } = Astro.props;
+const amount = formatCount(minTokens);
+const here = herePath(Astro.url);
+
+const refusals = {
+  refusedClosed: text('polls.refusedClosed', 'This poll is closed.'),
+  refusedNotOpen: text('polls.refusedNotOpen', 'This poll is not open yet.'),
+  refusedFull: text('polls.refusedFull', 'This poll is full for now. Try again in an hour.'),
+  refusedUnknownOption: text('polls.refusedUnknownOption', 'That option is not part of this poll. Reload the page.'),
+  refusedRateLimited: text('polls.refusedRateLimited', 'Too many requests. Wait a minute and try again.'),
+  failed: text('polls.failed', 'Your vote was not saved. Try again.'),
+};
+---
+
+<div class="poll-vote" data-poll-vote={pollId}>
+  <slot />
+
+  <div class="poll-vote-state" data-poll-states aria-live="polite" aria-busy="true">
+    <p class="small" data-poll-state="vote" hidden>
+      {text('polls.changeNote', 'You can change your vote until the poll closes.')}
+    </p>
+    <p data-poll-state="signIn" hidden>
+      <Button href={signInHref(here)} label={text('polls.signIn', 'Sign in to vote')} variant="secondary" />
+    </p>
+    <p class="small" data-poll-state="needTokens" hidden>
+      {
+        text(
+          'polls.needTokens',
+          'Voting needs at least {amount} $PRIX in the signed-in wallet. A new holding counts about an hour after Prix first sees it.',
+          { amount },
+        )
+      }
+    </p>
+    <p class="small" data-poll-state="gateOff" hidden>
+      {text('polls.gateOff', 'Voting opens when $PRIX tiers are on.')}
+    </p>
+    <p class="small" data-poll-state="closed" hidden>{refusals.refusedClosed}</p>
+    <p class="small" data-poll-state="loadFailed" hidden>
+      {text('polls.loadFailed', 'The poll did not load. Reload the page to try again.')}
+    </p>
+  </div>
+
+  <p class="small poll-vote-own">{text('polls.prixWallets', "Prix's own wallets do not vote.")}</p>
+
+  <div class="outlet" data-outlet></div>
+  <template data-message="saved">
+    <Notice tone="status" title={text('polls.saved', 'Vote saved.')} />
+  </template>
+  {
+    Object.entries(refusals).map(([name, sentence]) => (
+      <template data-message={name}>
+        <Notice tone="error" title={sentence} />
+      </template>
+    ))
+  }
+</div>
+
+<script>
+  import { mountPollVotes } from './vote.ts';
+
+  mountPollVotes();
+</script>

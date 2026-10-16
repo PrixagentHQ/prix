@@ -9,6 +9,7 @@
 //
 //   view="primitives"    the tokens and every primitive in every state (the default)
 //   view="home"          the home page as the system draws it: tape, hero band, zones
+//   view="crawler"       the same home page with the crawler let in (docs/DESIGN.md section 30)
 //   theme="light"        any view in the light theme (dark is the default)
 //   view="landing"       a page of direction A, standing on the new primitives without a change
 //   view="agent"         the same for the agent's page
@@ -73,7 +74,7 @@ import TickerStrip from './TickerStrip.astro';
 import Toast from './Toast.astro';
 
 interface Props {
-  view?: 'primitives' | 'home' | 'landing' | 'agent' | 'agent-stress';
+  view?: 'primitives' | 'home' | 'crawler' | 'landing' | 'agent' | 'agent-stress';
   theme?: 'dark' | 'light';
 }
 
@@ -239,8 +240,10 @@ const leader = rankedAgents[0];
   account={view === 'agent' ? { short: '0x7a3f…c91e' } : null}
   noindex
   theme={theme}
+  home={view === 'home' || view === 'crawler'}
+  crawler={view === 'crawler'}
 >
-  {view === 'home' && <SampleHome />}
+  {(view === 'home' || view === 'crawler') && <SampleHome />}
   {view === 'landing' && <SampleLanding />}
   {view === 'agent' && <SampleAgentPage />}
   {view === 'agent-stress' && <SampleAgentPage stress />}
@@ -1062,6 +1065,80 @@ const leader = rankedAgents[0];
                 </tr>
               </tbody>
             </Table>
+            <Table
+              id="t-open-at"
+              caption="Sample: a scrolling table that opens at a marked column, beside its sticky first column"
+              captionVisible
+              scroll
+              stickyFirst
+              openAt="t2"
+              cue="Sample: swipe to see every column"
+              minWidth="40rem"
+              columns={[
+                { key: 'perk', label: 'Feature' },
+                { key: 't0', label: 'Tier 0', align: 'end', note: 'Below 10,000' },
+                { key: 't1', label: 'Tier 1', align: 'end', note: 'From 10,000' },
+                { key: 't2', label: 'Tier 2', align: 'end', note: 'From 100,000, sample mark' },
+                { key: 't3', label: 'Tier 3', align: 'end', note: 'From 1,000,000' },
+              ]}
+            >
+              <tbody>
+                <tr>
+                  <th scope="row">Sample: agents you can run</th>
+                  <td class="num c-t0">1</td>
+                  <td class="num c-t1">3</td>
+                  <td class="num c-t2 specimen-marked">10</td>
+                  <td class="num c-t3">25</td>
+                </tr>
+                <tr>
+                  <th scope="row">Sample: API calls a day</th>
+                  <td class="num c-t0">50</td>
+                  <td class="num c-t1">500</td>
+                  <td class="num c-t2 specimen-marked">2,000</td>
+                  <td class="num c-t3">5,000</td>
+                </tr>
+                <tr>
+                  <th scope="row" colspan="5">Sample: a row that is one sentence across every column scrolls with the rest.</th>
+                </tr>
+              </tbody>
+            </Table>
+            <Table
+              id="t-open-end"
+              caption="Sample: the same table opened at its last column, with its first columns out of view to the left"
+              captionVisible
+              scroll
+              stickyFirst
+              openAt="t3"
+              cue="Sample: swipe to see every column"
+              minWidth="32rem"
+              columns={[
+                { key: 'perk', label: 'Feature' },
+                { key: 't0', label: 'Tier 0', align: 'end', note: 'Below 10,000' },
+                { key: 't1', label: 'Tier 1', align: 'end', note: 'From 10,000' },
+                { key: 't2', label: 'Tier 2', align: 'end', note: 'From 100,000' },
+                { key: 't3', label: 'Tier 3', align: 'end', note: 'From 1,000,000, sample mark' },
+              ]}
+            >
+              <tbody>
+                <tr>
+                  <th scope="row">Sample: agents you can run</th>
+                  <td class="num c-t0">1</td>
+                  <td class="num c-t1">3</td>
+                  <td class="num c-t2">10</td>
+                  <td class="num c-t3 specimen-marked">25</td>
+                </tr>
+                <tr>
+                  <th scope="row">Sample: API calls a day</th>
+                  <td class="num c-t0">50</td>
+                  <td class="num c-t1">500</td>
+                  <td class="num c-t2">2,000</td>
+                  <td class="num c-t3 specimen-marked">5,000</td>
+                </tr>
+                <tr>
+                  <th scope="row" colspan="5">Sample: a row that is one sentence across every column scrolls with the rest.</th>
+                </tr>
+              </tbody>
+            </Table>
           </div>
         </section>
 
@@ -1185,6 +1262,17 @@ const leader = rankedAgents[0];
   /* Specimen-only furniture. None of this is part of the system. */
   .specimen {
     padding-bottom: var(--space-48);
+  }
+
+  /* The sample of `openAt`: the page's own wash on its marked column, with room at both ends. */
+  :global(:is(#t-open-at, #t-open-end) :is(td, th):is(.c-t0, .c-t1, .c-t2, .c-t3)) {
+    padding-right: var(--space-16);
+  }
+
+  .specimen-marked {
+    background: var(--wash);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
   }
 
   .swatches {

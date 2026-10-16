@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deck } from '../content/deck.ts';
 import methodology from '../content/pages/methodology.ts';
 import privacy from '../content/pages/privacy.ts';
 import terms from '../content/pages/terms.ts';
@@ -27,7 +28,10 @@ describe('oneLeague', () => {
 
   it('keeps the disclaimer and the scoring figures of the methodology', () => {
     const all = docStrings(oneLeague(methodology)).join('\n');
-    expect(all).toContain('Paper trading simulation. Not investment advice. No real orders are placed.');
+    // The sentence is the editor's (`common.disclaimer`, D-168), so it is read from the deck, not typed here.
+    const disclaimer = deck['common.disclaimer'] ?? '';
+    expect(disclaimer).toMatch(/paper trading simulation/);
+    expect(all).toContain(disclaimer);
     expect(all).toMatch(/Max drawdown/);
     expect(all).toMatch(/^Return$/m);
     expect(all).toMatch(/Higher return first\./);

@@ -132,6 +132,7 @@ describe('assembleDecisionMessages', () => {
         feedDecimals: 8,
         sourceUrl: 'https://docs.chain.link/data-feeds/price-feeds/addresses?network=robinhood',
         readOn: '2026-10-09',
+        chainId: 4663,
       },
       {
         kind: 'crypto',
@@ -141,6 +142,7 @@ describe('assembleDecisionMessages', () => {
         feedDecimals: 8,
         sourceUrl: 'https://docs.chain.link/data-feeds/price-feeds/addresses?network=robinhood',
         readOn: '2026-10-09',
+        chainId: 4663,
       },
     ];
     expect(describeSymbols(universe)).toBe('Stock Tokens: AAPL Apple, AMD; crypto: BTC Bitcoin, ETH');

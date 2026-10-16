@@ -1,0 +1,38 @@
+---
+// The Holder mark of the Community chat (docs/contracts/phase-6-holders-2.md, section 2.1): the word
+// "Holder" beside a writer's short address, in the shape of the admin's mark and quieter than it. It has no
+// drawn mark, because only an admin's message carries the mark of Prix, and no figure: never a level, an
+// amount or a tick. Its label tells assistive technology what it means.
+//
+// Whether a message carries it is the server's `holder`, read from the writer's stored token row, and
+// never something this page works out. It changes no order, no count and no other style of the row.
+import { text } from '../../../content/index.ts';
+---
+
+<span class="room-holder">
+  <span aria-hidden="true">{text('social.roomHolderMark', 'Holder')}</span>
+  <span class="visually-hidden">{text('social.roomHolderMarkLabel', 'This wallet holds $PRIX, as Prix last read it.')}</span>
+</span>
+
+<style>
+  /*
+    The admin's mark has a ring of the chosen ink, the wash and the drawn mark, in the ink at a strong weight;
+    this one is metadata beside the address, never a badge (DC-H2-2): the address's grey at the regular
+    weight in both themes, no fill, and only the hairline of the line colour around it, in the same size,
+    padding and corner as the admin's. The dark theme's quiet ink is the ink itself, so it is not used here:
+    a second white pill would weaken the one cue that a message is Prix's.
+  */
+  .room-holder {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    padding: var(--space-2) var(--space-8);
+    border-radius: var(--radius-pill);
+    box-shadow: inset 0 0 0 var(--rule-hair) var(--line);
+    color: var(--grey);
+    font-size: var(--text-12);
+    font-weight: var(--weight-regular);
+    line-height: var(--leading-12);
+    white-space: nowrap;
+  }
+</style>

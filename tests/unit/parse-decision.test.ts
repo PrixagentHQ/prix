@@ -207,7 +207,157 @@ describe('parseDecisionOutput: rule 4, a weight is from 0 to 100 with two decima
   });
 });
 
-describe('parseDecisionOutput: rule 5, the weights as written add up to 100 at most', () => {
+describe('parseDecisionOutput: rule 5, weights that look like fractions are refused', () => {
+  // A model can answer "Hold SPY at 60%" with 0.6, which would pass as 0.6%. The rule: an answer whose
+  // weights are not all zero, and where every weight that is not zero is 1% or less as written,
+  // before the cap, is refused. Nothing is scaled up: a refusal is "no decision", so the agent
+  // keeps what it holds for the round. The rule reads the weights one by one, not their total,
+  // so fractions that add up to more than one are refused too.
+  const MESSAGE = 'Write each weight as a percent: 60 means sixty percent, not 0.6.';
+  // The cases name SPY, so they run on a universe that holds it.
+  const UNITS_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'SPY', 'TSLA'];
+  const parseTargets = (targets: Record<string, number>): DecisionParse =>
+    parseDecisionOutput(json({ targets, reason: 'Holds the target.' }), UNITS_SYMBOLS);
+
+  function expectFractions(targets: Record<string, number>): void {
+    expect(parseTargets(targets), `expected weights_look_like_fractions for ${json(targets)}`).toEqual({
+      ok: false,
+      code: 'weights_look_like_fractions',
+      detail: MESSAGE,
+    });
+  }
+
+  function expectTargets(targets: Record<string, number>, targetsBps: Record<string, number>): void {
+    expect(parseTargets(targets), `expected a decision for ${json(targets)}`).toEqual({
+      ok: true,
+      targetsBps,
+      reason: 'Holds the target.',
+    });
+  }
+
+  it('names the new code in the list of no-decision codes', () => {
+    expect(noDecisionCodeSchema.safeParse('weights_look_like_fractions').success).toBe(true);
+  });
+
+  it('refuses 0.6 alone with the message as worded', () => {
+    expectFractions({ NVDA: 0.6 });
+    expectFractions({ SPY: 0.6 });
+  });
+
+  it('refuses 0.3 and 0.3: every weight is 1% or less', () => {
+    expectFractions({ NVDA: 0.3, MSFT: 0.3 });
+  });
+
+  it('refuses 1 alone: 100 basis points is the largest weight refused', () => {
+    expectFractions({ NVDA: 1 });
+  });
+
+  it('refuses the smallest weight there is, 0.01 alone', () => {
+    expectFractions({ NVDA: 0.01 });
+  });
+
+  it('refuses fractions that add up to exactly 1, and a fraction beside a zero weight', () => {
+    expectFractions({ NVDA: 0.4, MSFT: 0.4, AAPL: 0.2 });
+    expectFractions({ NVDA: 0.6, MSFT: 0 });
+  });
+
+  it('refuses fractions that add up to more than 1: 0.6 and 0.6 (D169-SEC-3)', () => {
+    expectFractions({ SPY: 0.6, NVDA: 0.6 });
+  });
+
+  it('refuses fractions with a stray small weight beside them: 0.5, 0.5 and 0.01 (D169-SEC-3)', () => {
+    expectFractions({ SPY: 0.5, NVDA: 0.5, AAPL: 0.01 });
+  });
+
+  it('refuses 1, 1 and 1: each weight is 100 basis points, the total 300', () => {
+    expectFractions({ SPY: 1, NVDA: 1, AAPL: 1 });
+  });
+
+  it('refuses 0.51 and 0.5: the first round accepted this total of 101, the decided rule refuses it', () => {
+    expectFractions({ NVDA: 0.51, MSFT: 0.5 });
+  });
+
+  it('refuses fractions in all five symbols, up to a total of 5', () => {
+    expectFractions({ AAPL: 1, MSFT: 1, NVDA: 1, SPY: 1, TSLA: 1 });
+  });
+
+  it('accepts 1.01 alone: 101 basis points is above the rule', () => {
+    expect(expectOk(json({ targets: { NVDA: 1.01 }, reason: 'A small position.' })).targetsBps).toEqual({ NVDA: 101 });
+    expectTargets({ SPY: 1.01 }, { SPY: 101 });
+  });
+
+  it('accepts 1.01 beside 0.5: one weight above 1 is enough', () => {
+    expectTargets({ SPY: 1.01, NVDA: 0.5 }, { SPY: 101, NVDA: 50 });
+  });
+
+  it('accepts 21 beside 0.6: the decided boundary of mixed units, which cannot be told from a deliberate small position', () => {
+    // D169-SEC-3, decided by the operator: an answer that mixes units ({"NVDA": 21, "SPY": 0.6}) is
+    // indistinguishable from a strategy that wants 21% in NVDA and a 0.6% starter position in SPY.
+    // It stays accepted. If this test fails, the boundary moved and the operator must decide it again.
+    expectTargets({ NVDA: 21, SPY: 0.6 }, { NVDA: 2_100, SPY: 60 });
+  });
+
+  it('accepts 60 written as a percent: the answer the strategy wanted, cut to the 40% cap', () => {
+    expect(expectOk(json({ targets: { NVDA: 60 }, reason: 'Holds 60%.' })).targetsBps).toEqual({ NVDA: 4_000 });
+    expectTargets({ SPY: 60 }, { SPY: 4_000 });
+  });
+
+  it('reads the weights as written, before the cap: 60 beside 0.6 is a decision, cut to 40 and 0.6', () => {
+    expectTargets({ SPY: 60, NVDA: 0.6 }, { SPY: 4_000, NVDA: 60 });
+  });
+
+  it('for every pair of weights, refuses exactly when no weight is above 1 and one is above 0', () => {
+    const weightsBps = [0, 1, 50, 60, 99, 100, 101, 150, 2_100, 4_000, 5_000];
+    for (const a of weightsBps) {
+      for (const b of weightsBps) {
+        if (a + b > 10_000) continue;
+        const result = parseTargets({ SPY: a / 100, NVDA: b / 100 });
+        const largest = Math.max(a, b);
+        const refused = largest > 0 && largest <= 100;
+        const label = `SPY ${a / 100}, NVDA ${b / 100}`;
+        if (refused) {
+          expect(result.ok ? 'ok' : result.code, label).toBe('weights_look_like_fractions');
+        } else {
+          expect(result.ok, label).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('accepts all weights at zero as a decision to hold everything in cash', () => {
+    expect(
+      parse(json({ targets: { NVDA: 0, MSFT: 0, AAPL: 0, TSLA: 0 }, reason: 'Moves everything to cash.' })),
+    ).toEqual({ ok: true, targetsBps: {}, reason: 'Moves everything to cash.' });
+    expect(parse(json({ targets: { NVDA: 0 }, reason: 'Sells NVDA.' }))).toEqual({
+      ok: true,
+      targetsBps: {},
+      reason: 'Sells NVDA.',
+    });
+  });
+
+  it('refuses fractions before it reads the reason', () => {
+    expectCode(json({ targets: { NVDA: 0.6 }, reason: '' }), 'weights_look_like_fractions');
+  });
+
+  it('reports an unknown symbol and a weight out of range before fractions', () => {
+    expectCode(json({ targets: { NVDA: 0.6, XXXX: 0.4 }, reason: 'Buys.' }), 'unknown_symbol');
+    expectCode(json({ targets: { NVDA: 0.6, MSFT: 0.005 }, reason: 'Buys.' }), 'weight_out_of_range');
+    expectCode(json({ targets: { NVDA: 0.6, MSFT: -0.1 }, reason: 'Buys.' }), 'weight_out_of_range');
+  });
+
+  it('refuses every single weight from 1 to 100 basis points and accepts every one from 101 up to 100%', () => {
+    for (let bps = 1; bps <= 10_000; bps += 1) {
+      const result = parse(json({ targets: { NVDA: bps / 100 }, reason: 'One weight.' }));
+      if (bps <= 100) {
+        expect(result.ok ? 'ok' : result.code, `${bps / 100}`).toBe('weights_look_like_fractions');
+      } else {
+        expect(result.ok, `${bps / 100}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('parseDecisionOutput: rule 6, the weights as written add up to 100 at most', () => {
   it('refuses 60 and 60: the sum is taken before the cap, so a model cannot hide an over-allocation', () => {
     expectCode(json({ targets: { NVDA: 60, MSFT: 60 }, reason: 'Two names.' }), 'weights_exceed_100');
   });
@@ -233,7 +383,7 @@ describe('parseDecisionOutput: rule 5, the weights as written add up to 100 at m
   });
 });
 
-describe('parseDecisionOutput: rule 6, the reason', () => {
+describe('parseDecisionOutput: rule 7, the reason', () => {
   const withReason = (reason: string) => json({ targets: { NVDA: 10 }, reason });
 
   it('collapses whitespace and trims', () => {
@@ -316,10 +466,12 @@ describe('parseDecisionOutput: never a crash, never a bad decision', () => {
       }
       return out;
     };
+    // Fractions (0.01 to 1) and the first weight above them (1.01) are in the pool for rule 5.
+    const WEIGHTS = [0, 0.01, 0.3, 0.6, 1, 1.01, 5, 10.5, 25, 33.33, 40, 40.01, -1, 21.005];
     const randomDecision = (): unknown => {
       const targets: Record<string, number> = {};
       for (const symbol of rng.shuffle(SYMBOLS).slice(0, rng.int(0, 4))) {
-        targets[symbol] = rng.pick([0, 5, 10.5, 25, 33.33, 40, 40.01, -1, 21.005, rng.int(0, 45)]);
+        targets[symbol] = rng.pick([...WEIGHTS, rng.int(0, 45)]);
       }
       return { targets, reason: rng.pick(['Buys.', '', '  ', 'a'.repeat(500), 'Line\nbreak.']) };
     };
@@ -351,6 +503,10 @@ describe('parseDecisionOutput: never a crash, never a bad decision', () => {
         total += bps;
       }
       expect(total).toBeLessThanOrEqual(10_000);
+      // Rule 5: an accepted answer is all cash or has at least one weight above 1%. The
+      // cap only cuts weights above 40%, so a capped weight above 1% was above 1% as written.
+      const largest = Math.max(0, ...Object.values(result.targetsBps));
+      expect(total === 0 || largest > 100, `largest ${largest} bps, total ${total} bps for ${raw}`).toBe(true);
       expect(result.reason.length).toBeGreaterThan(0);
       expect(result.reason.length).toBeLessThanOrEqual(REASON_MAX);
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the test looks for control characters

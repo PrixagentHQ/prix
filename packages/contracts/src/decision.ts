@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import { BPS, MAX_WEIGHT_BPS, REASON_MAX } from './constants.ts';
 import type { TokenSymbol } from './primitives.ts';
+import { z } from './zod.ts';
 
 /**
  * What a model must return at a tick: target weights as percentages and one sentence.
@@ -41,6 +41,11 @@ export const noDecisionCodeSchema = z.enum([
   'unknown_symbol',
   'weight_out_of_range',
   'weights_exceed_100',
+  /**
+   * The weights are not all zero and every weight that is not zero is 1% or less as written: the
+   * model most likely wrote fractions (0.6 for sixty percent). Refused, never scaled up.
+   */
+  'weights_look_like_fractions',
   'reason_invalid',
   /** The provider refused the key or the model name: HTTP 401, 403 or 404. The owner must fix it. */
   'provider_rejected',
@@ -74,8 +79,15 @@ function fail(code: NoDecisionCode, detail: string): DecisionParse {
  * 2. It must be an object with exactly `targets` and `reason`.
  * 3. Every key of `targets` must be a symbol of the universe.
  * 4. Every weight must be a number from 0 to 100 with at most two decimal places.
- * 5. The weights as written must not add up to more than 100.
- * 6. The reason has its whitespace collapsed and every control and format character removed,
+ * 5. Weights that are not all zero must have at least one weight above 1 as written, before the
+ *    cap. When every weight that is not zero is from 0.01 to 1, the answer is read as fractions
+ *    written for percents (0.6 for sixty percent; 0.6 and 0.6; 0.5, 0.5 and 0.01) and refused
+ *    with `weights_look_like_fractions`. Nothing is scaled up: the agent keeps what it
+ *    holds for the round, which is the safe side. All weights at
+ *    zero, everything to cash, stays a valid decision. An answer with one weight above 1 beside
+ *    small ones (21 and 0.6) cannot be told from a deliberate small position and stays valid.
+ * 6. The weights as written must not add up to more than 100.
+ * 7. The reason has its whitespace collapsed and every control and format character removed,
  *    including the ones that reorder text or hide it. It must not be empty. A reason longer
  *    than REASON_MAX characters is cut and ends with an ellipsis.
  *
@@ -113,6 +125,7 @@ export function parseDecisionOutput(raw: string, symbols: readonly TokenSymbol[]
   }
   const targetsBps: Record<TokenSymbol, number> = {};
   let totalBps = 0;
+  let largestBps = 0;
   for (const symbol of keys) {
     const percent = Object.getOwnPropertyDescriptor(rawTargets, symbol)?.value as number;
     if (!Number.isFinite(percent) || percent < 0 || percent > BPS / 100) {
@@ -125,8 +138,18 @@ export function parseDecisionOutput(raw: string, symbols: readonly TokenSymbol[]
     // The sum is taken of the weights as written, before the cap: output that asks for more
     // than the whole portfolio is not a decision, whatever the cap would make of it.
     totalBps += bps;
+    largestBps = Math.max(largestBps, bps);
     const capped = Math.min(bps, MAX_WEIGHT_BPS);
     if (capped > 0) targetsBps[symbol] = capped;
+  }
+  // Rule 5: when every weight that is not zero is from 1 to 100 basis points as written, before
+  // the cap, the answer is fractions written for percents ("60% in SPY" answered with 0.6).
+  // Reading the largest weight, not the total, also refuses fractions that add up to more than
+  // one (0.6 and 0.6) and a stray small weight beside them (0.5, 0.5 and 0.01). A strategy that
+  // truly wants 1% or less in each position is refused too. One weight above 1 beside small
+  // ones (21 and 0.6) cannot be told from a deliberate small position and stays valid.
+  if (largestBps > 0 && largestBps <= BPS / 100) {
+    return fail('weights_look_like_fractions', 'Write each weight as a percent: 60 means sixty percent, not 0.6.');
   }
   if (totalBps > BPS) {
     return fail('weights_exceed_100', 'The weights add up to more than 100.');

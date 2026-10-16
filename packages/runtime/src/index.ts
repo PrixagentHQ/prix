@@ -13,3 +13,10 @@ export { createOwnModel } from './own-model.ts';
 export { assembleDecisionMessages, assembleSummaryMessages } from './prompts.ts';
 /** One scheduler step. */
 export { runSchedulerStep } from './scheduler.ts';
+/**
+ * Phase 6.7, the holders' poll (docs/contracts/phase-6-holders.md section 5): the `poll_tally` job and its
+ * `tallyPoll`, also exported from `@prix/runtime/social/index`, and the tally's holding reader with the meter
+ * its chain reader's fetch goes through.
+ */
+export { createPollTallyJob, tallyPoll } from './social/poll-tally.ts';
+export { createPollFetchMeter, createPollHoldingReader } from './token/poll-holding.ts';

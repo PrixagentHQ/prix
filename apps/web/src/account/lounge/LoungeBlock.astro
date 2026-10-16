@@ -1,0 +1,40 @@
+---
+// The lounge's block on /following (docs/contracts/phase-6-holders-2.md section 4.7), directly below the
+// Telegram settings of the follow alerts. It reads GET /api/lounge once, on the server, and is shown only
+// when the API answered 200: while the lounge is off (the generic 404), after a session ended (401) and on
+// any fault it is absent, and the page says nothing about it.
+//
+// Nothing here decides. The API reads the wallet's holding and its linked Telegram account and sends the
+// invite link in state `open` only; the bot judges every request again in Telegram. The link is a plain
+// link that Telegram opens: no script, no request from the browser, nothing kept.
+import Button from '../../design/Button.astro';
+import { fetchLounge, loungeViewOf } from './read.ts';
+import { loungeWords } from './words.ts';
+
+const view = loungeViewOf(await fetchLounge(Astro));
+const words = loungeWords();
+---
+
+{
+  view && (
+    <div class="panel-part stack-16" data-lounge={view.state}>
+      <div class="stack-4">
+        <h2 class="title" id="lounge-heading">
+          {words.title}
+        </h2>
+        <p class="small">{words.description}</p>
+      </div>
+      {view.state === 'not_holder' && <p class="body">{words.notHolder}</p>}
+      {view.state === 'link_telegram' && <p class="body">{words.linkFirst}</p>}
+      {view.state === 'open' && (
+        <div class="stack-16">
+          <p>
+            <Button href={view.url} label={words.join} variant="secondary" />
+          </p>
+          <p class="small">{words.joinNote}</p>
+          <p class="small">{words.leaving}</p>
+        </div>
+      )}
+    </div>
+  )
+}

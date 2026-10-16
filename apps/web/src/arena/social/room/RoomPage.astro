@@ -1,0 +1,211 @@
+---
+// The Community chat (the room, docs/contracts/phase-6-room.md section 9): one public page of short text
+// messages between users. From the top: the title; the contract's sentence that these are users' words,
+// in body size; the admin's mark once, with the sentence that only this mark is Prix; the note on the
+// token with its address; the composer; "Load new messages"; the messages, newest first.
+//
+// Server-rendered, and reading needs no script. Nothing here asks again by itself: "Load new messages" is
+// a link to the page. There is no older page.
+//
+// Pictures (docs/contracts/phase-6-pictures.md, section 11). While the read carries `pictures`, the
+// contract's sentence about them stands under the room's own, in the same size. A picture message is a
+// row of facts with one button; the page holds no picture and asks for none until a reader clicks, and
+// the one script of the list (./pictures.ts) is shipped only when a row offers a picture. The list is
+// rendered whenever the read answered, also for an empty room: the composer finds it by its name and
+// reads from it whether pictures are on. While the read says `resting`, one sentence under the heading
+// of the list says so for every picture below it; a row then keeps only a short form.
+//
+// Nothing of the room is rendered while its status is not on. The route file (pages/chat.astro) answers
+// 404 for a room that is off; a status that could not be read gets the title and a notice, and the
+// room's read is not asked.
+import { ROOM_DISCLAIMER, ROOM_PAGE, ROOM_PICTURE_DISCLAIMER } from '@prix/contracts';
+import { herePath, signInHref } from '../../../account/session.ts';
+import Composer from '../../../account/social/room/Composer.astro';
+import { text } from '../../../content/index.ts';
+import Button from '../../../design/Button.astro';
+import EmptyState from '../../../design/EmptyState.astro';
+import Layout from '../../../design/Layout.astro';
+import Notice from '../../../design/Notice.astro';
+import type { PageAccount } from '../../../lib/account.ts';
+import SocialFailure from '../SocialFailure.astro';
+import SocialNav from '../SocialNav.astro';
+import AdminMark from './AdminMark.astro';
+import { fetchRoom, roomIsOn } from './client.ts';
+import MessageList from './MessageList.astro';
+import { emptyRoomBody, pictureWords, roomHref, tokenNoteParts } from './words.ts';
+
+interface Props {
+  /** The signed-in wallet for the masthead, as the route file read it. */
+  account: PageAccount | null;
+  /** Whether the API confirmed a session. It only chooses what the composer and an empty room say. */
+  signedIn: boolean;
+}
+
+const { account, signedIn } = Astro.props;
+// The probe is kept in memory, and the read is made once per request: the route file asked both already.
+const status = await roomIsOn(Astro);
+// The room's read is asked only while its status is on.
+const result = status === 'on' ? await fetchRoom(Astro) : null;
+const room = result?.ok ? result.data : null;
+const token = room ? tokenNoteParts(room.prixAddress) : null;
+const title = text('social.roomTitle', 'Community chat');
+const subject = text('social.roomSubject', 'The Community chat');
+const here = roomHref(Astro.url);
+---
+
+<Layout
+  title={title}
+  description={text(
+    'social.roomDescription',
+    'One public page of short text messages between people who use Prix.',
+  )}
+  current="social"
+  account={account}
+  signInHref={signInHref(herePath(Astro.url))}
+  noindex
+>
+  <meta slot="head" name="format-detection" content="telephone=no" />
+
+  <section class="page section room-top">
+    <p class="small">{text('social.roomEyebrow', 'Between users')}</p>
+    <h1 class="display">{title}</h1>
+    {
+      room && (
+        <div class="room-terms">
+          <p>{ROOM_DISCLAIMER}</p>
+          {room.pictures !== undefined && <p>{ROOM_PICTURE_DISCLAIMER}</p>}
+          <p class="room-marked">
+            <AdminMark />
+            <span>
+              {text(
+                'social.roomAdminMarkNote',
+                'Only a message that carries this mark is from Prix. A message that uses the name in its text, or says it is from Prix, is not.',
+              )}
+            </span>
+          </p>
+          {token && (
+            <p>
+              {token.before}
+              <span class="room-address figures">{token.address}</span>
+              {token.after}
+            </p>
+          )}
+        </div>
+      )
+    }
+  </section>
+  <SocialNav current="chat" />
+
+  {
+    room ? (
+      <>
+        <section class="page section room-write">
+          <Composer prixAddress={room.prixAddress} siteHost={room.siteHost} signedIn={signedIn} />
+        </section>
+
+        <section class="page section" aria-labelledby="room-messages">
+          <header class="room-head">
+            <div>
+              <h2 class="headline" id="room-messages">
+                {text('social.roomMessagesTitle', 'Messages')}
+              </h2>
+              <p class="small">
+                {text(
+                  'social.roomNewestNote',
+                  'Newest first, at most {count}. This page does not update by itself.',
+                  { count: ROOM_PAGE },
+                )}
+              </p>
+            </div>
+            <Button variant="secondary" label={text('social.roomLoadNew', 'Load new messages')} href={here} />
+          </header>
+          {room.pictures === 'resting' && <p class="room-resting">{pictureWords().resting}</p>}
+          {room.messages.length === 0 && (
+            <EmptyState title={text('social.roomEmptyTitle', 'No messages to show')} body={emptyRoomBody(signedIn)} />
+          )}
+          <MessageList messages={room.messages} pictures={room.pictures} labelledBy="room-messages" />
+        </section>
+      </>
+    ) : (
+      <section class="page section">
+        {result && !result.ok ? (
+          <SocialFailure error={result.error} subject={subject} />
+        ) : status === 'off' ? (
+          <Notice
+            title={text('social.roomClosedTitle', 'The Community chat is closed')}
+            body={text(
+              'social.roomClosedBody',
+              'It is switched off for now. Nothing can be read or written here until it opens again.',
+            )}
+          />
+        ) : (
+          <Notice
+            tone="error"
+            title={text('social.loadFailedTitle', 'Not loaded')}
+            body={text('social.loadFailedBody', '{subject} could not be loaded. Reload the page to try again.', {
+              subject,
+            })}
+          >
+            <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+          </Notice>
+        )}
+      </section>
+    )
+  }
+</Layout>
+
+<style>
+  .room-top {
+    display: grid;
+    row-gap: var(--space-8);
+    justify-items: start;
+  }
+
+  /*
+    What a reader must know before the first message, in body size and in ink: these are the terms of
+    the page, not a note beside it. Three sentences, each a paragraph of its own.
+  */
+  .room-terms {
+    display: grid;
+    row-gap: var(--space-12);
+    max-width: var(--measure);
+    margin-top: var(--space-8);
+  }
+
+  /* The mark stands before its sentence, on the sentence's first line. */
+  .room-marked {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-8);
+  }
+
+  /* Sixteen pixels of mark on a line of twenty. */
+  .room-marked :global(.room-mark) {
+    margin-top: var(--space-2);
+  }
+
+  /* Forty-two characters with no space: the address breaks where the line ends. */
+  .room-address {
+    font-weight: var(--weight-medium);
+    overflow-wrap: anywhere;
+  }
+
+  /* The heading and its note at the left, the one action at the right; under each other on a phone. */
+  .room-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-12) var(--space-24);
+    margin-bottom: var(--space-16);
+  }
+
+  /*
+    Why no picture can be shown until midnight UTC, said once for the whole list and not in every row:
+    in ink and in the size of a message, since it is about every picture below it.
+  */
+  .room-resting {
+    max-width: var(--measure);
+    margin-bottom: var(--space-16);
+  }
+</style>

@@ -132,7 +132,7 @@
   --line-strong: rgb(243 244 246 / 0.16);
 
   /*
-    The light of the hero band: the ink, very faint, from the top right. It is not blue: blue is
+    The light of the hero band: the ink, very faint, from the top, the same across the window (R17). It is not blue: blue is
     for acting, and the band only tells where a page begins (docs/DESIGN.md section 2).
   */
   --hero-tint: rgb(243 244 246 / 0);
@@ -146,6 +146,15 @@
     one for the core read as a drawing, and could have taken a figure under 4.5 to 1.
   */
   --field-ink: #1c2026;
+
+  /*
+    The crawler (crawler/crawler.ts, docs/DESIGN.md section 30), two tones of one cool grey and
+    their one job, the crawler, nowhere else: its legs at 4.85 to 1 on the black ground (4.54 on a
+    card), seen at a glance; its head and abdomen a step brighter, 6.69 to 1. Both stay quieter
+    than the grey (8.07) and every word.
+  */
+  --crawler-ink: #737a84;
+  --crawler-ink-body: #8b929c;
 
   /*
     What is chosen or marked on the black is black too, told by a hairline ring and ink words,
@@ -356,6 +365,9 @@
   --hero-tint: rgb(35 39 45 / 0.035);
   --area-top: 0.12;
   --field-ink: #e6e9ed;
+  /* The crawler: legs 5.00 to 1 on white and 4.54 on the grey ground; body 6.65 and 6.04. */
+  --crawler-ink: #69707a;
+  --crawler-ink-body: #565d67;
 
   /* In light the chosen pill is white on the grey tray, with the shadow of a card; a quiet chip sits on the wash in grey. */
   --ring-chosen: rgb(35 39 45 / 0.28);

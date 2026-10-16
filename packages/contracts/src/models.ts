@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import { API_KEY_MAX, API_KEY_MIN, MODEL_NAME_MAX } from './constants.ts';
 import { addressSchema, idSchema, isoTimeSchema } from './primitives.ts';
+import { z } from './zod.ts';
 
 /**
  * The providers an owner may bring a key for. This list is the allowlist: there is no

@@ -34,6 +34,8 @@ import LeagueStrip from './board/LeagueStrip.astro';
 import PriceStrip from './board/PriceStrip.astro';
 import LeagueFacts from './LeagueFacts.astro';
 import LeagueNotices from './LeagueNotices.astro';
+import { fetchTape, tapeLinkShown } from './tape/client.ts';
+import { tapeFromLeague, tapeHref } from './tape/words.ts';
 import { readFailure, siteHref } from './words.ts';
 
 const query = Astro.url.searchParams;
@@ -47,10 +49,12 @@ const asked = queryOf(Astro.url);
 const api = createApi(Astro);
 const followApi = createFollowApi(Astro);
 const account = await readAccount(Astro);
-const [result, followsResult, pricesResult] = await Promise.all([
+const [result, followsResult, pricesResult, tapeResult] = await Promise.all([
   api.league({ division, page }),
   account ? followApi.follows() : Promise.resolve(null),
   api.marketPrices(),
+  // The holders' tape: its link stands only while the tape's read does not answer 404 (switched off).
+  fetchTape(Astro),
 ]);
 const league = result.ok ? result.data : null;
 const follows = followsResult?.ok ? new Set(followsResult.data.follows.map((entry) => entry.agentId)) : null;
@@ -100,6 +104,11 @@ const divisionTabs = (['open', 'pro'] as const).map((entry) => ({
       <p class="eyebrow">{text('league.headEyebrow', 'The public league')}</p>
       <h1 class="section-title">{text('nav.league', 'League')}</h1>
       <p class="league-about">{divisionAboutText(division)}</p>
+      {tapeLinkShown(tapeResult) && (
+        <p class="league-tape">
+          <a href={tapeHref(Astro.url)}>{tapeFromLeague()}</a>
+        </p>
+      )}
     </header>
 
     {
@@ -192,6 +201,22 @@ const divisionTabs = (['open', 'pro'] as const).map((entry) => ({
     max-width: var(--measure);
     margin-top: var(--space-8);
     color: var(--grey);
+  }
+
+  .league-tape {
+    margin-top: var(--space-8);
+  }
+
+  /* A link that stands alone: a target of at least 24 pixels, underlined only under the pointer. */
+  .league-tape a {
+    display: inline-block;
+    padding-block: var(--space-4);
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+  }
+
+  .league-tape a:hover {
+    text-decoration: underline;
   }
 
   .paging-slot:has(*) {

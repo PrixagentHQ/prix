@@ -1,4 +1,8 @@
+import { holdersStrings } from './deck-holders.ts';
+import { holders2Strings } from './deck-holders2.ts';
+import { homeStrings } from './deck-home.ts';
 import { socialStrings } from './deck-social.ts';
+import { templateStrings } from './deck-templates.ts';
 import { facts, grouped, hourUtc, inWords, links, percentOf, roundsPerDay, universeFacts } from './facts.ts';
 
 /**
@@ -29,6 +33,10 @@ const ROUNDS_A_DAY = inWords(roundsPerDay);
 const MAX_OPEN = grouped(facts.maxAgentsOpen);
 const MAX_PRO = grouped(facts.maxAgentsPro);
 const MAX_KEYS = inWords(facts.maxModelKeysPerWallet);
+/** "BTC, ETH, BNB, HYPE and SOL": the crypto assets of the universe, in universe order. */
+const CRYPTO_SYMBOLS = `${universeFacts.cryptoSymbols.slice(0, -1).join(', ')} and ${universeFacts.cryptoSymbols[universeFacts.cryptoSymbols.length - 1]}`;
+/** What the market endpoint and its MCP tool price: every symbol of the universe, by kind. */
+const UNIVERSE_PRICED = `the ${universeFacts.stockSize} Stock Tokens and the ${inWords(universeFacts.cryptoSize)} crypto assets, ${CRYPTO_SYMBOLS}`;
 const PROMPT_CHANGES = inWords(facts.maxPromptChangesPerDay);
 
 const SITE_NAME = 'Prix';
@@ -45,9 +53,18 @@ const strings = {
   /** The wordmark in the masthead and the colophon. */
   'common.siteName': SITE_NAME,
   'common.productName': SITE_NAME,
-  /** The shared layout renders this on every page, and it stays visible in print. The contract fixes the words. */
-  'common.disclaimer': 'Paper trading simulation. Not investment advice. No real orders are placed.',
-  /** The three statements of the disclaimer, for a place that has room for one, such as a share image. */
+  /**
+   * The shared layout renders this on every page, and it stays visible in print. The operator fixes the words
+   * (D-168, 2026-10-16): since Prix Live opened to the public it names both sides, the paper league and the
+   * real money of Prix Live, so no page of the site says that Prix as a whole moves no real money. It says
+   * that an owner's agent trades in the owner's own Safe: Prix is not the one who trades.
+   */
+  'common.disclaimer':
+    'The league is a paper trading simulation, where no real orders are placed. In Prix Live, an owner’s agent trades real money in the owner’s own Safe. Not investment advice.',
+  /**
+   * The three statements of the paper record, for a place that has room for one, such as an agent's share
+   * image. They describe a record of the league, which is paper, and stay as they are.
+   */
   'common.simulationLabel': 'Paper trading simulation',
   'common.notAdviceLabel': 'Not investment advice',
   'common.noOrdersLabel': 'No real orders are placed',
@@ -114,6 +131,11 @@ const strings = {
   'nav.following': 'Following',
   'nav.developers': 'Developers',
   'nav.methodology': 'Methodology',
+  'nav.live': 'Prix Live',
+  /** The footer link to FOREHEAD, the founder's game at links.forehead, between Prix Live and GitHub. */
+  'nav.forehead': 'Play FOREHEAD',
+  'nav.github': 'GitHub',
+  'nav.githubLabel': 'Prix on GitHub',
   'nav.signIn': 'Sign in',
   'nav.signOut': 'Sign out',
   /** The label of "Sign out" while the request runs. It names the wait with the action's own verb. */
@@ -141,9 +163,9 @@ const strings = {
   'states.roundInProgress': 'Round in progress',
   'states.marketNotChecked': 'Prix has not checked the market yet.',
   'states.haltedOne':
-    '{symbols} is not trading. Its price feed is paused or out of date, or its price is held for review, so it is valued at its last trusted price.',
+    '{symbols} is not trading. Its price feed is paused, out of date or could not be read, or its price is held for review, so it is valued at its last trusted price.',
   'states.haltedOther':
-    '{symbols} are not trading. Their price feeds are paused or out of date, or their prices are held for review, so they are valued at their last trusted prices.',
+    '{symbols} are not trading. Their price feeds are paused, out of date or could not be read, or their prices are held for review, so they are valued at their last trusted prices.',
 
   'states.agentNoRoundYet': 'This agent has not been in a round yet.',
   'states.roundRunningOne': 'One agent has not had its turn yet.',
@@ -354,6 +376,54 @@ const strings = {
   'admin.unhideNote': 'Unhiding restores the agent exactly as it was. It is ranked again at the next ranking.',
   'admin.unhiding': 'Unhiding the agent',
 
+  // --- admin: /admin/holders (D-158, docs/contracts/phase-6-holders.md sections 4.4, 7 and 8). The editor's
+  // own words, not pinned by the contract: no amount, no price, `isSocialSafeText`. ADMIN_HOLDERS_KEYS in
+  // deck-holders.ts lists every key, and holders.test.ts holds them to those rules. The tally's delay after
+  // the close is drawn by the server and kept secret (H3-SEC-3), so no string here names it more closely
+  // than "about an hour". ---
+
+  'admin.holdersTitle': 'Holders’ poll and Telegram',
+  'admin.holdersDescription': 'Set the Telegram webhook and count a closed holders’ poll.',
+  'admin.holdersIntro':
+    'Two tools for the holders’ features: the Telegram webhook, set before linking a chat opens, and the count of a closed poll, for when the scheduled count has not run.',
+  'admin.holdersWebhookTitle': 'Telegram webhook',
+  'admin.holdersWebhookIntro':
+    'Points the bot’s webhook at Prix with Prix’s own secret and drops any update that was waiting. Set it before the bot’s name is added, and again whenever the watch below says it moved.',
+  'admin.holdersWebhookSet': 'Set the webhook',
+  'admin.holdersWebhookSetting': 'Setting the webhook',
+  'admin.holdersWebhookDoneTitle': 'Webhook set',
+  'admin.holdersWebhookDoneBody': 'Telegram answered with these three fields.',
+  'admin.holdersWebhookFailedTitle': 'The webhook was not set',
+  'admin.holdersWebhookFailedBody': 'Telegram did not confirm it. Wait a minute and set it again.',
+  'admin.holdersWebhookUrl': 'Webhook address',
+  'admin.holdersWebhookPending': 'Updates waiting',
+  'admin.holdersWebhookLastError': 'Last error',
+  'admin.holdersWebhookNone': 'None',
+  'admin.holdersWatchTitle': 'Webhook watch',
+  'admin.holdersWatchQuiet': 'Prix has not seen the webhook point anywhere else.',
+  'admin.holdersWatchMoved':
+    'Prix saw the webhook pointing somewhere else at {time} UTC. Linking a Telegram chat is closed until the webhook is set again.',
+  'admin.holdersWatchFailed': 'The watch was not loaded. Reload the page to try again.',
+  'admin.holdersTallyTitle': 'Count a closed poll',
+  'admin.holdersTallyIntro':
+    'Counts a closed poll now, the same way the scheduled count does. Use it when the poll still shows that its count could not be completed.',
+  'admin.holdersTallyNoPoll': 'No poll has closed yet.',
+  'admin.holdersTallyRun': 'Count this poll',
+  'admin.holdersTallyRunning': 'Counting the poll',
+  'admin.holdersTallyDone': 'Counted. The result is saved and shows on the poll’s page.',
+  'admin.holdersTallyAlready': 'This poll was counted before. Its result stays as it was.',
+  'admin.holdersTallyWaiting': 'Not counted: $PRIX tiers are off. Nothing was saved.',
+  'admin.holdersTallyOpen':
+    'Too soon to count. A poll is counted from a minute to about an hour after its close. Try again later.',
+  'admin.holdersTallyFailed':
+    'Not counted, and nothing was saved. It stopped while {step}. Try again in a few minutes.',
+  'admin.holdersTallyStepResults': 'reading the saved results',
+  'admin.holdersTallyStepList': 'listing the votes',
+  'admin.holdersTallyStepRead': 'reading holdings from the chain',
+  'admin.holdersTallyStepBlock': 'the chain answered from another block',
+  'admin.holdersTallyStepWrite': 'saving the result',
+  'admin.holdersTallyRequestFailed': 'The count did not run. Reload the page and try again.',
+
   // --- agent: the strings of the pages, written by editor ---
 
   'agent.asOf': 'Paper portfolio, as of {time}.',
@@ -382,6 +452,10 @@ const strings = {
   'agent.skippedOther': 'The agent was not asked in this round, so its portfolio was left unchanged.',
   'agent.status': 'Status',
   'agent.total': 'Total',
+  // D-158 B, docs/contracts/phase-6-holders.md section 8, word for word: the quiet mark on the agent's own
+  // page, never "verified" and never a tick. `{amount}` is the tier-2 threshold in whole tokens.
+  'agent.ownerHolds': 'Owner holds $PRIX',
+  'agent.ownerHoldsNote': "The wallet that owns this agent held at least {amount} $PRIX at Prix's last check.",
 
   // --- builder: the strings of the pages, written by editor ---
 
@@ -446,7 +520,7 @@ const strings = {
   'league.factMethodValue': 'Scoring {version}',
   'league.factPortfolio': 'Portfolio',
   'league.factPrices': 'Prices',
-  'league.factPricesValue': 'Chainlink reference prices on Robinhood Chain',
+  'league.factPricesValue': 'Chainlink reference prices on Robinhood Chain and Arbitrum One',
   'league.factRanked': 'Ranked',
   'league.factRankedValue': 'After {days} trading days and {decisions} decisions',
   'league.factStandings': 'Standings',
@@ -628,8 +702,7 @@ const strings = {
   'data.creditsOffBody': 'The free calls work now. Credits will be sold here when payments open.',
   'data.creditsOffTitle': 'Credits are not on sale yet',
   'data.creditsTitle': 'Credits',
-  'data.developersLead':
-    'Read the league and public chain facts as JSON, from your own agent or script. Every answer carries a notice that it is a simulation record.',
+  'data.developersLead': `Read the league, its reference prices and public chain facts as JSON, from your own agent or script. Prices cover ${UNIVERSE_PRICED}. Every answer carries a notice that it is a simulation record.`,
   'data.developersTitle': 'Prix data API',
   'data.errApiBusy': 'The API has reached its daily limit for everyone. Try again after 00:00 UTC.',
   'data.errChainUnavailable': 'The chain could not be read just now. Try again shortly.',
@@ -739,8 +812,7 @@ const strings = {
   'data.loadingBody': 'Prix is reading this from your account.',
   'data.loadingTitle': 'Loading',
   'data.mcpConfigLabel': 'Client configuration',
-  'data.mcpLead':
-    'POST /api/v1/mcp speaks the Model Context Protocol over plain HTTP, with no sessions. Listing the tools needs no key. Calling a tool needs your key and counts as one call.',
+  'data.mcpLead': `POST /api/v1/mcp speaks the Model Context Protocol over plain HTTP, with no sessions. Listing the tools needs no key. Calling a tool needs your key and counts as one call. The get_market tool returns the reference prices of ${UNIVERSE_PRICED}.`,
   'data.mcpListLabel': 'List the tools',
   'data.mcpTitle': 'Use it from an agent over MCP',
   'data.moreReference': 'Every endpoint, its parameters and an example call',
@@ -1240,16 +1312,18 @@ const strings = {
   'token.forTitle': 'What it is for',
   'token.holdingLabel': 'Holding',
   'token.holdingValue': '{share} of the supply',
+  'token.holdingTokens': '{amount} $PRIX',
   'token.lead':
     'A token on Robinhood Chain that sets how many agents a wallet can run and how soon it reads the reasons and fills of each decision.',
   'token.loadFailedTitle': 'Tier not loaded',
   'token.nextDetail': 'A further {share} of the supply is needed.',
   'token.nextLabel': 'Next tier',
   'token.nextValue': 'Tier {tier}, from {share}',
+  'token.nextValueTokens': 'Tier {tier}, from {amount} $PRIX',
   'token.no': 'No',
   'token.none': 'None',
   'token.notAdvice':
-    'What an agent decides is the record of a simulation. It is not advice, and no real orders are placed.',
+    'In the league, what an agent decides is the record of a simulation, and no real orders are placed. Nothing an agent decides is advice.',
   'token.notAPromise':
     'Holding the token is not a promise of return, profit or gain of any kind, and it is not an investment.',
   'token.notLaunched':
@@ -1257,12 +1331,15 @@ const strings = {
   'token.notLink':
     'It has no link to any agent’s decisions. An agent doing well or badly changes nothing about the token.',
   'token.notPrize': 'Names on Pons are not unique: this address is the only one that counts.',
-  'token.notRights': 'It gives no rights to Prix: no ownership, no vote, no claim on anything the site makes.',
+  // D-158 C: holding now carries a vote in the holders' poll, so "no vote" alone would be false once the
+  // poll opens. The sentence keeps every right it denied and names what the poll is.
+  'token.notRights':
+    "It gives no rights in Prix: no ownership, no claim on anything the site makes, and no vote on how Prix or the token is run. The holders' poll only chooses between options Prix writes for its paper league.",
   'token.notShare': 'It gives no share of revenue. Prix pays holders nothing.',
   'token.notTitle': 'What it is not',
   'token.pageDescription': 'The token tier of your wallet and what each tier unlocks.',
   'token.pageDisclaimer':
-    'The token gives no rights to Prix and has no connection to any agent’s decisions. Prix is a simulation, and nothing on it is advice.',
+    'The token gives no rights to Prix and has no connection to any agent’s decisions. The league is a simulation, and nothing on Prix is advice.',
   'token.pageIntro':
     'Your tier sets how many agents you can run and how soon you see the follow feed. Prix reads it from the balance of the wallet you signed in with.',
   'token.pageTitle': 'The Prix token',
@@ -1304,26 +1381,65 @@ const strings = {
   'token.yourAllowance': 'Your allowance',
   'token.yourTier': 'Your tier',
 
+  // --- token: what holding gives (D-158 A, docs/contracts/phase-6-holders.md sections 2 and 8). Every
+  // string is HOLDERS_COPY word for word: a change is a contract revision, and holders.test.ts fails on any
+  // difference. Amounts are whole tokens from the API's tier table, never a share in percent or a price.
+  // Slots: `{amount}` whole tokens, `{lower}` and `{higher}` FOREHEAD's two amounts from foreheadFacts,
+  // `{tier}` the column's tier (0 to 3), `{delay}` formatFeedDelay(feedDelaySeconds) as token.siteFeedLate has
+  // it (revision 5, D1 and D4; revision 6, R2: "not {delay} later", so the filled words never read "without the
+  // 24 hours delay"). `token.perkBadge` is the one key of the round that may say "verified": it names
+  // the badge listed on-chain agents already carry (HOLDERS_VERIFIED_BADGE_KEY). ---
+
+  'token.holdersTitle': 'Open to holders now',
+  'token.holdersIntro': 'What a wallet gets, by how much $PRIX it holds. Amounts are whole tokens.',
+  'token.holdersColPerk': 'Feature',
+  'token.holdersColBelow': 'Below {amount}',
+  'token.holdersColFrom': 'From {amount}',
+  'token.holdersColTier': 'Tier {tier}',
+  'token.holdersSwipe': 'Swipe to see every tier',
+  'token.holdersYes': 'Yes',
+  'token.holdersNo': 'No',
+  'token.perkAgents': 'Agents you can run',
+  'token.perkRealtime': "Agents' fills and reasons as they are made, not {delay} later",
+  'token.perkBadge': 'A verified badge on your listed on-chain agents',
+  'token.perkApiCalls': 'Data API calls a day',
+  'token.perkManagers': 'Paper-manager slots',
+  'token.perkTemplates': 'Eight more starting strategies on the Build page',
+  'token.perkNotes': 'Decision notes for the agents you follow, in your browser',
+  'token.perkChat': 'Writing in the Community chat, from {amount} $PRIX',
+  'token.perkPictures': "Pictures in the Community chat, under the chat's own rules",
+  'token.perkForehead': 'Cosmetics in FOREHEAD, from {lower} and from {higher} $PRIX',
+  'token.perkOwnerHolds': '"Owner holds $PRIX" on your agent\'s own page, if you turn it on',
+  'token.holdersBadgeValue':
+    'A listed on-chain agent keeps its badge as before. A paper agent\'s own page can say "Owner holds $PRIX" once its owner turns it on.',
+  'token.holdersRiseNote':
+    "A higher tier counts about an hour after Prix first sees the holding. A lower one counts at Prix's next check.",
+  'token.ownerHoldsToggle': 'Show "Owner holds $PRIX" on my agents\' pages',
+  'token.ownerHoldsToggleNote':
+    'Off unless you turn it on. Anyone who sees the mark can tell that the wallet holds at least {amount} $PRIX.',
+  // web-account's own words, beside the contract's (the integration added them from its drafts).
+  'token.holdersYourColumn': 'your wallet',
+  'token.ownerHoldsFailedTitle': 'Your choice was not saved',
+  'token.holdersLiveHeld':
+    "The day's trades of an agent linked to Prix Live show at 20:00 UTC to everyone, holders included; only its owner sees them sooner.",
+  'token.holdersLiveNothing': 'Holding $PRIX changes nothing in Prix Live.',
+  'token.holdersAccess': 'What $PRIX gives is access to features, never a return.',
+  'token.holdersNextTitle': 'Next for holders',
+  'token.holdersNextCoach': "The Strategy Coach: help with writing and sharpening your agent's strategy. Not open yet.",
+  'token.holdersNextPoll':
+    "The holders' poll: wallets holding at least {amount} $PRIX choose between options Prix writes for its paper league.",
+  'token.holdersNextPollLink': "See the holders' poll",
+
   // --- the rebuilt pages: account/AccountPage.astro ---
   'account.moreLabel': 'More for this wallet',
 
   // --- the rebuilt pages: account/BuildPage.astro ---
   'builder.stepSignIn': 'Sign in',
   'builder.stepDescribe': 'Describe your agent',
-  'builder.exampleIndexLabel': 'Steady index',
-  'builder.exampleIndexPrompt':
-    'Hold 40% in SPY and 30% in QQQ, and keep the rest in cash. When SPY falls more than 2% in one trading day, move a tenth of the cash into SPY.',
-  'builder.exampleMomentumLabel': 'Weekly momentum',
-  'builder.exampleMomentumPrompt':
-    'Each trading day, hold the three symbols with the highest return over the last five trading days, at 25% each, and keep the rest in cash. Never hold SGOV or USO. While no return is known yet, hold cash only.',
-  'builder.exampleCushionLabel': 'Treasury cushion',
-  'builder.exampleCushionPrompt':
-    'Keep 40% in SGOV at all times. Give NVDA, AMD and MU 20% each, but only while that symbol’s return over the last five trading days is above zero. Keep any part not in use in cash.',
   'builder.previewTitle': 'Your card on the board',
   'builder.afterSignIn':
     'Once you are signed in, you name your agent, describe its strategy in plain language and choose its division.',
   'builder.signedInAs': 'Signed in as {address}. Your agent will belong to this wallet.',
-  'builder.examplesLabel': 'Start from an example',
 
   // --- the rebuilt pages: account/BuildPreview.astro ---
   'builder.previewName': 'Your agent',
@@ -1722,6 +1838,20 @@ const strings = {
   'token.siteFeedLate': '{delay} later',
   'token.siteDisclosureLead': 'Stock Tokens have their own risks.',
   'token.siteDisclosureLink': 'Read Robinhood’s disclosure.',
+  // The block after "What each tier unlocks": what $PRIX unlocks in FOREHEAD, the founder's game
+  // (D-146). Cosmetic only. {amount} is filled with grouped(foreheadFacts.lowerTokens) and
+  // grouped(foreheadFacts.higherTokens) from facts.ts: whole tokens, never Prix's tier names.
+  'token.foreheadTitle': 'What the token unlocks in FOREHEAD',
+  'token.foreheadBody':
+    'FOREHEAD is a browser game made by Prix’s founder, on a site of its own. You sign in there by signing a message with your wallet, and the game reads the wallet’s $PRIX, at the address above, from Robinhood Chain at most once an hour.',
+  'token.foreheadUnlockLower':
+    'A wallet with {amount} $PRIX or more: four more outfit colours and a gold outline on the name tag.',
+  'token.foreheadUnlockHigher':
+    'A wallet with {amount} $PRIX or more: also three hats and a frame for the kill-cam photo.',
+  'token.foreheadOwnAmounts': 'The game sets these amounts itself. They are not the tiers above.',
+  'token.foreheadCosmetic': 'Cosmetic only: nothing in play changes.',
+  /** The same words as the footer's link, nav.forehead, so the one action keeps one name. */
+  'token.foreheadLink': 'Play FOREHEAD',
 
   // --- the dark look: price strip, holdings, theme control, agent animals, eyebrows -----------------
   'nav.themeToLight': 'Switch to the light theme',
@@ -1730,7 +1860,7 @@ const strings = {
   'league.pricesLabel': 'Reference prices of the symbols the agents trade',
   'league.pricesAt': 'Prices at {time}',
   'league.tickerPrice': '$' + '{price}',
-  'league.tickerPriceStale': '{price} (stale)',
+  'league.tickerPriceHalted': '{price}, not traded this round',
   'league.holdingsLabel': 'Largest holdings',
   'league.holdingsCash': 'Cash',
 
@@ -1864,7 +1994,11 @@ const strings = {
   'share.agentFactsLeague': '{division} division, {days} trading days.',
   'share.agentTitleLeague': '{name}: rank {rank} of {ranked}, return {return}',
 
+  ...homeStrings,
+  ...templateStrings,
   ...socialStrings,
+  ...holdersStrings,
+  ...holders2Strings,
 } as const satisfies Record<string, string>;
 
 /** A key that has a final string. */

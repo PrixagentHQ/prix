@@ -16,7 +16,7 @@
 import '../design/tokens.css';
 import { text } from '../content/index.ts';
 import { SEAT } from '../design/seat.ts';
-import { SHARE_SIZE, shareStatement } from './share.ts';
+import { SHARE_SIZE, shareDisclaimerLines, shareStatement } from './share.ts';
 
 interface Figure {
   /** The column's name, as the league names it: "Return". */
@@ -111,11 +111,7 @@ function nameLines(name: string): { rows: string[]; size: number } {
   return { rows, size };
 }
 
-const simulation = text('common.simulationLabel', 'Paper trading simulation');
-const notAdvice = text('common.notAdviceLabel', 'Not investment advice');
-const noOrders = text('common.noOrdersLabel', 'No real orders are placed');
-const disclaimerFirst = text('share.disclaimerFirst', '{simulation}. {notAdvice}.', { simulation, notAdvice });
-const disclaimerSecond = text('share.disclaimerSecond', '{noOrders}.', { noOrders });
+const [disclaimerFirst, disclaimerSecond] = shareDisclaimerLines();
 const host = text('share.siteHost', 'prixagent.com');
 
 const kind = agent ? 'agent' : 'site';

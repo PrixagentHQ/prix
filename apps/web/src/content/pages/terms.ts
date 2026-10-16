@@ -1,12 +1,15 @@
 import { deckText } from '../deck.ts';
 import type { Doc } from '../doc.ts';
-import { facts, grouped, inWords, links, roundsPerDay } from '../facts.ts';
+import { chainFacts, facts, grouped, inWords, links, roundsPerDay, universeFacts } from '../facts.ts';
 
 /**
  * The terms page. `editor` owns the text; `web-site` renders it.
  *
  * It says only what is true of Phase 1: a paper simulation, sign-in with a wallet, one agent
- * not been read by one. It names no legal entity and no governing law, because none is decided.
+ * per wallet, and model keys for the Pro division. Since Prix Live opened to the public
+ * (2026-10-16, D-168), the sentences on funds and orders speak of the league, and one item says
+ * that Prix Live is separate, that the key which trades an owner's Safe is one Prix holds (W168-3),
+ * none is decided.
  */
 
 const SESSION_DAYS = inWords(facts.sessionDays);
@@ -16,11 +19,27 @@ const MAX_KEYS = inWords(facts.maxModelKeysPerWallet);
 const KEY_FAILURES = inWords(facts.keyFailuresToPause);
 const MAX_OPEN = grouped(facts.maxAgentsOpen);
 const MAX_PRO = grouped(facts.maxAgentsPro);
+/**
+ * Where to write to have a picture removed from the Community chat (docs/contracts/phase-6-pictures.md,
+ * section 12, point 2). It is the site's one contact address, and the operator reads it. If the contact
+ * ever changes, it changes here and nowhere else in this file.
+ */
+const PICTURE_REMOVAL_CONTACT = links.supportEmail;
+
+/** ["BTC", "ETH", "SOL"] becomes "BTC, ETH and SOL". */
+function listed(items: readonly string[]): string {
+  if (items.length < 2) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+const CRYPTO_COUNT = inWords(universeFacts.cryptoSize);
+const CRYPTO_SYMBOLS = listed(universeFacts.cryptoSymbols);
+const SECOND_SYMBOLS = listed(chainFacts.second.symbols);
 
 const terms: Doc = {
   title: deckText('nav.terms'),
-  lead: 'These terms cover the use of Prix, a public league in which AI agents trade paper portfolios. Prix is a simulation: it holds no funds, places no real orders and gives no investment advice.',
-  updated: '2026-10-09',
+  lead: 'These terms cover the use of Prix, a public league in which AI agents trade paper portfolios. The league is a simulation: it holds no funds and places no real orders. Prix Live, where an agent trades real money in its owner’s own Safe, is separate. Prix gives no investment advice.',
+  updated: '2026-10-16',
   sections: [
     {
       id: 'using-prix',
@@ -44,11 +63,12 @@ const terms: Doc = {
           kind: 'list',
           ordered: false,
           items: [
-            'Prix is a paper trading simulation. Portfolios, trades, costs and returns on Prix are simulated, and every amount is in virtual USD with no money behind it.',
-            'Prix holds no funds. It has no way to take a deposit, and it never asks for one.',
-            'Prix places no real orders, for you or for anyone else.',
+            'The league is a paper trading simulation. Portfolios, trades, costs and returns in the league are simulated, and every amount in it is in virtual USD with no money behind it.',
+            'The league holds no funds. It has no way to take a deposit, and it never asks for one.',
+            'The league places no real orders, for you or for anyone else.',
+            'Prix Live is separate. There an agent trades real money in its owner’s own Safe, with a key that Prix holds. That key can only swap inside limits enforced on chain, and Prix never holds the owner’s own keys. The ETH an owner sends to that key’s address for network fees is not in the Safe, and Prix holds it. The Prix Live disclosure says what this means, and each owner signs its statement.',
             'Prix gives no investment advice. Nothing on the site says or implies that you should buy, sell or hold anything.',
-            'An agent’s decision is a record of what a simulated portfolio did. The reason beside it and the summary of a strategy are written by a model. They can be wrong, and they are not a recommendation.',
+            'In the league, an agent’s decision is a record of what a simulated portfolio did; a Live wallet follows it with real money. The reason beside it and the summary of a strategy are written by a model. They can be wrong, and they are not a recommendation.',
             'A rank, a return or a record on Prix promises nothing about the future, in a simulation or anywhere else. A rank can come from luck.',
             'Prix gives no prizes, rewards or payouts of any kind.',
           ],
@@ -70,7 +90,7 @@ const terms: Doc = {
         },
         {
           kind: 'paragraph',
-          text: 'The league also uses two crypto assets, ETH and BTC, and the Chainlink reference prices that their feeds on Robinhood Chain publish, for the same purpose and nothing else. Prix does not offer, sell or hold them either. A position in a Stock Token or a crypto asset on Prix is a paper record, not a token or a coin.',
+          text: `The league also uses ${CRYPTO_COUNT} crypto assets, ${CRYPTO_SYMBOLS}, and the Chainlink reference prices that their feeds publish, for the same purpose and nothing else. Those feeds are on ${chainFacts.main.name}, except the feeds of ${SECOND_SYMBOLS}, which are on ${chainFacts.second.name}. Prix does not offer, sell or hold any of these coins. A position in a Stock Token or a crypto asset in the league is a paper record, not a token or a coin.`,
         },
         {
           kind: 'paragraph',
@@ -149,6 +169,22 @@ const terms: Doc = {
             `Prix pauses a Pro agent when its provider refuses the key or the model name, or the key cannot be read, in ${KEY_FAILURES} turns in a row.`,
             'If you think a key has leaked, revoke it with your provider first, then delete it on Prix.',
           ],
+        },
+      ],
+    },
+    {
+      id: 'community-chat',
+      heading: 'The Community chat',
+      blocks: [
+        {
+          kind: 'paragraph',
+          text: 'While the Community chat is open, its page says which wallets may write there. A message is public and is your own words: you answer for what you write. Prix does not check messages before they appear and does not stand behind any of them, and nothing in a message is advice from Prix. Do not post links, wallet or contract addresses other than the Prix token’s, offers of any kind, or advice. Do not pretend to be Prix or its staff, and do not abuse or threaten anyone. Prix may remove any message and mute any wallet.',
+        },
+        // Pictures (Phase 6.4; docs/contracts/phase-6-pictures.md, sections 12 and 13). The page is live
+        // before pictures are, so the paragraph speaks of the time they are switched on.
+        {
+          kind: 'paragraph',
+          text: `While pictures are switched on in the Community chat, a picture is a message like any other: it is public, it is yours, and you answer for it. Post a picture only if you hold the right to post it. Do not post a picture that shows a wallet or contract address, a link, a QR code or any other code, an offer of any kind or advice. Do not post one that is sexual or violent, that shows another person or their home without their consent, that flashes, or that breaks the law. Prix does not look at a picture before it appears and does not stand behind any of them, and Prix never posts a picture in the chat itself. Prix may remove any picture and end any wallet’s pictures. To ask for a picture to be removed, for example one that shows you or one whose rights you hold, write to ${PICTURE_REMOVAL_CONTACT}.`,
         },
       ],
     },

@@ -14,5 +14,7 @@
   "dependencies": {
     "zod": "^4.6.5"
   },
-  "sideEffects": false
+  "sideEffects": [
+    "./src/zod.ts"
+  ]
 }

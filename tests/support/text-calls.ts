@@ -28,6 +28,14 @@ export const AREAS = [
   'token',
   'data',
   'social',
+  // Prix Live's keys (Prix Live is not part of this copy).
+  'live',
+  // The holders' poll, /polls (docs/contracts/phase-6-holders.md, deck-holders.ts).
+  'polls',
+  // The holders' second wave (Phase 6.8, docs/contracts/phase-6-holders-2.md section 7): the lounge block on
+  // /following and the decision tape, /tape.
+  'lounge',
+  'tape',
 ] as const;
 
 const KEY_PATTERN = new RegExp(`^(?:${AREAS.join('|')})\\.[a-z][A-Za-z0-9]*$`);
@@ -171,8 +179,13 @@ export function renamesText(source: string): boolean {
   return /\btext\s+as\s+[\w$]+/.test(code) || /\b(?:const|let|var)\s+[\w$]+\s*=\s*text\s*[;\n]/.test(code);
 }
 
+/**
+ * The slots of a string: a name in braces. "Safe{Wallet}" is the name of Safe's own app as Safe writes it, and
+ * no slot: nothing fills it, and it is shown as it is. That one name only: any other word in braces after
+ * "Safe" is a slot, and so is {Wallet} after any other word.
+ */
 export function slotsOf(template: string): string[] {
-  return [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1] as string);
+  return [...template.matchAll(/(?<!\bSafe(?=\{Wallet\}))\{(\w+)\}/g)].map((match) => match[1] as string);
 }
 
 /** Markup or a line break in a string that must be plain text. */
@@ -278,6 +291,9 @@ export function checkTextCalls(calls: readonly TextCall[], options: CheckOptions
     if (!plural) continue;
     if (plural[2] === 'Other' && !slotsOf(call.draft ?? '').includes('count') && !keys.has(`${plural[1]}One`)) continue;
     const partner = `${plural[1]}${plural[2] === 'One' ? 'Other' : 'One'}`;
+    // The holders' contract names its pairs `<base>` and `<base>One` (polls.castCount, polls.castCountOne):
+    // a One key whose bare base is a key is paired too.
+    if (plural[2] === 'One' && keys.has(plural[1] ?? '')) continue;
     if (!keys.has(partner)) add(call, 'plural-pair', `"${key}" has no partner "${partner}"`);
   }
   return violations;

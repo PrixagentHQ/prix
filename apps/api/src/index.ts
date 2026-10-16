@@ -5,17 +5,37 @@ import type {
   ApiConfig,
   ApiDeps,
   ApiError,
+  CreateLoungeSweepJob,
+  CreatePollHoldingReader,
+  CreatePollTallyJob,
+  CreateRoomPictureSweepJob,
+  CreateTelegramLoungePort,
   CronStep,
   DataConfig,
   DataDeps,
   EntitlementsPort,
+  FollowApiDepsWithLounge,
+  HolderPoll,
+  HoldersGate,
+  LoungeApiDeps,
   MarketConfig,
+  PollApiDeps,
+  PollTallyJobDeps,
+  PollTallyOutcome,
   RateLimiter,
+  RoomHoldersApiDeps,
+  RoomPictureApiDeps,
   SchedulerDeps,
   SchedulerLimits,
   SocialApiDeps,
   SocialJob,
   SocialJobDeps,
+  SocialJobName,
+  TallyPoll,
+  TapeApiDeps,
+  TelegramPort,
+  TelegramWebhookWatch,
+  TokenService,
   WorkersAiLike,
 } from '@prix/contracts';
 import {
@@ -36,10 +56,26 @@ import {
   idSchema,
   LEAGUE_MAX_PAGE,
   leagueQuerySchema,
+  loungeConfig,
   OWN_MAX_OUTPUT_TOKENS,
+  POLL_TALLY_DELAY_LABEL,
+  pollTallyDelaySeconds,
   REPUTATION_CRON,
+  ROOM_PICTURE_SWEEP_JOB,
+  ROOM_PICTURES_ADMIN_PATH,
+  ROOM_PICTURES_PATH,
+  roomDailyCap,
+  roomDailyCapBesidePictures,
+  roomHoldersOn,
+  roomPictureDropsRead,
+  roomPicturesDailyCap,
+  roomPicturesEnabled,
+  roomPictureViewsCap,
   socialEnabled,
   stepsFor,
+  TAPE_PATH,
+  TELEGRAM_WEBHOOK_URL,
+  tapeEnabled,
 } from '@prix/contracts';
 import { createMarket, UNIVERSE } from '@prix/market';
 import { createDataChain } from '@prix/market/data-chain';
@@ -52,6 +88,7 @@ import { strategyDna } from '@prix/reputation/dna';
 import { rivalryEngine } from '@prix/reputation/rivalry';
 import { scoringV2 } from '@prix/reputation/v2';
 import { warStandings } from '@prix/reputation/war-standings';
+import * as runtimeRoot from '@prix/runtime';
 import { createHouseModel, createKeyOpener, createKeySealer, createOwnModel, runSchedulerStep } from '@prix/runtime';
 import { runDeliverStep } from '@prix/runtime/follow/deliver';
 import { runEmitStep } from '@prix/runtime/follow/emit';
@@ -66,6 +103,7 @@ import {
   createSeasonScoreJob,
 } from '@prix/runtime/reputation/season-jobs';
 import { runReputationStep } from '@prix/runtime/reputation/step';
+import * as socialRuntime from '@prix/runtime/social/index';
 import {
   createManagerValueJob,
   createModelWarJob,
@@ -74,29 +112,40 @@ import {
   createStrategyDnaJob,
   runSocialStep,
 } from '@prix/runtime/social/index';
+import { createRoomPruneJob } from '@prix/runtime/social/room-prune';
 import { createTokenService } from '@prix/runtime/token/service';
 import { runTokenStep } from '@prix/runtime/token/step';
 import { sim } from '@prix/sim';
 import { createManagerEngine } from '@prix/sim/manager';
 import { isAddress, recoverMessageAddress } from 'viem';
 import { createDataApp, isDataPath } from './http/data/app.ts';
+import { errorResponse, failures } from './http/errors.ts';
 import type { FeedCursorSigner } from './http/follow/feed-cursor.ts';
 import { createFeedCursorSigner } from './http/follow/feed-cursor.ts';
 import { createFeedReadPort } from './http/follow/index.ts';
-import type { AppExtras } from './http/index.ts';
+import type { AppExtras, LoungeRouteDeps } from './http/index.ts';
 import { createApp } from './http/index.ts';
 import { createAgentCreationGuard, createClaimVerifier } from './http/reputation/index.ts';
 import { readSessionToken } from './http/session.ts';
 import { createMarketConfig, workerRpcUrls } from './market-config.ts';
+import { type PollHoldingConfig, pollHoldingFor } from './poll-holding.ts';
 import type { RateLimitEnv } from './rate-limit.ts';
-import { createRateLimiter } from './rate-limit.ts';
+import { createPictureLimiter, createRateLimiter } from './rate-limit.ts';
 import { createDataStore } from './store/data.ts';
 import { createFollowStore } from './store/follow.ts';
 import { createD1Store } from './store/index.ts';
+import { createLoungeStore } from './store/lounge.ts';
+import { createOwnerHoldsStore } from './store/owner-holds.ts';
+import { createPollStore } from './store/polls.ts';
 import { createPushStore } from './store/push.ts';
 import { createReputationStore } from './store/reputation.ts';
+import { createRoomStore } from './store/room.ts';
+import type { RoomPictureKv } from './store/room-picture-bytes.ts';
+import { createRoomPictureBytes } from './store/room-picture-bytes.ts';
+import { createRoomPictureStore } from './store/room-pictures.ts';
 import { createSocialStore } from './store/social.ts';
 import { createTokenStore } from './store/token.ts';
+import { createTelegramWebhookWatch } from './store/webhook-watch.ts';
 
 /** A chain record counts Stock Tokens only (docs/CONTRACTS.md section 21, rule 6); built once. */
 const chainRecord = createChainRecord(UNIVERSE);
@@ -164,6 +213,71 @@ export interface Env extends RateLimitEnv {
   SOCIAL_ENABLED?: string;
   /** Phase 6. Optional secret: the Groq key of Model Wars. Absent, no Groq model can enter a war. Never logged. */
   GROQ_API_KEY?: string;
+  /**
+   * Phase 6.3. "true", with SOCIAL_ENABLED also "true", mounts the room's public and writer routes.
+   * Otherwise they are the generic 404; the admin's routes and the prune job run either way
+   * (docs/contracts/phase-6-room.md sections 7 and 8).
+   */
+  ROOM_ENABLED?: string;
+  /**
+   * Phase 6.3. Messages of all wallets in one UTC day, read by `roomDailyCap`: ROOM_MESSAGES_PER_DAY_DEFAULT
+   * (400) when not set or not a number, never above ROOM_MESSAGES_PER_DAY_MAX (600); "0" is a room nobody
+   * but an admin writes in.
+   */
+  ROOM_MESSAGES_PER_DAY?: string;
+  /**
+   * Phase 6.4. "true", with SOCIAL_ENABLED and ROOM_ENABLED also "true", mounts the upload, the bytes and
+   * the report of the room's pictures (`roomPicturesEnabled`). Otherwise they are the generic 404 and the
+   * room's read answers as Phase 6.3's does. The admin's routes and the sweep job run either way
+   * (docs/contracts/phase-6-pictures.md section 10).
+   */
+  ROOM_PICTURES_ENABLED?: string;
+  /**
+   * Phase 6.4. Pictures of all wallets in one UTC day, read by `roomPicturesDailyCap`: 60 when not set or
+   * not a number, never above 150; "0" stops uploads and keeps serving what is there.
+   */
+  ROOM_PICTURES_PER_DAY?: string;
+  /**
+   * Phase 6.4. Pictures shown in one UTC day, all readers together, read by `roomPictureViewsCap`: 20,000
+   * when not set or not a number, never above 30,000.
+   */
+  ROOM_PICTURE_VIEWS_PER_DAY?: string;
+  /**
+   * Phase 6.4. The KV namespace `prix-room-pictures`, which holds the bytes of the room's pictures and
+   * nothing else. Absent until the founder has made the namespace and the binding is taken out of its comment in
+   * wrangler.jsonc: every method of the bytes port then throws, and each caller does what it does when KV
+   * fails (`createRoomPictureBytes`). `RATE_PICTURE`, the limiter of the bytes routes, is in `RateLimitEnv`.
+   */
+  ROOM_PICTURES?: RoomPictureKv;
+  /**
+   * Phase 6.7, the holders' poll (docs/contracts/phase-6-holders.md section 4.6): on only while it reads
+   * exactly "true" (`pollsSwitchOn`). Off, the vote and the three public reads are the generic 404; the admin's
+   * tally route and the `poll_tally` job run either way.
+   */
+  POLLS_ENABLED?: string;
+  /**
+   * Phase 6.8 (docs/contracts/phase-6-holders-2.md section 5). "true" (`roomHoldersOn`) turns on the room's
+   * Holder mark and its caps of a day by tier, with the room's own switches. Anything else: no `holder`
+   * field and 30 messages a day for every wallet.
+   */
+  ROOM_HOLDERS?: string;
+  /**
+   * Phase 6.8 (section 4.1). "on", with a valid HOLDERS_LOUNGE_CHAT_ID, a valid HOLDERS_LOUNGE_INVITE_URL
+   * and the bot configured, turns the holders' lounge on (`loungeConfig`). Anything else: the lounge is null
+   * everywhere. None of the three is a secret.
+   */
+  HOLDERS_LOUNGE?: string;
+  /** Phase 6.8. The Prix Community group's chat id: -100 and its digits. Empty until the founder gives it. */
+  HOLDERS_LOUNGE_CHAT_ID?: string;
+  /** Phase 6.8. The group's invite link that asks for approval: https://t.me/+ and its code. Empty until the founder makes it. */
+  HOLDERS_LOUNGE_INVITE_URL?: string;
+  /** Phase 6.8 (section 3.1). "true", with SOCIAL_ENABLED, mounts GET /api/tape. Anything else: the generic 404. */
+  TAPE_ENABLED?: string;
+}
+
+/** POLLS_ENABLED: on only while it is exactly "true" (the contract's section 4.6), not trimmed, not lower-cased. */
+export function pollsSwitchOn(value: string | undefined): boolean {
+  return value === 'true';
 }
 
 /**
@@ -398,6 +512,9 @@ function buildApiDeps(env: Env, entitlements: EntitlementsPort): ApiDeps {
     rateLimiter: createRateLimiter(env),
     config: readApiConfig(env),
     now: () => new Date(),
+    // Phase 6.7, B: the owner's choice of the mark, `users.show_holds` (migration 0018). The agent read and the
+    // two owner-holds routes read it; a read that fails is false there (docs/contracts/phase-6-holders.md 3).
+    ownerHolds: createOwnerHoldsStore(env.DB),
   };
 }
 
@@ -422,12 +539,19 @@ function readDataConfig(env: Env, siteOrigin: string, adminAddresses: readonly s
   };
 }
 
-/** Telegram's three settings. All three, or the bot is off. */
-function readTelegram(env: Env): { config: { botUsername: string; webhookSecret: string }; token: string } | null {
+/**
+ * Telegram's settings. The token and the webhook secret, or the bot is off. The username is not needed
+ * (docs/contracts/phase-6-holders.md section 7, revision 3, H2-SEC-6): without it `botUsername` is "", the
+ * webhook's admin route and the webhook itself work, and every link route stays closed (api-core), so the
+ * webhook is set before the username opens the link route.
+ */
+export function readTelegram(
+  env: Pick<Env, 'TELEGRAM_BOT_TOKEN' | 'TELEGRAM_WEBHOOK_SECRET' | 'TELEGRAM_BOT_USERNAME'>,
+): { config: { botUsername: string; webhookSecret: string }; token: string } | null {
   const token = (env.TELEGRAM_BOT_TOKEN ?? '').trim();
   const webhookSecret = (env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
   const botUsername = (env.TELEGRAM_BOT_USERNAME ?? '').trim().replace(/^@/, '');
-  if (token === '' || !/^[A-Za-z0-9_-]{32,256}$/.test(webhookSecret) || botUsername === '') return null;
+  if (token === '' || !/^[A-Za-z0-9_-]{32,256}$/.test(webhookSecret)) return null;
   return { config: { botUsername, webhookSecret }, token };
 }
 
@@ -458,6 +582,75 @@ const AI_MISSING: WorkersAiLike = {
     throw new ConfigError('ai_binding_missing');
   },
 };
+
+/** Phase 6.8: the name of the lounge's sweep in `socialJobNameSchema` (docs/contracts/phase-6-holders-2.md 4.6). */
+const HOLDERS_LOUNGE_SWEEP_JOB: SocialJobName = 'holders_lounge_sweep';
+
+/**
+ * Phase 6.8: engine-runtime's two factories of the lounge, `createLoungeSweepJob` and
+ * `createTelegramLoungePort`, read by their names from the runtime's social module
+ * (`@prix/runtime/social/index`), as `createRoomPictureSweepJob` is read, and typed by the contract
+ * (section 4.6). This file compiles before they land and is checked against the contract's types once they
+ * have. Read at the moment they are needed, never copied at load.
+ */
+const holdersFactories: Pick<typeof socialRuntime, 'runSocialStep'> & {
+  createLoungeSweepJob?: CreateLoungeSweepJob;
+  createTelegramLoungePort?: CreateTelegramLoungePort;
+} = socialRuntime;
+
+/**
+ * Both factories of the lounge, or null while either is missing: the lounge is then null everywhere. Each
+ * is asked with `in` before it is read, so a module that does not export it (a test's stand-in of the
+ * runtime among them, which throws on a read of a name it lacks) answers missing and never throws.
+ */
+function loungeFactories(): { sweep: CreateLoungeSweepJob; port: CreateTelegramLoungePort } | null {
+  const sweep = 'createLoungeSweepJob' in holdersFactories ? holdersFactories.createLoungeSweepJob : undefined;
+  const port = 'createTelegramLoungePort' in holdersFactories ? holdersFactories.createTelegramLoungePort : undefined;
+  if (sweep === undefined || port === undefined) return null;
+  return { sweep, port };
+}
+
+/**
+ * Phase 6.8: the token gate as the holders' perks read it (`HoldersGate`): the token service's own
+ * configuration, kept in memory by the service, never a request. On only while gating is enabled and a
+ * token is set; the token's address in lower case.
+ */
+function holdersGateOf(tokenService: Pick<TokenService, 'getConfig'>): () => Promise<HoldersGate> {
+  return async () => {
+    const { enabled, tokenAddress } = await tokenService.getConfig();
+    const token = tokenAddress === null ? null : tokenAddress.toLowerCase();
+    return { gatingOn: enabled && token !== null, token };
+  };
+}
+
+/**
+ * Phase 6.8: the lounge's deps for the follow routes (docs/contracts/phase-6-holders-2.md section 4.1), or
+ * null while `loungeConfig` is null, the bot is not configured, or either factory of engine-runtime is
+ * missing. When HOLDERS_LOUNGE says "on" and the config is refused, `lounge_config_invalid` is logged with
+ * no value: the wiring is built once per isolate, so the line is written once. The port takes the bot's
+ * token and keeps it in the URL of its calls alone.
+ */
+function readLounge(
+  env: Env,
+  telegram: { token: string } | null,
+  store: LoungeApiDeps['store'],
+  tokenService: Pick<TokenService, 'holdingOf'>,
+): LoungeRouteDeps | null {
+  const config = loungeConfig({
+    on: env.HOLDERS_LOUNGE,
+    chatId: env.HOLDERS_LOUNGE_CHAT_ID,
+    inviteUrl: env.HOLDERS_LOUNGE_INVITE_URL,
+  });
+  if (config === null) {
+    if ((env.HOLDERS_LOUNGE ?? '').trim().toLowerCase() === 'on') log('lounge_config_invalid');
+    return null;
+  }
+  const factories = loungeFactories();
+  if (telegram === null || factories === null) return null;
+  // Step 5 of section 4.4: the approval needs the time of the read the holding rests on
+  // (`TokenService.holdingOf(wallet).checkedAt`). Without it no read is ever fresh and no join is approved.
+  return { config, port: factories.port(telegram.token), store, holding: (address) => tokenService.holdingOf(address) };
+}
 
 /** Everything of Phases 2 to 6 that the Worker builds once per isolate. Bindings and settings only. */
 function buildWiring(env: Env) {
@@ -491,6 +684,9 @@ function buildWiring(env: Env) {
     chainId: CHAIN_ID,
   };
   const telegram = readTelegram(env);
+  // Phase 6.8: the holders' lounge. Its store is built whatever the switch says, for the sweep's idle runs.
+  const loungeStore = createLoungeStore(env.DB);
+  const lounge = readLounge(env, telegram, loungeStore, tokenService);
   const followDeps = {
     ...apiDeps,
     follow,
@@ -504,7 +700,9 @@ function buildWiring(env: Env) {
     awards,
     records: reputation,
     telegram: telegram === null ? null : { config: telegram.config, port: createTelegramPort(telegram.token) },
-  };
+    // Phase 6.8 (section 4.1): the join requests of the webhook and GET /api/lounge; null is off.
+    lounge,
+  } satisfies FollowApiDepsWithLounge;
   // `houseOwners` sets the same `house` mark in the data API as in the public API.
   const dataDeps: DataDeps = {
     houseOwners: apiDeps.config.houseOwners,
@@ -530,14 +728,123 @@ function buildWiring(env: Env) {
     warStandings,
     groqConfigured: groqApiKey !== null,
   };
+  const socialOn = socialEnabled(env.SOCIAL_ENABLED);
+  // Phase 6.3, the room. On only while both switches are: ROOM_ENABLED is read by the rule of
+  // SOCIAL_ENABLED, exactly "true" after trimming and lower-casing (packages/contracts/src/phase6-room.ts).
+  const room = createRoomStore(env.DB);
+  // Phase 6.4, pictures in the room (docs/contracts/phase-6-pictures.md). On only while all three switches
+  // are, each read by the one rule. The two caps of a day are variables; the constants are the contract's.
+  const pictures = createRoomPictureStore(env.DB);
+  // With no binding every method of the port throws: nothing is skipped in silence (section 6).
+  const pictureBytes = createRoomPictureBytes(env.ROOM_PICTURES);
+  const picturesEnabled = roomPicturesEnabled(env.SOCIAL_ENABLED, env.ROOM_ENABLED, env.ROOM_PICTURES_ENABLED);
+  const picturesDailyCap = roomPicturesDailyCap(env.ROOM_PICTURES_PER_DAY);
+  const pictureViewsCap = roomPictureViewsCap(env.ROOM_PICTURE_VIEWS_PER_DAY);
+  const messagesDailyCap = roomDailyCap(env.ROOM_MESSAGES_PER_DAY);
+  const holdersGate = holdersGateOf(tokenService);
+  const roomDeps: RoomHoldersApiDeps = {
+    ...socialDeps,
+    room,
+    roomEnabled: socialOn && socialEnabled(env.ROOM_ENABLED),
+    // While pictures are enabled the room's cap of messages gives way, so that messages and pictures
+    // together stay inside the room's rows of a day (section 13). Of a cap of 400 messages, since the
+    // contract's revision 5: 394 at the defaults (60 pictures, 20,000 views), the whole 400 while the
+    // day's pictures are at most 55, 294 at 150 pictures, 250 at 150 pictures and 30,000 views. While
+    // pictures are not enabled, it is the room's own figure.
+    roomDailyCap: picturesEnabled
+      ? roomDailyCapBesidePictures(messagesDailyCap, picturesDailyCap, pictureViewsCap)
+      : messagesDailyCap,
+    pictures,
+    bytes: pictureBytes,
+    picturesEnabled,
+    picturesDailyCap,
+    pictureViewsCap,
+    // The `picture` rule of the two bytes routes. It refuses while RATE_PICTURE is missing, as every rule does.
+    pictureLimiter: createPictureLimiter(env.RATE_PICTURE),
+    // The draw of the views' sample: a number from 0 up to and not including 1, the server's own.
+    random: () => (crypto.getRandomValues(new Uint32Array(1))[0] ?? 0) / 2 ** 32,
+    // The one address a message may hold: the token's own configuration, which the token routes read,
+    // kept in memory by the service. Never from a request. Null while no token is configured.
+    prixAddress: async (): Promise<Address | null> => {
+      const { tokenAddress } = await tokenService.getConfig();
+      return tokenAddress === null ? null : tokenAddress.toLowerCase();
+    },
+    // Who may write (the contract's section 3, revision 7): a holding of ROOM_WRITE_MIN_TOKENS whole
+    // $PRIX and no tier. The holding is the token service's own read of the wallet, with the route's
+    // options handed on as they are: the write asks `cachedOnly` and reads no chain, `me` reads in full.
+    // Since Phase 6.8 the holding also answers the tier of the same stored row, which the caps of a day
+    // read (docs/contracts/phase-6-holders-2.md section 2.2): passed through as it is, with no cast.
+    holding: (address, options) => tokenService.holdingOf(address, options),
+    // Phase 6.8 (section 2.1): the Holder mark and the caps by tier, only while ROOM_HOLDERS says "true".
+    roomHoldersOn: roomHoldersOn(env.ROOM_HOLDERS),
+    holdersGate,
+  };
+  // Phase 6.7, C: the holders' poll (docs/contracts/phase-6-holders.md sections 4 and 5). The store, the tally's
+  // own deps (the job and the admin route take the same `tallyPoll`), and the routes' deps.
+  const polls = createPollStore(env.DB);
+  const { createPollHoldingReader } = runtimeFactories;
+  const { createPollTallyJob, tallyPoll } = socialJobFactories;
+  const pollHoldingConfig: PollHoldingConfig = async () => {
+    const config = await tokenService.getConfig();
+    return {
+      token: config.tokenAddress,
+      thresholdsPpm: config.thresholdsPpm,
+      gatingOn: config.enabled && config.tokenAddress !== null,
+    };
+  };
+  const tallyDelaySeconds = createTallyDelay(apiDeps.config.nonceSecret);
+  // A new holding reader, with a new fetch meter, for each run (HB1-SEC-1): the social step calls this once an
+  // invocation and the admin route once a request, so POLL_TALLY_MAX_FETCHES bounds each run on its own. Never
+  // kept in this cached wiring.
+  const pollJobDepsFor = (): PollTallyJobDeps | null =>
+    createPollHoldingReader === undefined
+      ? null
+      : {
+          polls,
+          holding: pollHoldingFor(rpcUrls, pollHoldingConfig),
+          adminAddresses: apiDeps.config.adminAddresses,
+          houseOwners: apiDeps.config.houseOwners,
+          tallyDelaySeconds,
+          social,
+          reputation,
+          now: () => new Date(),
+          log,
+        };
+  const pollDeps: PollApiDeps = {
+    ...apiDeps,
+    polls,
+    entitlements,
+    pollsEnabled: pollsSwitchOn(env.POLLS_ENABLED),
+    tierOnePpm: async () => (await tokenService.getConfig()).thresholdsPpm[0],
+    tally: (poll: HolderPoll): Promise<PollTallyOutcome> => {
+      const runDeps = pollJobDepsFor();
+      if (tallyPoll === undefined || runDeps === null) {
+        notConfigured('poll_tally', tallyPoll === undefined ? 'tallyPoll' : 'createPollHoldingReader');
+        return Promise.resolve({ outcome: 'failed', step: 'read' });
+      }
+      return tallyPoll(runDeps, poll);
+    },
+  };
+  // E (H3-SEC-8): the webhook's watch, read by the link routes and set by the watchdog at minute 13.
+  const webhookWatch = createTelegramWebhookWatch(env.DB);
+  const followDepsWithWatch = { ...followDeps, webhookWatch };
   return {
+    polls,
+    pollDeps,
+    pollJobDepsFor,
+    createPollTallyJob,
+    webhookWatch,
     apiDeps,
     reputationDeps,
-    followDeps,
+    followDeps: followDepsWithWatch,
     dataDeps,
     social,
     socialDeps,
-    socialOn: socialEnabled(env.SOCIAL_ENABLED),
+    socialOn,
+    room,
+    roomDeps,
+    pictures,
+    pictureBytes,
     groqApiKey,
     tokenService,
     reputation,
@@ -547,6 +854,9 @@ function buildWiring(env: Env) {
     vapid,
     rpcUrls,
     entitlements,
+    lounge,
+    loungeStore,
+    holdersGate,
   };
 }
 
@@ -590,13 +900,74 @@ interface SocialExtras {
   socialAdmin?: SocialApiDeps;
 }
 
+/**
+ * What Phase 6.3 hands the app: `AppExtras.room` (mounted by `createRoomRoutes`) and
+ * `AppExtras.roomAdmin` (mounted by `createRoomAdminRoutes`), docs/contracts/phase-6-room.md section 8.
+ * Spelled here as well, as `SocialExtras` is, so that this file stays the same once
+ * apps/api/src/http/index.ts declares them.
+ */
+interface RoomExtras {
+  room?: RoomHoldersApiDeps;
+  roomAdmin?: RoomHoldersApiDeps;
+}
+
+/**
+ * What Phase 6.8 hands the app: `AppExtras.tape` (mounted by `registerTapeRoutes(routes, extras.tape,
+ * liveDelay)` whenever it is set), docs/contracts/phase-6-holders-2.md section 3.1. Spelled here as well,
+ * as `RoomExtras` is, so that this file compiles before apps/api/src/http/index.ts declares it. The entry
+ * sets it only while TAPE_ENABLED and SOCIAL_ENABLED are both on: the entry decides the switch.
+ */
+interface TapeExtras {
+  tape?: TapeApiDeps;
+}
+
+/**
+ * What Phase 6.4 hands the app: `AppExtras.roomPictures` (mounted by `createRoomPictureRoutes`: the
+ * upload, the bytes and the report) and `AppExtras.roomPicturesAdmin` (mounted by
+ * `createRoomPictureAdminRoutes`: the admin's bytes, its list, keep, off and on),
+ * docs/contracts/phase-6-pictures.md sections 10 and 14. Spelled here as well, as `RoomExtras` is, so that
+ * this file compiles before apps/api/src/http/index.ts declares them and stays the same once it does.
+ * From this phase on the room's own two factories take `RoomPictureApiDeps` too: their read and `me`
+ * carry pictures while `picturesEnabled` holds, and their hide and mute delete bytes whatever it says.
+ */
+interface RoomPictureExtras {
+  roomPictures?: RoomPictureApiDeps;
+  roomPicturesAdmin?: RoomPictureApiDeps;
+}
+
+/**
+ * What Phase 6.7 hands the app: `AppExtras.polls` (docs/contracts/phase-6-holders.md section 4.4, revision 3,
+ * HB-3), mounted by api-core's `createPollRoutes`. Spelled here as well, as `RoomExtras` is, so that this file
+ * compiles before apps/api/src/http/index.ts declares it and stays the same once it does.
+ */
+interface PollExtras {
+  polls?: PollApiDeps;
+}
+
+/**
+ * The app as the entry calls it: a request and the request's own execution context. The upload of a
+ * picture hands its later steps to `waitUntil` of that context, so that a client who hangs up does not
+ * stop them between a count and the insert (docs/contracts/phase-6-pictures.md section 5). `ApiApp`
+ * declares `fetch(request)` alone; what `createApp` answers fits this type with and without its second
+ * parameter, so the entry compiles before and after apps/api/src/http/index.ts takes the context.
+ */
+interface EntryApp {
+  fetch(request: Request, ctx?: ExecutionContext): Promise<Response>;
+}
+
 /** The API as one isolate holds it: the app, and the two things the cache in front of it needs. */
 interface Api {
-  app: ApiApp;
+  app: EntryApp;
   rateLimiter: RateLimiter;
   siteOrigin: string;
   /** Checks a feed cursor before the cache is asked (docs/CONTRACTS.md section 20). */
   cursorSigner: FeedCursorSigner;
+  /** True while the room's public routes are mounted: the entry's own rules for the room hold only then. */
+  roomEnabled: boolean;
+  /** True while the pictures' public routes are mounted: the HEAD rule of the public bytes path holds only then. */
+  picturesEnabled: boolean;
+  /** True while POLLS_ENABLED is on: the HEAD rule of GET /api/polls holds only then. */
+  pollsEnabled: boolean;
 }
 
 /**
@@ -616,8 +987,18 @@ function apiFor(env: Env): Api {
     vapid,
     socialDeps,
     socialOn,
+    roomDeps,
+    pollDeps,
+    follow,
+    entitlements,
   } = wiringFor(env);
-  const extras: AppExtras & SocialExtras = {
+  // Phase 6.8 (docs/contracts/phase-6-holders-2.md section 3.1): the tape's deps, only while TAPE_ENABLED
+  // and SOCIAL_ENABLED are both on. Off, /api/tape falls to the generic 404.
+  const tape: TapeApiDeps | null = socialOn && tapeEnabled(env.TAPE_ENABLED) ? { ...deps, follow, entitlements } : null;
+  const extras: AppExtras & SocialExtras & RoomExtras & RoomPictureExtras & PollExtras & TapeExtras = {
+    // Phase 6.7 (docs/contracts/phase-6-holders.md section 4.4, HB-3): always present. `createPollRoutes`
+    // mounts the admin's tally always and the vote and the three public reads only while `pollsEnabled`.
+    polls: pollDeps,
     reputation: reputationDeps,
     follow: followDeps,
     token: { service: tokenService },
@@ -626,12 +1007,27 @@ function apiFor(env: Env): Api {
     // while SOCIAL_ENABLED is on. Off, every public /api/social path falls to the generic 404.
     socialAdmin: socialDeps,
     ...(socialOn ? { social: socialDeps } : {}),
+    // Phase 6.3 (docs/contracts/phase-6-room.md section 8): the admin's routes always, so a message can
+    // be hidden and a writer muted while the room is off; the status, the read, `me` and the write only
+    // while SOCIAL_ENABLED and ROOM_ENABLED are both on. Off, those four fall to the generic 404.
+    roomAdmin: roomDeps,
+    ...(roomDeps.roomEnabled ? { room: roomDeps } : {}),
+    // Phase 6.4 (docs/contracts/phase-6-pictures.md section 10): the admin's routes always, so a reported
+    // picture can be decided, a picture removed and pictures switched on or off while they are not
+    // enabled; the upload, the bytes and the report only while SOCIAL_ENABLED, ROOM_ENABLED and
+    // ROOM_PICTURES_ENABLED are all on. Off, those three fall to the generic 404.
+    roomPicturesAdmin: roomDeps,
+    ...(roomDeps.picturesEnabled ? { roomPictures: roomDeps } : {}),
+    ...(tape === null ? {} : { tape }),
   };
   const api: Api = {
     app: createApp(deps, extras),
     rateLimiter: deps.rateLimiter,
     siteOrigin: deps.config.siteOrigin,
     cursorSigner: createFeedCursorSigner(deps.config.nonceSecret),
+    roomEnabled: roomDeps.roomEnabled,
+    picturesEnabled: roomDeps.picturesEnabled,
+    pollsEnabled: pollDeps.pollsEnabled,
   };
   cachedApi = { env, api };
   if (warmUpState !== 'done') logError('warm_up_failed', { state: warmUpState });
@@ -745,6 +1141,13 @@ const SOCIAL_READS: readonly { pattern: RegExp; params: readonly string[] }[] = 
   { pattern: new RegExp(`^/api/social/wars/${SOCIAL_ID}$`), params: [] },
   { pattern: /^\/api\/social\/managers$/, params: ['page'] },
   { pattern: new RegExp(`^/api/social/managers/${SOCIAL_ID}$`), params: [] },
+  // Phase 6.3, the room (docs/contracts/phase-6-room.md sections 6 and 8). The read takes no query and
+  // has no older page, so it has one key, its path: no address can make a key of every value, and
+  // simultaneous misses share one read in an isolate (`readRoomOnce`). The status is kept the same way.
+  // `/api/social/room/me` and `/api/social/admin/room` match neither pattern: they read a session and
+  // are never stored.
+  { pattern: /^\/api\/social\/room\/status$/, params: [] },
+  { pattern: /^\/api\/social\/room$/, params: [] },
 ];
 
 /**
@@ -813,6 +1216,12 @@ function publicReadKey(request: Request, siteOrigin: string): string | null {
     return null;
   }
   const path = url.pathname;
+  // Phase 6.7: GET /api/polls under its path alone, a query ignored and a session cookie changing nothing
+  // (it holds no per-wallet data). Exactly this path: /api/polls/me and /api/polls/status are never stored.
+  if (path === POLLS_PATH) return `${siteOrigin}${POLLS_PATH}`;
+  // Phase 6.8 (docs/contracts/phase-6-holders-2.md section 3.1): the tape keeps its two answers under keys
+  // of its own, made from the viewer's entitlements; this cache never stores nor serves one.
+  if (path === TAPE_PATH) return null;
   if (PLAIN_PUBLIC_READS.has(path)) return `${siteOrigin}${path}`;
   if (path === LEAGUE_FEED_PATH) return leagueFeedKey(url, siteOrigin);
   const phase = phaseReadKey(request, url, siteOrigin);
@@ -894,6 +1303,240 @@ async function forgetLeague(cache: Cache, siteOrigin: string, path: string): Pro
   await Promise.all(keys.map((key) => cache.delete(key).catch(() => false)));
 }
 
+const ROOM_PATH = '/api/social/room';
+const ROOM_STATUS_PATH = '/api/social/room/status';
+const ROOM_ADMIN_PREFIX = '/api/social/admin/room/';
+
+/**
+ * The room's two cached reads, its read and its status (docs/contracts/phase-6-room.md section 6). While
+ * the room is on, a HEAD of either is answered by `serve` and never by the app: from what this location
+ * holds, or with `headNotCached` when it holds nothing or there is no cache at all. A miss by HEAD is not
+ * stored, so without this rule every HEAD would run the read, and one address could spend D1's rows read
+ * of a day through it. While the room is off the routes are not mounted and a HEAD is what a GET is, the
+ * app's generic 404. The path is the exact one: the router matches no other spelling to these routes, and
+ * a path with a percent sign is answered before this is asked.
+ */
+function isRoomCachedRead(path: string): boolean {
+  return path === ROOM_PATH || path === ROOM_STATUS_PATH;
+}
+
+/**
+ * The answer to a HEAD of a room read that nothing is cached for, and to a HEAD of the public bytes path
+ * of a picture, which is never cached: 405, and the one method that reads it.
+ */
+function headNotCached(): Response {
+  return new Response(null, { status: 405, headers: { Allow: 'GET', 'Cache-Control': 'no-store' } });
+}
+
+/**
+ * A write that changes what the room's read shows (docs/contracts/phase-6-room.md section 6): a message
+ * written, and the admin's writes under its prefix: the three by a message's id, which hide it, mute its
+ * writer or lift the mute, and from Phase 6.4 on the keep of a picture and the two of the pictures'
+ * switch, which only admins make. The paths at and under `/api/social/room/pictures` are not this rule's:
+ * `roomPictureDropsRead` is asked beside it, and of those only the upload that answered 201 drops the read.
+ */
+function changesRoom(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD') return false;
+  return path === ROOM_PATH || path.startsWith(ROOM_ADMIN_PREFIX);
+}
+
+// --- the two bytes paths of the room's pictures --------------------------------------------------
+
+/**
+ * A path of exactly one segment under `prefix`, whatever the segment: every spelling the router hands to
+ * the bytes route of that prefix. A path with a further segment or a trailing slash is not one, and a path
+ * with a percent sign is answered before this is asked (docs/contracts/phase-6-pictures.md section 7, step 1).
+ */
+function isOneSegmentUnder(prefix: string, path: string): boolean {
+  if (!path.startsWith(`${prefix}/`)) return false;
+  const rest = path.slice(prefix.length + 1);
+  return rest !== '' && !rest.includes('/');
+}
+
+/** The public bytes path of a picture: `/api/social/room/pictures/<one segment>`. */
+function isPictureBytesPath(path: string): boolean {
+  return isOneSegmentUnder(ROOM_PICTURES_PATH, path);
+}
+
+/** The admin's bytes path: `/api/social/admin/room/pictures/<one segment>`, `off` among them. */
+function isAdminPictureBytesPath(path: string): boolean {
+  return isOneSegmentUnder(ROOM_PICTURES_ADMIN_PATH, path);
+}
+
+/**
+ * What the entry itself answers for a HEAD of a bytes path, or null when the request goes on to the app.
+ * Hono answers a HEAD with the GET route, so without this a HEAD would run the gate, the views' count and
+ * a KV read for an answer with no body: "a HEAD never runs them" (the contract's section 17).
+ *
+ * - The admin's bytes path: the generic 404, always and whatever the switches say. No page sends one.
+ * - The public bytes path while pictures are enabled: 405 with `Allow: GET`.
+ * - The public bytes path while they are not: null. The route is not mounted, and a HEAD is what a GET of
+ *   the path is, the app's generic 404.
+ *
+ * Neither path has a cache key, for a GET either: `publicReadKey` answers null for both, since
+ * `SOCIAL_READS` is a list of the reads that are kept and holds neither. There is no `cache.match` and no
+ * `cache.put` of a picture, so no cached copy outlives a delete (the contract's section 0, rule 2).
+ */
+function pictureHeadAnswer(path: string, picturesEnabled: boolean): Response | null {
+  // The app's own generic 404, as a HEAD carries it: its status and its headers, and no body.
+  if (isAdminPictureBytesPath(path)) return new Response(null, errorResponse(failures.routeNotFound()));
+  if (picturesEnabled && isPictureBytesPath(path)) return headNotCached();
+  return null;
+}
+
+/**
+ * Drops the room's stored read after such a write, so that a new message shows at once and a hidden one
+ * is gone at once. Its key is the path alone, as `socialReadKey` makes it. No route has a handle on the
+ * cache; this is the one place that drops it. Only the cache of this location is touched: anywhere else
+ * a hidden message can be served until its 30 seconds run out.
+ */
+async function forgetRoom(cache: Cache, siteOrigin: string): Promise<void> {
+  await cache.delete(`${siteOrigin}${ROOM_PATH}`).catch(() => false);
+}
+
+// --- the holders' poll's public read (docs/contracts/phase-6-holders.md section 4.4) -------------
+
+/** The poll's one cached read. Its key is this path alone; no other path of the poll is ever stored. */
+export const POLLS_PATH = '/api/polls';
+const POLL_VOTE_PATTERN = /^\/api\/polls\/[^/]+\/vote$/;
+const POLL_TALLY_PATTERN = /^\/api\/admin\/polls\/[^/]+\/tally$/;
+
+/**
+ * True when an answer drops the stored GET /api/polls: a vote that answered 200, and the admin's tally that
+ * answered `done`. Never a refused vote, and never a tally that answered anything else.
+ */
+export function pollsDropRead(method: string, path: string, status: number, outcome: string | null): boolean {
+  if (method !== 'POST' || status !== 200) return false;
+  if (POLL_VOTE_PATTERN.test(path)) return true;
+  return POLL_TALLY_PATTERN.test(path) && outcome === 'done';
+}
+
+/** The `outcome` of an admin tally's answer, read from a copy of its body, or null. Only that path is read. */
+async function tallyOutcomeOf(method: string, path: string, answer: Response): Promise<string | null> {
+  if (method !== 'POST' || answer.status !== 200 || !POLL_TALLY_PATTERN.test(path)) return null;
+  try {
+    const body = (await answer.clone().json()) as { outcome?: unknown };
+    return typeof body.outcome === 'string' ? body.outcome : null;
+  } catch {
+    return null;
+  }
+}
+
+async function forgetPolls(cache: Cache, siteOrigin: string): Promise<void> {
+  await cache.delete(`${siteOrigin}${POLLS_PATH}`).catch(() => false);
+}
+
+// --- one read of the room at a time --------------------------------------------------------------
+
+/** A read of the room that started longer ago than this no longer holds the others back. */
+const ROOM_READ_MARK_MS = 5_000;
+/** How long a miss waits before it asks the cache again, and how often it asks. One second in all. */
+const ROOM_READ_WAIT_MS = 100;
+const ROOM_READ_ASKS = 10;
+
+/**
+ * When the read of the room that is under way in this isolate started (`Date.now()`), or null when none
+ * is (docs/contracts/phase-6-room.md section 6, "One read at a time"). It is a time and never a promise:
+ * a request must not await another request's work, and a read whose request was cut leaves a mark that
+ * simply grows old. It says nothing about any request: only that the one statement of `listNewest` is
+ * probably running, so that simultaneous misses do not each run it. An isolate has one; a location that
+ * runs several isolates has one read at a time in each.
+ */
+let roomReadStartedAt: number | null = null;
+
+/**
+ * How many writes to the room have answered ok in this isolate. A read notes the figure before it asks
+ * the route and stores its answer only if the figure is still the same: a page read before a hide, a
+ * mute or a new message is never stored after it.
+ */
+let roomWrites = 0;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** The answer to a miss that waited a second for another request's read and found nothing stored. */
+function roomReadBusy(): Response {
+  const body: ApiError = {
+    error: { code: 'internal', message: 'The Community chat is loading. Try again in a second.', field: null },
+  };
+  return new Response(JSON.stringify(body), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '1' },
+  });
+}
+
+/**
+ * A GET of the room that missed the cache, while the room is on. Simultaneous misses do not each run the
+ * read: one address could otherwise spend D1's rows read of a day with bursts at the moment the 30
+ * seconds run out (security review of the build, 2026-10-11).
+ *
+ * - A read is under way and younger than 5 seconds: this request never runs the route. It asks the cache
+ *   again every 100 ms, ten times at most, answers the hit when it is there, and otherwise answers 503
+ *   with `Retry-After: 1`. Like a hit, it is not counted by the `read` rule.
+ * - Otherwise this request is the read. The mark is cleared when its answer is stored, or at once when
+ *   the answer may not be stored or the route throws.
+ * - A write to the room that answered ok while the read was under way makes it skip its `put`, and takes
+ *   out again what a `put` stored that was already on its way.
+ */
+async function readRoomOnce(
+  request: Request,
+  api: Api,
+  ctx: ExecutionContext,
+  cache: Cache,
+  key: string,
+): Promise<Response> {
+  const startedAt = Date.now();
+  if (roomReadStartedAt !== null && startedAt - roomReadStartedAt < ROOM_READ_MARK_MS) {
+    for (let asked = 0; asked < ROOM_READ_ASKS; asked += 1) {
+      await wait(ROOM_READ_WAIT_MS);
+      try {
+        const hit = await cache.match(key);
+        if (hit !== undefined) return hit;
+      } catch (error) {
+        cacheFailed('match', error);
+      }
+    }
+    return roomReadBusy();
+  }
+
+  roomReadStartedAt = startedAt;
+  const writesBefore = roomWrites;
+  // Only this read's own mark: one that grew old may have been replaced by a later read's.
+  const clear = (): void => {
+    if (roomReadStartedAt === startedAt) roomReadStartedAt = null;
+  };
+  let response: Response;
+  try {
+    response = await api.app.fetch(request, ctx);
+  } catch (error) {
+    clear();
+    throw error;
+  }
+  if (!isStorable(response) || roomWrites !== writesBefore) {
+    clear();
+    return response;
+  }
+  try {
+    const copy = new Response(response.clone().body, response);
+    copy.headers.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+    ctx.waitUntil(
+      cache
+        .put(key, copy)
+        .catch((error: unknown) => cacheFailed('put', error))
+        // A write that answered while the put was on its way: its own drop may have come first.
+        .then(() => (roomWrites === writesBefore ? false : cache.delete(key).catch(() => false)))
+        .finally(clear),
+    );
+  } catch (error) {
+    cacheFailed('put', error);
+    clear();
+  }
+  return response;
+}
+
 /** The Cache API of the Worker, or null in a runtime that has none. */
 function publicCache(): Cache | null {
   return typeof caches === 'undefined' ? null : caches.default;
@@ -928,6 +1571,13 @@ async function hasForeignCursor(request: Request, signer: FeedCursorSigner): Pro
  * - A hit is answered at once and is not counted by the `read` rule: it costs no database read.
  * - A miss goes to the API, which counts it. Its answer is stored for 30 seconds if it may be.
  * - Everything else goes straight to the API and is never stored.
+ * - While the room is on, a HEAD of its read or of its status never reaches the API: a hit is answered
+ *   with no body, anything else with 405 and `Allow: GET` (`isRoomCachedRead`).
+ * - While the room is on, a GET of its read that misses beside another one's read does not reach the API
+ *   either: it waits for what that read stores (`readRoomOnce`).
+ * - A HEAD of a bytes path of the room's pictures never reaches the API (`pictureHeadAnswer`), and neither
+ *   bytes path has a cache key: a GET of one always goes to the API and is never stored.
+ * - Every call of the API is handed this request's `ctx`, at each of its three places.
  */
 async function serve(request: Request, api: Api, ctx: ExecutionContext): Promise<Response> {
   // Ids are base32 and symbols are [A-Z0-9.], so no route needs a percent sign. The router decodes
@@ -935,14 +1585,42 @@ async function serve(request: Request, api: Api, ctx: ExecutionContext): Promise
   const path = new URL(request.url).pathname;
   if ((path === '/api' || path.startsWith('/api/')) && path.includes('%')) return notFound();
   const head = request.method === 'HEAD';
+  // A HEAD of a bytes path of the room's pictures never reaches the app, and nothing else is asked first.
+  if (head) {
+    const answered = pictureHeadAnswer(path, api.picturesEnabled);
+    if (answered !== null) return answered;
+  }
   const cache = publicCache();
+  // While the room is on, a HEAD of its read or of its status never reaches the app. Judged before
+  // anything else is asked: with no cache at all there is nothing to answer it from. While the room is
+  // off it is what a GET of the path is, and goes the way of every request.
+  // The same rule for the holders' poll's read while POLLS_ENABLED is on (holders contract section 4.4).
+  const roomHead = head && ((api.roomEnabled && isRoomCachedRead(path)) || (api.pollsEnabled && path === POLLS_PATH));
+  if (roomHead && cache === null) return headNotCached();
   let key = cache === null ? null : publicReadKey(request, api.siteOrigin);
   // A feed cursor this API did not sign is never looked up: the route answers it with 400.
   if (key !== null && (await hasForeignCursor(request, api.cursorSigner))) key = null;
   if (cache === null || key === null) {
-    const answer = await api.app.fetch(request);
+    // Nothing can be cached for it here, so nothing is.
+    if (roomHead) return headNotCached();
+    // The request's own context goes with it: the upload of a picture hands its later steps to `waitUntil`.
+    const answer = await api.app.fetch(request, ctx);
     if (cache !== null && answer.ok && changesLeague(request.method, path)) {
       ctx.waitUntil(forgetLeague(cache, api.siteOrigin, path));
+    }
+    // Of the paths at and under the pictures' path only the upload that answered 201 drops the read:
+    // never a refused upload and never a report, whatever it answered (`roomPictureDropsRead`).
+    if ((answer.ok && changesRoom(request.method, path)) || roomPictureDropsRead(request.method, path, answer.status)) {
+      // Counted before the drop is sent: a read under way sees it and skips its `put` (`readRoomOnce`).
+      roomWrites += 1;
+      if (cache !== null) ctx.waitUntil(forgetRoom(cache, api.siteOrigin));
+    }
+    // Phase 6.7: a vote stored, or a tally that froze a result, drops the poll's read here at once.
+    if (
+      cache !== null &&
+      pollsDropRead(request.method, path, answer.status, await tallyOutcomeOf(request.method, path, answer))
+    ) {
+      ctx.waitUntil(forgetPolls(cache, api.siteOrigin));
     }
     return answer;
   }
@@ -957,8 +1635,12 @@ async function serve(request: Request, api: Api, ctx: ExecutionContext): Promise
   // A hit costs no database read, so it is not counted by the `read` rule: many people share one
   // address behind a mobile carrier, and counting what costs nothing would lock them out together.
   if (hit !== undefined) return head ? new Response(null, hit) : hit;
+  // A miss, or a lookup that failed: the room's HEAD is answered here either way.
+  if (roomHead) return headNotCached();
+  // The room's read, and no other path: simultaneous misses share one read.
+  if (!head && api.roomEnabled && path === ROOM_PATH) return readRoomOnce(request, api, ctx, cache, key);
 
-  const response = await api.app.fetch(request);
+  const response = await api.app.fetch(request, ctx);
   if (!head && isStorable(response)) {
     try {
       const copy = new Response(response.clone().body, response);
@@ -1000,10 +1682,14 @@ const CLOCK_CRONS: readonly string[] = Object.keys(CRON_PLAN);
 
 const notConfiguredLogged = new Set<string>();
 
-/** Says once per isolate that a step has nothing to do because something is not configured. */
+/**
+ * Says once per isolate that a step has nothing to do because something is not configured. Once for each
+ * thing of a step: since Phase 6.8 the social step can miss two jobs, and each is said.
+ */
 function notConfigured(step: string, what: string): void {
-  if (notConfiguredLogged.has(step)) return;
-  notConfiguredLogged.add(step);
+  const key = `${step}\u0000${what}`;
+  if (notConfiguredLogged.has(key)) return;
+  notConfiguredLogged.add(key);
   log('step_not_configured', { step, what });
 }
 
@@ -1036,8 +1722,80 @@ async function runReputationWork(env: Env, now: Date): Promise<void> {
 }
 
 /**
- * The social step: the five jobs of docs/contracts/phase-6-social.md section 4.2, in that order.
- * They run whatever SOCIAL_ENABLED says, so that the features have history on the day they open.
+ * `createRoomPictureSweepJob` of packages/runtime/src/social/room-picture-sweep.ts, engine-runtime's, read
+ * from where that package exports its social jobs (`createRoomPruneJob` is exported there too). It is
+ * read by its name and typed by the contract, so that this file compiles before that file lands and is
+ * checked against `CreateRoomPictureSweepJob` once it has: a factory of another shape is a type error here.
+ */
+const socialJobFactories: Pick<typeof socialRuntime, 'createRoomPruneJob'> & {
+  createRoomPictureSweepJob?: CreateRoomPictureSweepJob;
+  /** Phase 6.7 (holders contract revision 4, HB3-4): packages/runtime/src/social/poll-tally.ts, by name. */
+  createPollTallyJob?: CreatePollTallyJob;
+  tallyPoll?: TallyPoll;
+} = socialRuntime;
+
+/**
+ * `createPollHoldingReader` of packages/runtime/src/token/poll-holding.ts, engine-runtime's, read by its name
+ * from the runtime's root namespace and typed by the contract (holders contract revision 4, HB3-4), as
+ * `createRoomPictureSweepJob` is read above. While it is undefined the tally job is not in the list and the
+ * admin route's tally answers `{ outcome: 'failed', step: 'read' }`.
+ */
+const runtimeFactories: Pick<typeof runtimeRoot, 'createHouseModel'> & {
+  createPollHoldingReader?: CreatePollHoldingReader;
+} = runtimeRoot;
+
+/** NONCE_SECRET's bytes: base64 of at least 32 bytes, as `readNonceSecret` has already checked. */
+function nonceSecretBytes(secret: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(secret.trim());
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * d of a poll (holders contract section 5 step 1, revision 4, H3-SEC-3): `pollTallyDelaySeconds` of
+ * HMAC-SHA-256 over the poll's id, under a key derived from NONCE_SECRET with HKDF-SHA-256 (empty salt) and the
+ * info POLL_TALLY_DELAY_LABEL, as apps/api/src/http/follow/feed-cursor.ts derives its key. The key is derived
+ * once per isolate; d is computed on each call, kept nowhere and never logged.
+ */
+export function createTallyDelay(secret: string): (pollId: string) => Promise<number> {
+  let key: Promise<CryptoKey> | null = null;
+  const derive = async (): Promise<CryptoKey> => {
+    const material = await crypto.subtle.importKey('raw', nonceSecretBytes(secret), 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new Uint8Array(0),
+        info: new TextEncoder().encode(POLL_TALLY_DELAY_LABEL),
+      },
+      material,
+      { name: 'HMAC', hash: 'SHA-256', length: 256 },
+      false,
+      ['sign'],
+    );
+  };
+  return async (pollId: string): Promise<number> => {
+    if (key === null) {
+      key = derive();
+      // A failed derivation is not kept: the next call tries again.
+      key.catch(() => {
+        key = null;
+      });
+    }
+    const mac = await crypto.subtle.sign('HMAC', await key, new TextEncoder().encode(pollId));
+    return pollTallyDelaySeconds(new Uint8Array(mac));
+  };
+}
+
+/**
+ * The social step: the five jobs of docs/contracts/phase-6-social.md section 4.2, in that order, then
+ * the sweep of the pictures' owed bytes (docs/contracts/phase-6-pictures.md section 9), and after them
+ * the room's prune (docs/contracts/phase-6-room.md section 7), the last of the list. The step returns
+ * after the first job that did work, so the prune runs when the others were idle.
+ * They run whatever SOCIAL_ENABLED, ROOM_ENABLED and ROOM_PICTURES_ENABLED say: the features have history
+ * on the day they open, a room that was switched off still ages out, and bytes Prix owes a delete are
+ * deleted whatever the switches say.
  */
 async function runSocialWork(env: Env, now: Date): Promise<void> {
   const w = wiringFor(env);
@@ -1061,12 +1819,85 @@ async function runSocialWork(env: Env, now: Date): Promise<void> {
     now: () => new Date(),
     log,
   };
+  // The sweep of the pictures' owed bytes. While the runtime exports no such job, the step says so once
+  // and goes on without it: every other job, the prune among them, still runs.
+  const { createRoomPictureSweepJob } = socialJobFactories;
+  if (createRoomPictureSweepJob === undefined) notConfigured('social', ROOM_PICTURE_SWEEP_JOB);
+  const sweep: readonly SocialJob[] =
+    createRoomPictureSweepJob === undefined
+      ? []
+      : [
+          createRoomPictureSweepJob({
+            pictures: w.pictures,
+            bytes: w.pictureBytes,
+            social: deps.social,
+            reputation: deps.reputation,
+            now: deps.now,
+            log: deps.log,
+          }),
+        ];
+  // Phase 6.7, the holders' poll's tally (docs/contracts/phase-6-holders.md section 5). It runs whatever
+  // POLLS_ENABLED says. While the runtime exports no such job or no holding reader, the step says so once and
+  // goes on without it (revision 4, HB3-4).
+  // One holding reader and one fetch meter for this invocation's run (HB1-SEC-1).
+  const { createPollTallyJob } = w;
+  const pollJobDeps = w.pollJobDepsFor();
+  if (createPollTallyJob === undefined) notConfigured('social', 'poll_tally');
+  else if (pollJobDeps === null) notConfigured('social', 'poll_holding');
+  const tally: readonly SocialJob[] =
+    createPollTallyJob === undefined || pollJobDeps === null ? [] : [createPollTallyJob(pollJobDeps)];
+  // Phase 6.8, the holders' lounge sweep (docs/contracts/phase-6-holders-2.md section 4.6). While either of
+  // engine-runtime's two factories is missing the step says so once and goes on without it, and the lounge
+  // is null everywhere. While the lounge is off the job is built with no config and no port, and is idle.
+  const factories = loungeFactories();
+  if (factories === null) notConfigured('social', HOLDERS_LOUNGE_SWEEP_JOB);
+  const tokenPort: TokenService = w.tokenService;
+  const loungeSweep: readonly SocialJob[] =
+    factories === null
+      ? []
+      : [
+          factories.sweep({
+            lounge: w.loungeStore,
+            config: w.lounge?.config ?? null,
+            port: w.lounge?.port ?? null,
+            holdersGate: w.holdersGate,
+            // The token sweep's own read of the members' wallets (section 4.6 step 3); null while the token
+            // service has none, and the job is then idle.
+            refreshHolders:
+              tokenPort.refreshHolders === undefined
+                ? null
+                : (wallets, at) => tokenPort.refreshHolders?.(wallets, at) ?? Promise.resolve(null),
+            siteOrigin: w.apiDeps.config.siteOrigin,
+            social: deps.social,
+            reputation: deps.reputation,
+            now: deps.now,
+            log: deps.log,
+          }),
+        ];
   const jobs: readonly SocialJob[] = [
     createModelWarJob(deps),
     createRankTapeJob(deps),
     createRivalryMatchJob(deps),
     createStrategyDnaJob(deps),
     createManagerValueJob(deps),
+    // Phase 6.7: `poll_tally` stands before `room_picture_sweep`, and `room_prune` stays last.
+    ...tally,
+    // Phase 6.8: after the jobs of Phase 6 and after the first holders wave's `poll_tally`, before
+    // `room_picture_sweep`, which stays before `room_prune`.
+    ...loungeSweep,
+    // Phase 6.4: `room_picture_sweep` stands BEFORE `room_prune`. The step runs the first job that is not
+    // idle and returns, and the prune works on most runs: behind it the sweep could wait without end. In
+    // front of it the sweep holds the prune up only while bytes are owed, at most ten deletes a run, and a
+    // run of it that fails lets the step go on (docs/contracts/phase-6-pictures.md section 9).
+    ...sweep,
+    // Last, whatever a later phase puts in front of it: `room_prune` is the final name of the step.
+    createRoomPruneJob({
+      room: w.room,
+      social: deps.social,
+      reputation: deps.reputation,
+      now: deps.now,
+      log: deps.log,
+    }),
   ];
   const result = await runSocialStep(jobs, now);
   if (result.ran !== null) log('social_step', { job: result.ran, outcome: result.outcome });
@@ -1229,6 +2060,42 @@ export class Clock extends DurableObject<Env> {
   }
 }
 
+/**
+ * The webhook's watch (docs/contracts/phase-6-holders.md section 7, revision 4, H3-SEC-8), once an hour at the
+ * watchdog's minute 13, only while `telegram` is built: `getWebhookInfo`; a url that is not TELEGRAM_WEBHOOK_URL
+ * logs `telegram_webhook_moved` with no URL and marks the watch, which closes the link routes (api-core) until
+ * an admin sets the webhook again. A null answer changes nothing and logs nothing. It never throws.
+ */
+export async function watchTelegramWebhook(
+  port: Pick<TelegramPort, 'getWebhookInfo'>,
+  watch: Pick<TelegramWebhookWatch, 'markMoved'>,
+  now: Date,
+  write: (event: string) => void,
+): Promise<'moved' | 'same' | 'unknown'> {
+  try {
+    const info = await port.getWebhookInfo();
+    if (info === null) return 'unknown';
+    if (info.url === TELEGRAM_WEBHOOK_URL) return 'same';
+    write('telegram_webhook_moved');
+    await watch.markMoved(now.toISOString());
+    return 'moved';
+  } catch {
+    write('telegram_webhook_watch_failed');
+    return 'unknown';
+  }
+}
+
+async function runWebhookWatch(env: Env): Promise<void> {
+  try {
+    const w = wiringFor(env);
+    const telegram = w.followDeps.telegram;
+    if (telegram === null) return;
+    await watchTelegramWebhook(telegram.port, w.webhookWatch, new Date(), (event) => logError(event));
+  } catch (error) {
+    logError('telegram_webhook_watch_failed', { code: configCode(error) });
+  }
+}
+
 let clockCheckedAt = 0;
 
 /**
@@ -1286,5 +2153,9 @@ export default {
   async scheduled(controller, env, ctx): Promise<void> {
     ensureClocks(env, ctx, true);
     await runCron(controller.cron === '' ? LEAGUE_CRON : controller.cron, env);
+    // Once an hour: the first of the watchdog's two runs (minute 13 of `13,43 * * * *`).
+    if (new Date(controller.scheduledTime).getUTCMinutes() < 30) {
+      await runWebhookWatch(env);
+    }
   },
 } satisfies ExportedHandler<Env>;

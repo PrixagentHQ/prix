@@ -4,11 +4,17 @@
 // no address, no link, one plain sentence. docs/contracts/phase-4-token.md rule 13.
 //
 // The head says what the token is and, in a chip, whether it exists yet. Beside it a panel holds
-// the one thing a visitor can do with it: read or copy the address. Under them the tiers stand
-// as one table, so a person compares what each share of the supply unlocks. The page
-// ends with what the token is not and its risks, in the same sentences as before.
+// the one thing a visitor can do with it: read or copy the address. Under them, while the tiers
+// are on, "Open to holders now" says what each tier unlocks in whole tokens, perk by perk, with the
+// tier table folded into it, and "Next for holders" names what comes (docs/contracts/phase-6-holders.md
+// section 2, revision 5, D1). Where that table does not show, the tier table stands in its place,
+// so a person compares what each share of the supply unlocks. After them, once the
+// token is launched, one block says what holding it unlocks in FOREHEAD, the founder's game. The
+// page ends with its risks, in the same sentences as before.
+import { foreheadFacts, grouped, links } from '../../content/facts.ts';
 import { text } from '../../content/index.ts';
 import Address from '../../design/Address.astro';
+import Button from '../../design/Button.astro';
 import Chip from '../../design/Chip.astro';
 import FigureBand from '../../design/FigureBand.astro';
 import Layout from '../../design/Layout.astro';
@@ -17,14 +23,31 @@ import Panel from '../../design/Panel.astro';
 import Table from '../../design/Table.astro';
 import { readAccount } from '../../lib/account.ts';
 import PageHead from '../PageHead.astro';
+import { pollsIsOn } from '../polls/read-polls.ts';
 import ShareMeta from '../ShareMeta.astro';
 import { siteShareImage } from '../share.ts';
 import { formatFeedDelay } from './feed-delay.ts';
+import HoldersTable from './HoldersTable.astro';
+import { badgeValue, holderAmounts, wholeAmount } from './holders.ts';
+import { ownerHoldsOn as readOwnerHoldsOn, picturesOn as readPicturesOn } from './holders-reads.ts';
 import { readTokenResult } from './read-token.ts';
 
 const account = await readAccount(Astro);
 const result = await readTokenResult(Astro);
 const info = result.ok ? result.info : null;
+
+// What holding gives, in whole tokens (docs/contracts/phase-6-holders.md section 2). Only while the
+// tiers are on and the API's table names all three amounts: "Open to holders now" would not be true
+// with the tiers switched off, and an amount is never a figure of the page's own. The pictures row
+// and the owner-holds row each follow a read of the API (holders-reads.ts); the link to the poll
+// follows its status probe. A read that fails is "no".
+const holderTiers = info?.tiers ?? [];
+const amounts = holderAmounts(holderTiers);
+const showHolders = Boolean(info?.gatingOn && amounts);
+const [picturesOn, ownerHoldsOn, pollsSwitch] = showHolders
+  ? await Promise.all([readPicturesOn(Astro), readOwnerHoldsOn(Astro), pollsIsOn(Astro)])
+  : [false, false, 'off' as const];
+const pollLink = pollsSwitch === 'on';
 
 const title = text('token.sitePageTitle', 'The Prix token');
 const lead = text(
@@ -38,6 +61,10 @@ const whole = (value: number): string => value.toLocaleString('en-US');
 
 const yes = text('token.yes', 'Yes');
 const no = text('token.no', 'No');
+// The tier table stands only where "Open to holders now" does not (revision 5, D1): while that table shows,
+// its badge row, its "Tier {tier}" headers and the badge line beneath it say all the tier table said, in
+// whole tokens. Where it does not show (the tiers off, or an amount missing from the API's table), the tier
+// table stands whole, as before.
 const columns = [
   { key: 'tier', label: text('token.colTier', 'Tier') },
   { key: 'hold', label: text('token.siteColHold', 'Holding, share of supply'), align: 'end' as const },
@@ -53,13 +80,22 @@ const stateLabel = launched
   ? text('token.siteStateLaunched', 'Launched on Pons')
   : text('token.siteStateNotLaunched', 'Not launched');
 
+// What $PRIX unlocks in FOREHEAD, the founder's game (D-146), after the tier table. Only once the
+// token is launched: the block speaks of "the address above", which a page with no address (not
+// launched, or a read that failed) does not show. Its line that sets the game's own amounts apart
+// from "the tiers above" stands only where the tier table stands. The amounts are facts of the
+// game (`foreheadFacts`), whole tokens, never Prix's tiers. The link opens in the same tab and
+// carries no `rel`, as the footer's does (DESIGN.md R16). It is a plain block on the ground, as
+// the risks under it are, so the two stand one section gap apart after the raised tier table.
+const showForehead = launched;
+
 const noPromise = text(
   'token.notAPromise',
   'Holding the token is not a promise of return, profit or gain of any kind, and it is not an investment.',
 );
 const notAdvice = text(
   'token.notAdvice',
-  'What an agent decides is the record of a simulation. It is not advice, and no real orders are placed.',
+  'In the league, what an agent decides is the record of a simulation, and no real orders are placed. Nothing an agent decides is advice.',
 );
 const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robinhood.com/rhj');
 ---
@@ -159,7 +195,12 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
         <h2 class="title" id="token-not-title">{text('token.notTitle', 'What it is not')}</h2>
         <p class="prose">{noPromise}</p>
         <ul class="token-list" role="list">
-          <li>{text('token.notRights', 'It gives no rights to Prix: no ownership, no vote, no claim on anything the site makes.')}</li>
+          <li>
+            {text(
+              'token.notRights',
+              "It gives no rights in Prix: no ownership, no claim on anything the site makes, and no vote on how Prix or the token is run. The holders' poll only chooses between options Prix writes for its paper league.",
+            )}
+          </li>
           <li>{text('token.notShare', 'It gives no share of revenue. Prix pays holders nothing.')}</li>
           <li>{text('token.notLink', 'It has no link to any agent’s decisions. An agent doing well or badly changes nothing about the token.')}</li>
         </ul>
@@ -169,7 +210,7 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
   </div>
 
   {
-    info && tiers.length > 0 && (
+    !showHolders && info && tiers.length > 0 && (
       <div class="zone zone--raised"><section class="page section" aria-labelledby="token-tiers-title">
         <div class="section-head">
           <h2 class="headline" id="token-tiers-title">
@@ -206,6 +247,116 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
           </tbody>
         </Table>
       </section></div>
+    )
+  }
+
+  {
+    showHolders && info && amounts && (
+      <section class="page section" aria-labelledby="token-holders-title" data-holders>
+        <div class="section-head">
+          <h2 class="headline" id="token-holders-title">{text('token.holdersTitle', 'Open to holders now')}</h2>
+          <p class="small">
+            {text('token.holdersIntro', 'What a wallet gets, by how much $PRIX it holds. Amounts are whole tokens.')}
+          </p>
+        </div>
+        <HoldersTable
+          tiers={info.tiers}
+          feedDelaySeconds={info.feedDelaySeconds}
+          picturesOn={picturesOn}
+          ownerHoldsOn={ownerHoldsOn}
+        />
+        <ul class="token-list holders-notes" role="list">
+          <li>
+            {text(
+              'token.holdersRiseNote',
+              "A higher tier counts about an hour after Prix first sees the holding. A lower one counts at Prix's next check.",
+            )}
+          </li>
+          <li>
+            {text(
+              'token.holdersLiveHeld',
+              "The day's trades of an agent linked to Prix Live show at 20:00 UTC to everyone, holders included; only its owner sees them sooner.",
+            )}
+          </li>
+          <li>{text('token.holdersLiveNothing', 'Holding $PRIX changes nothing in Prix Live.')}</li>
+          <li>{badgeValue(ownerHoldsOn)}</li>
+        </ul>
+        <p class="holders-access">{text('token.holdersAccess', 'What $PRIX gives is access to features, never a return.')}</p>
+      </section>
+    )
+  }
+
+  {
+    showHolders && amounts && (
+      <section class="page section" aria-labelledby="token-next-title" data-holders-next>
+        <h2 class="headline" id="token-next-title">{text('token.holdersNextTitle', 'Next for holders')}</h2>
+        <ul class="token-list holders-next" role="list">
+          <li>
+            {text(
+              'token.holdersNextCoach',
+              "The Strategy Coach: help with writing and sharpening your agent's strategy. Not open yet.",
+            )}
+          </li>
+          <li>
+            {text(
+              'token.holdersNextPoll',
+              "The holders' poll: wallets holding at least {amount} $PRIX choose between options Prix writes for its paper league.",
+              { amount: wholeAmount(amounts[0]) },
+            )}
+            {pollLink && (
+              <>
+                {' '}
+                <a href="/polls">{text('token.holdersNextPollLink', "See the holders' poll")}</a>
+              </>
+            )}
+          </li>
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    showForehead && (
+      <section class="page section" aria-labelledby="token-forehead-title">
+        <div class="section-head">
+          <h2 class="headline" id="token-forehead-title">
+            {text('token.foreheadTitle', 'What the token unlocks in FOREHEAD')}
+          </h2>
+          {tiers.length > 0 && (
+            <p class="small">
+              {text('token.foreheadOwnAmounts', 'The game sets these amounts itself. They are not the tiers above.')}
+            </p>
+          )}
+        </div>
+        <div class="stack-16">
+          <p class="prose">
+            {text(
+              'token.foreheadBody',
+              'FOREHEAD is a browser game made by Prix’s founder, on a site of its own. You sign in there by signing a message with your wallet, and the game reads the wallet’s $PRIX, at the address above, from Robinhood Chain at most once an hour.',
+            )}
+          </p>
+          <ul class="token-list" role="list">
+            <li>
+              {text(
+                'token.foreheadUnlockLower',
+                'A wallet with {amount} $PRIX or more: four more outfit colours and a gold outline on the name tag.',
+                { amount: grouped(foreheadFacts.lowerTokens) },
+              )}
+            </li>
+            <li>
+              {text(
+                'token.foreheadUnlockHigher',
+                'A wallet with {amount} $PRIX or more: also three hats and a frame for the kill-cam photo.',
+                { amount: grouped(foreheadFacts.higherTokens) },
+              )}
+            </li>
+          </ul>
+          <p class="small">{text('token.foreheadCosmetic', 'Cosmetic only: nothing in play changes.')}</p>
+          <div>
+            <Button label={text('token.foreheadLink', 'Play FOREHEAD')} href={links.forehead} variant="secondary" />
+          </div>
+        </div>
+      </section>
     )
   }
 
@@ -260,6 +411,28 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
     max-width: var(--measure);
     font-size: var(--text-16);
     line-height: var(--leading-16);
+  }
+
+  /* Under the holders' table: the statements, then the access line on its own, in ink. */
+  .holders-notes {
+    margin-top: var(--space-24);
+  }
+
+  .holders-access {
+    max-width: var(--measure);
+    margin-top: var(--space-16);
+    font-size: var(--text-16);
+    line-height: var(--leading-16);
+    font-weight: 600;
+  }
+
+  .holders-next {
+    margin-top: var(--space-16);
+  }
+
+  .holders-next a {
+    display: inline-block;
+    padding-block: var(--space-2);
   }
 
   .token-links {

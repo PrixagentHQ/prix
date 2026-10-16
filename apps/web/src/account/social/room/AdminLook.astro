@@ -1,0 +1,53 @@
+---
+// The admin's look at one picture (docs/contracts/phase-6-pictures.md sections 9, 11 and 17). An admin
+// never sees every picture at once: nothing of a picture is in the page until "Show picture" is pressed.
+// The page's script then makes one image, from the message's id alone, held small and blurred. The
+// server renders the three buttons and the sentence of a load that failed; the script only shows and
+// hides them.
+//
+// A second press on the same spot never unblurs a picture, by mouse, touch or key (revision 6):
+//
+//   - "Show picture" and "Hide picture" share one place, each as wide as the wider of the two, so after
+//     "Show picture" it is "Hide picture" that stands under the pointer, and it has the focus.
+//   - "Unblur picture" stands beside them and appears only once the picture's bytes have loaded. It
+//     never takes the focus when it appears.
+//   - The picture's place is under the buttons, so no button moves when the bytes arrive.
+import { formatAddress } from '../../../content/format.ts';
+import Button from '../../../design/Button.astro';
+import { adminLookWords } from './picture-words.ts';
+
+interface Props {
+  id: number;
+  /** The writer's whole address. Its short form goes into the image's alternative text. */
+  author: string;
+  width: number;
+  height: number;
+}
+
+const { id, author, width, height } = Astro.props;
+const words = adminLookWords();
+---
+
+<div
+  class="room-look"
+  data-room-look-of={String(id)}
+  data-width={String(width)}
+  data-height={String(height)}
+  data-author={formatAddress(author)}
+>
+  <p class="acct-actions room-look-controls">
+    <span class="room-look-first">
+      <span data-room-look-step="show">
+        <Button label={words.show} variant="secondary" data-room-look="show" />
+      </span>
+      <span data-room-look-step="hide" data-room-look-away>
+        <Button label={words.hide} variant="secondary" data-room-look="hide" />
+      </span>
+    </span>
+    <span data-room-look-step="unblur" data-room-look-away>
+      <Button label={words.unblur} variant="secondary" data-room-look="unblur" />
+    </span>
+  </p>
+  <p class="small room-look-failed" role="status" tabindex="-1" data-room-look-failed hidden>{words.failed}</p>
+  <div class="room-look-place" data-room-look-place hidden></div>
+</div>

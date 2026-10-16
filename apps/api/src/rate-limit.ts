@@ -59,6 +59,8 @@ export interface RateLimitEnv {
   RATE_WRITE?: RateLimitBinding;
   /** 300 per 60 seconds. */
   RATE_READ?: RateLimitBinding;
+  /** Phase 6.4. 10 per 60 seconds: the two bytes routes of the room's pictures (`createPictureLimiter`). */
+  RATE_PICTURE?: RateLimitBinding;
 }
 
 interface RuleSpec {
@@ -136,6 +138,55 @@ function subjectKey(kind: 'ip' | 'wallet', subject: string): string | null {
 }
 
 type Unavailable = 'binding_missing' | 'binding_failed' | 'binding_answer_invalid' | 'subject_missing';
+
+/**
+ * Phase 6.4: the `picture` rule of the two bytes routes of the room's pictures, over the binding
+ * `RATE_PICTURE` (docs/contracts/phase-6-pictures.md section 7, step 4): 10 in 60 seconds for a network,
+ * on top of the `read` rule every request passes. It is a limiter of its own and not a fifth rule of
+ * `RATE_LIMIT_RULES`, because `RateLimitRule` is the contract's and has no `picture`.
+ *
+ * `subject` is `clientNetwork(request)` of apps/api/src/http/guard.ts: an IPv4 address, or the /48 of an
+ * IPv6 one. The route cuts it; this function counts what it is given and cuts nothing, so that the /64 of
+ * `ipSubjectKey` can never be applied here by mistake: one rented /48 is 65,536 subjects of that kind.
+ *
+ * It refuses when it cannot count, as every rule does: a binding that is missing, that throws, or that
+ * answers with anything but `{ success: boolean }`, and a subject that is empty. A Worker deployed
+ * without the binding then shows no picture at all, which is loud, and safer than a brake that silently
+ * is not there. A brake, not a bound: the day's bound is the cap of views.
+ */
+export function createPictureLimiter(binding: RateLimitBinding | undefined): {
+  allow(subject: string): Promise<boolean>;
+} {
+  const reported = new Set<Unavailable>();
+  /** One line per reason per isolate. It names the rule and the reason, never the subject. */
+  function refuse(reason: Unavailable): false {
+    if (!reported.has(reason)) {
+      reported.add(reason);
+      console.error(JSON.stringify({ event: 'rate_limit_unavailable', rule: 'picture', reason }));
+    }
+    return false;
+  }
+
+  return {
+    async allow(subject) {
+      if (binding === undefined || binding === null || typeof binding.limit !== 'function') {
+        return refuse('binding_missing');
+      }
+      const network = typeof subject === 'string' ? subject.trim().toLowerCase() : '';
+      if (network === '') return refuse('subject_missing');
+      let outcome: unknown;
+      try {
+        outcome = await binding.limit({ key: `net:${network.slice(0, MAX_SUBJECT_LENGTH)}` });
+      } catch {
+        return refuse('binding_failed');
+      }
+      const success =
+        typeof outcome === 'object' && outcome !== null ? (outcome as { success?: unknown }).success : null;
+      if (typeof success !== 'boolean') return refuse('binding_answer_invalid');
+      return success;
+    },
+  };
+}
 
 /** `env` is the Worker's bindings. Every rule needs its binding: without it the rule refuses every request. */
 export function createRateLimiter(env: RateLimitEnv): RateLimiter {

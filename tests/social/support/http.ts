@@ -63,6 +63,12 @@ export interface SocialHttp {
   signIn(address: string): Promise<string>;
   /** Every response so far: what a leak scan reads. */
   transcript: string[];
+  /**
+   * What the app handed to `waitUntil` of the request's execution context, in order. From Phase 6.4 on
+   * every request of this harness carries a context that records it (docs/contracts/phase-6-pictures.md
+   * section 5): the upload of a picture answers 500 with none.
+   */
+  waited: Promise<unknown>[];
 }
 
 export function createSocialHttp(
@@ -74,6 +80,13 @@ export function createSocialHttp(
   const entitlements = { value: OPEN_PREVIEW_ENTITLEMENTS };
   const groq = { configured: false };
   const transcript: string[] = [];
+  const waited: Promise<unknown>[] = [];
+  /** A request's execution context that writes down what `waitUntil` was handed. */
+  const context = {
+    waitUntil: (promise: Promise<unknown>) => void waited.push(promise),
+    passThroughOnException: () => undefined,
+    props: {},
+  };
   const deps = {
     store: stores.store,
     sim,
@@ -109,6 +122,7 @@ export function createSocialHttp(
     entitlements,
     groq,
     transcript,
+    waited,
     setNow(iso) {
       now = new Date(iso);
     },
@@ -121,7 +135,10 @@ export function createSocialHttp(
       if (type !== null) headers.set('Content-Type', type);
       if (request.cookie !== undefined) headers.set('Cookie', `${SESSION_COOKIE}=${request.cookie}`);
       const body = request.rawBody ?? (request.body === undefined ? undefined : JSON.stringify(request.body));
-      const response = await app.fetch(new Request(`${SITE_ORIGIN}${path}`, { method, headers, body }));
+      const response = await app.fetch(
+        new Request(`${SITE_ORIGIN}${path}`, { method, headers, body }),
+        context as never,
+      );
       const text = await response.text();
       let json: unknown = null;
       try {

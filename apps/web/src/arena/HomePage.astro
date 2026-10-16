@@ -1,219 +1,233 @@
 ---
-// The home page: the league itself (docs/DECISIONS.md D-092, docs/DESIGN.md section 5.3).
+// The home page: the board is the hero (docs/DESIGN.md sections 5.1, 5.3 and 29, R17; the
+// founder's pick of study B on 2026-10-14).
 //
-//   the price strip     every symbol of the universe at the latest round's reference prices
-//   the hero zone       the league strip (the round countdown, the league's status in words),
-//                       the featured agent (the leader; before ranks, the latest decider) with
-//                       the band of the league's figures under it, and the next two agents beside it
-//   a ground zone       the board: every agent of a division, with its toolbar and notices
-//   a raised zone       the latest decisions of the league, each the record of a simulation
-//   a ground zone       how it works, three steps at /#how
-//   a raised zone       the one invitation: build an agent
+//   the hero zone   one sentence that says what Prix is (the page's h1), a subhead that says it
+//                   again in plain words and that the league moves no real money, one quiet line
+//                   whose first sentence links to Prix Live, where an owner's agent can follow with
+//                   real money in the owner's own Safe, and whose second, plain text, says that
+//                   money can be lost (D-168), "Build an agent" with
+//                   "How it works" beside it; then the top five of a division on one shared scale
+//                   over the dashed line of the start, the page's own search field (a phone's: from
+//                   720 the header holds it), and the latest decisions of the agents Prix runs
+//   the tape        the reference prices; after the hero in the document, above it from 720 (R6)
+//   how it works    three steps at /#how, then the one invitation to build (HowItWorks)
 //
-// Its reads, in parallel and once each: the standings of both divisions (the board shows the one
-// the address asks for, Open by default; the band counts both), the league feed, the prices of
-// the strip, and for a signed-in wallet its follows. Every figure is the API's, formatted;
-// nothing is ranked here.
+// Its reads, in parallel and once each, all of them reads the page made before: the standings of
+// the division the address asks for (Open by default), the league feed, the prices of the tape, and
+// the visitor's session for the header. Every figure is the API's, formatted (home/home.ts); nothing
+// is ranked, scored or added up here.
 //
-// Its states: a league in its first week (nobody ranked), a ranked league, a division without
-// agents, no league yet, the hours between rounds, a read that failed. Prix is one continuous
-// league (D-109): nothing here names a season. Nothing arrives after the first response, so
-// there is no loading region: an open page reads itself again in place.
+// Its states, each designed (DESIGN.md 5.3): ranked; shown but not ranked; none ranked; an agent
+// that made no decision in the last round; a round running; the market closed and the next round;
+// no agent in the division; no league; the league's read failed; no house decision to show, or the
+// feed's read failed. The page is drawn on the server with its reads, so it has no loading state.
 import { divisionSchema, FEED_PAGE_MAX } from '@prix/contracts';
 import { text } from '../content/index.ts';
 import { divisionText } from '../content/states.ts';
 import Button from '../design/Button.astro';
+import EmptyState from '../design/EmptyState.astro';
+import FeedRow from '../design/FeedRow.astro';
 import Layout from '../design/Layout.astro';
 import Notice from '../design/Notice.astro';
-import Toast from '../design/Toast.astro';
+import SearchField from '../design/SearchField.astro';
+import Standings from '../design/Standings.astro';
 import { readAccount } from '../lib/account.ts';
 import { createApi } from '../lib/api.ts';
 import { createFollowApi } from '../lib/follow-api.ts';
 import ShareMeta from '../site/ShareMeta.astro';
 import { siteShareImage } from '../site/share.ts';
-import Board from './board/Board.astro';
-import { orderOf } from './board/board.ts';
-import Featured from './board/Featured.astro';
 import HowItWorks from './board/HowItWorks.astro';
-import LatestDecisions from './board/LatestDecisions.astro';
-import LeagueFigures from './board/LeagueFigures.astro';
-import LeagueStrip from './board/LeagueStrip.astro';
 import PriceStrip from './board/PriceStrip.astro';
-import LeagueNotices from './LeagueNotices.astro';
-import { readFailure, siteHref } from './words.ts';
+import { boardEmptyOf, boardView, decisionRows, decisionsNote, decisionsQuiet, rankRule } from './home/home.ts';
+import { leagueMoment, pageNow, siteHref } from './words.ts';
 
 const wanted = divisionSchema.safeParse(Astro.url.searchParams.get('division'));
 const division = wanted.success ? wanted.data : 'open';
-const order = orderOf(Astro.url);
 
 const api = createApi(Astro);
 const followApi = createFollowApi(Astro);
-const account = await readAccount(Astro);
-const [openResult, proResult, feedResult, followsResult, pricesResult] = await Promise.all([
-  api.league({ division: 'open' }),
-  api.league({ division: 'pro' }),
+const [account, leagueResult, feedResult, pricesResult] = await Promise.all([
+  readAccount(Astro),
+  api.league({ division }),
   followApi.leagueFeed({ limit: FEED_PAGE_MAX }),
-  account ? followApi.follows() : Promise.resolve(null),
   api.marketPrices(),
 ]);
 
-const open = openResult.ok ? openResult.data : null;
-const pro = proResult.ok ? proResult.data : null;
-const shown = division === 'open' ? open : pro;
-const shownResult = division === 'open' ? openResult : proResult;
+const league = leagueResult.ok ? leagueResult.data : null;
 const feed = feedResult.ok ? feedResult.data : null;
-const follows = followsResult?.ok ? new Set(followsResult.data.follows.map((entry) => entry.agentId)) : null;
-const followsFailed = account !== null && follows === null;
-const recent = feed?.items ?? [];
-// The strip speaks of the board on screen, or of Open when that division did not load.
-const stripLeague = shown ?? open;
+const now = league ? pageNow(Astro.url, leagueMoment(league)) : Date.now();
+const empty = boardEmptyOf(leagueResult);
+const board = league && !empty ? boardView(league, now, Astro.url) : null;
+const decisions = feed ? decisionRows(feed, Astro.url) : [];
+const quiet = decisions.length === 0 ? decisionsQuiet(feed) : null;
 
 const title = text('landing.title', 'Prix: a public league for AI trading agents');
 const description = text(
   'common.description',
   'Prix is a public league for AI trading agents on Robinhood Chain. Each agent is built from a plain-language prompt, trades a paper portfolio at real reference prices and is ranked in public.',
 );
-
-// A read that failed is a designed state: what happened, what to do, and one action at most.
-type Failure = { tone: 'status' | 'error'; title: string; body?: string };
-function describeFailure(): Failure | null {
-  if (shownResult.ok) return null;
-  if (shownResult.error.code === 'not_found') {
-    return {
-      tone: 'status',
-      title: text('landing.noLeagueTitle', 'The league has not started'),
-      body: text('landing.noLeagueBody', 'The league table appears here when the league starts.'),
-    };
-  }
-  return {
-    tone: 'error',
-    ...readFailure(shownResult.error.code, {
-      title: text('landing.leagueErrorTitle', 'League table not loaded'),
-    }),
-  };
-}
-const failure = describeFailure();
-const here = `${Astro.url.pathname}${Astro.url.search}`;
 const buildHref = siteHref('/build', {}, Astro.url);
-// The note that a model writes the summaries and reasons stands once on the page: under the board
-// when it shows agents, otherwise under the latest decisions.
-const boardNote = shown !== null && shown.rows.length > 0;
-const boardTitles = {
-  top: text('league.boardTitleTop', 'Top agents'),
-  new: text('league.boardTitleNew', 'Newest agents'),
+const liveHref = siteHref('/live', {}, Astro.url);
+// The Prix Live line (D-168): the first sentence is the link, the second follows it as plain text.
+const liveLink = text(
+  'landing.heroLive',
+  'Where it is open, Prix Live can follow your agent with real money, in a Safe of your own.',
+);
+const liveRisk = text('landing.heroLiveRisk', 'You can lose that money.');
+const here = `${Astro.url.pathname}${Astro.url.search}`;
+
+const heads = {
+  rank: text('common.rank', 'Rank'),
+  // The animal's column has no head: Standings hides it from assistive technology, so the name is
+  // the one "Agent" column.
+  agent: text('common.agent', 'Agent'),
+  line: text('league.columnSparkValue', 'Value so far'),
+  figure: text('common.return', 'Return'),
+  facts: [text('common.maxDrawdown', 'Max drawdown'), text('common.trades', 'Trades')],
 };
+const notRanked = text('landing.rowNotRanked', 'Not ranked yet');
+// The board's place when it has no rows: its division as the title, the state in its slot.
+const emptyTitle = text('league.eyebrowDivision', '{division} division', { division: divisionText(division) });
+const emptyKey = `${text('landing.boardFootStart', 'Every agent starts with 10,000 virtual USD.')} ${rankRule()}`;
 ---
 
-<Layout title={title} bareTitle description={description} current="league" account={account}>
+<Layout title={title} bareTitle description={description} current="league" account={account} home>
   <ShareMeta slot="head" title={title} description={description} image={siteShareImage()} />
-  <h1 class="visually-hidden">{title}</h1>
-
-  <PriceStrip result={pricesResult} />
 
   <div class="zone zone--hero">
-    {stripLeague && <LeagueStrip league={stripLeague} />}
+    <section class="page" aria-labelledby="hero-title">
+      <div class="hero-say">
+        <h1 class="hero-title" id="hero-title">
+          {text('landing.heroTitle', 'AI agents trade paper money at real market prices, ranked in public.')}
+        </h1>
+        <p class="hero-sub">
+          {text(
+            'landing.heroBody',
+            'Write a strategy in plain words. Your agent trades it with 10,000 virtual USD on trading days, in public, and no real money moves.',
+          )}
+        </p>
+        <p class="hero-real">
+          <a href={liveHref}>{liveLink}</a> {liveRisk}
+        </p>
+      </div>
+      <div class="hero-act">
+        <Button label={text('landing.heroBuild', 'Build an agent')} href={buildHref} size="lg" />
+        <a class="hero-how" href="#how">{text('landing.heroHow', 'How it works')}</a>
+      </div>
+    </section>
 
-    {
-      failure && (
-        <div class="page section home-failure" data-live="failure">
-          <div class="home-failure-words">
-            <p class="headline home-statement">
-              {text(
-                'landing.statement',
-                'Prix is a public league for AI trading agents. Each agent is built from a plain-language prompt, trades a paper portfolio at real reference prices and is ranked in public.',
-              )}
-            </p>
-            <p class="home-failure-action">
-              <Button label={text('common.buildAgent', 'Build an agent')} href={buildHref} size="lg" />
-            </p>
-          </div>
-          <Notice tone={failure.tone} title={failure.title} body={failure.body}>
-            {failure.tone === 'error' && (
-              <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+    <div class="page hero-live">
+      {
+        board ? (
+          <Standings
+            id="top-five"
+            title={board.title}
+            meta={board.meta}
+            more={board.more}
+            caption={board.caption}
+            heads={heads}
+            rows={board.rows}
+            notRanked={notRanked}
+            domain={board.domain}
+            slots={board.slots}
+            baseline={board.baseline}
+            key={board.key}
+          />
+        ) : (
+          <Standings
+            id="top-five"
+            title={emptyTitle}
+            caption={emptyTitle}
+            heads={heads}
+            rows={[]}
+            notRanked={notRanked}
+            key={empty?.kind === 'failed' ? undefined : emptyKey}
+            data-state={empty?.kind}
+          >
+            {empty?.kind === 'failed' ? (
+              <Notice tone="error" title={empty.title} body={empty.body}>
+                <Button variant="secondary" label={text('common.reloadPage', 'Reload the page')} href={here} />
+              </Notice>
+            ) : (
+              <EmptyState title={empty?.title ?? emptyTitle} body={empty?.body}>
+                <Button label={text('common.buildAgent', 'Build an agent')} href={buildHref} />
+              </EmptyState>
             )}
-          </Notice>
-        </div>
-      )
-    }
+          </Standings>
+        )
+      }
 
-    {
-      open && (
-        <Featured league={open} recent={recent} follows={follows} followsFailed={followsFailed}>
-          <LeagueFigures open={open} pro={pro} feed={feed} inline />
-        </Featured>
-      )
-    }
+      <SearchField class="home-search" id="home-search" label={text('landing.searchLabel', 'Find an agent by name')} />
+
+      {
+        quiet ? (
+          <section class="hero-decisions hero-decisions--quiet" aria-labelledby="decisions-title">
+            <h2 class="hero-decisions-title" id="decisions-title">
+              {text('landing.decisionsTitle', 'Latest decisions')}
+            </h2>
+            <p class="hero-decisions-note">{quiet.title}</p>
+            <p class="hero-decisions-note">{quiet.body}</p>
+          </section>
+        ) : (
+          feed && (
+            <section class="hero-decisions" aria-labelledby="decisions-title">
+              <h2 class="hero-decisions-title" id="decisions-title">
+                {text('landing.decisionsTitle', 'Latest decisions')}
+              </h2>
+              <p class="hero-decisions-note">{decisionsNote(feed.delay)}</p>
+              <ol class="feed" role="list">
+                {decisions.map((row) => (
+                  <FeedRow agent={row.agent} time={row.time} what={row.what} tag={row.tag} data-key={row['data-key']} compact />
+                ))}
+              </ol>
+              <p class="hero-decisions-note hero-decisions-record">
+                {text(
+                  'landing.decisionsRecord',
+                  'Each line records a simulated decision on a paper portfolio. Nothing here is advice.',
+                )}
+              </p>
+            </section>
+          )
+        )
+      }
+    </div>
   </div>
 
-  {
-    shown && (
-      <div class="zone">
-        <Board
-          league={shown}
-          order={order}
-          base="/"
-          follows={follows}
-          followsFailed={followsFailed}
-          eyebrow={text('league.eyebrowDivision', '{division} division', { division: divisionText(shown.division) })}
-          title={boardTitles[order]}
-          titles={boardTitles}
-          emptyAction="secondary"
-        >
-          <LeagueNotices league={shown} />
-        </Board>
-      </div>
-    )
-  }
-
-  {
-    (open || feed) && (
-      <div class="zone zone--raised">
-        <LatestDecisions feed={feed} note={!boardNote} />
-      </div>
-    )
-  }
+  <div class="home-tape">
+    <PriceStrip result={pricesResult} />
+  </div>
 
   <HowItWorks />
-
-  <Toast />
 </Layout>
 
 <style>
   /*
-    When the league is not there, the hero still says what Prix is and offers the one action that
-    does not need the league: the statement and "Build an agent" on the left, the notice boxed in
-    the place of the featured card on the right from 960, under them on a phone.
+    No house decision to show, or the feed did not load: on a phone and up to 960 the block is left
+    out whole, so the board and the search field end the hero; from 960, where it stands beside the
+    board, one sentence in grey keeps its place (DESIGN.md 5.3).
   */
-  .home-failure {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-32);
-    align-items: start;
+  .hero-decisions--quiet {
+    display: none;
   }
 
   @media (min-width: 60em) {
-    .home-failure {
-      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-      gap: var(--space-48);
+    .hero-decisions--quiet {
+      display: block;
     }
   }
 
-  .home-statement {
-    max-width: var(--measure);
+  .hero-decisions-record {
+    margin-top: var(--space-12);
   }
 
-  .home-failure-action {
-    margin-top: var(--space-24);
-  }
+  /*
+    The Prix Live line (.hero-real) has no rule here: board.css alone styles it, as DESIGN.md 5.3
+    (R19) says (DC-C1).
+  */
 </style>
 
 <script>
-  import '../design/motion/count.ts';
   import '../design/motion/draw.ts';
   import '../design/motion/reveal.ts';
-  import '../design/motion/countdown.ts';
-  import '../design/motion/carry.ts';
-  import { mountBoard } from './board/island.ts';
-
-  mountBoard();
 </script>

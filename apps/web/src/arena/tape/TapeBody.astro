@@ -1,0 +1,121 @@
+---
+// The holders' tape (docs/contracts/phase-6-holders-2.md, section 3.2): every agent's newest decisions in
+// one place, newest first, as the API answered them. From the top: the title and what the tape is; one
+// sentence of whose view this is (decisions as they are made, or a day old); the line that this is a paper
+// simulation. Then, above the list and in body size, the sentence that nothing here is advice, said once on
+// the page; under it one grey note with the Prix Live hold and how far back the newest decisions reach;
+// then the decisions, each a FeedRow of the design system: the agent (linked to its page), the round, what
+// changed in its paper portfolio with the virtual amounts, and the reason its agent gave, printed as text.
+//
+// DC-H2-1: on a phone the first row stands on the first screen. So the head carries only the simulation
+// line (the advice line is tape.notAdvice's, never twice), the hold and the scale share one small note, and
+// the band of the list starts half as far below the head as the layout's other bands do.
+//
+// What the visitor sees is the API's: it read the session, decided the view and cut the rows by the delay
+// before this page got them. The page sorts nothing, ranks nothing and judges nothing: no green, no red, no
+// "good" or "bad" on a decision. A read that failed is said in words with the one action that helps.
+import type { TapeResponse } from '@prix/contracts';
+import Button from '../../design/Button.astro';
+import EmptyState from '../../design/EmptyState.astro';
+import FeedRow from '../../design/FeedRow.astro';
+import type { Read } from '../social/client.ts';
+import SocialFailure from '../social/SocialFailure.astro';
+import SocialTop from '../social/SocialTop.astro';
+import {
+  tapeDescription,
+  tapeEmpty,
+  tapeLeagueHref,
+  tapeLiveHold,
+  tapeNotAdvice,
+  tapePaper,
+  tapeRows,
+  tapeScale,
+  tapeTitle,
+  tapeToLeague,
+  tapeViewSentence,
+} from './words.ts';
+
+interface Props {
+  /** The tape's one read, as fetchTape gave it. */
+  result: Read<TapeResponse>;
+}
+
+const { result } = Astro.props;
+const tape = result.ok ? result.data : null;
+const rows = tape ? tapeRows(tape.items, Astro.url) : [];
+const title = tapeTitle();
+---
+
+<SocialTop title={title} lead={tapeDescription()} paper={tapePaper()}>
+  {
+    tape && (
+      <p class="tape-view" data-tape-view={tape.view}>
+        {tapeViewSentence(tape)}
+      </p>
+    )
+  }
+</SocialTop>
+
+<section class="page section stack-16 tape-list">
+  {
+    tape ? (
+      <>
+        <div class="tape-terms stack-8">
+          <p class="tape-advice" data-tape-advice>
+            {tapeNotAdvice()}
+          </p>
+          <p class="small tape-note" data-tape-note>
+            {tapeLiveHold()} {tapeScale()}
+          </p>
+        </div>
+        {rows.length === 0 ? (
+          <EmptyState title={tapeEmpty()} data-tape-empty>
+            <Button variant="secondary" label={tapeToLeague()} href={tapeLeagueHref(Astro.url)} />
+          </EmptyState>
+        ) : (
+          <ol class="feed" role="list" aria-label={title} data-tape>
+            {rows.map((row) => (
+              <FeedRow
+                agent={row.agent}
+                time={row.time}
+                what={row.what}
+                detail={row.detail}
+                why={row.why}
+                tag={row.tag}
+                data-key={row['data-key']}
+              />
+            ))}
+          </ol>
+        )}
+      </>
+    ) : (
+      !result.ok && <SocialFailure error={result.error} subject={title} />
+    )
+  }
+</section>
+
+<style>
+  /* Whose view this is reads first under the lead: the same size, in ink. */
+  .tape-view {
+    max-width: var(--measure);
+    color: var(--ink);
+  }
+
+  .tape-terms {
+    max-width: var(--measure);
+  }
+
+  /* The Live hold and the scale: one grey note under the advice sentence, never a block of its own. */
+  .tape-note {
+    color: var(--grey);
+  }
+
+  /*
+    The list's band starts half as far below the head as the layout's alternating bands do (DC-H2-1): the
+    margin and the padding above it are each halved. The selector repeats the layout's own so that it wins.
+  */
+  :global(main:not(:has(> .zone))) > .tape-list:nth-child(even of .page.section):not(:empty) {
+    margin-top: calc(var(--section-gap) / 2);
+    padding-top: var(--space-16);
+  }
+</style>

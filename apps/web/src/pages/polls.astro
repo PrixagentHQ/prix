@@ -1,0 +1,24 @@
+---
+import PollsPage from '../site/polls/PollsPage.astro';
+import { pollsIsOn, readPolls } from '../site/polls/read-polls.ts';
+
+// The holders' poll (docs/contracts/phase-6-holders.md section 4.5). The status is decided here, because a
+// component cannot set it. The page exists only while POLLS_ENABLED is on: while the status probe answers 404
+// this is the site's not-found page and the polls' read is not asked. A probe that could not be read is 503
+// (the page then shows its own load failure if the read fails too). Otherwise the status is the read's own, so its 404 (the switch went
+// off a moment ago) is the page's 404 too. `readPolls` keeps its answer for this request, so the page
+// component reads GET /api/polls from this render's memory and the page view costs no second call. The page
+// reads the account itself; the vote control asks GET /api/polls/me in the browser, and the API checks every
+// vote.
+const on = await pollsIsOn(Astro);
+if (on === 'off') return Astro.rewrite('/404');
+if (on === 'failed') {
+  Astro.response.status = 503;
+} else {
+  const polls = await readPolls(Astro);
+  if (!polls.ok && polls.status === 404) return Astro.rewrite('/404');
+  Astro.response.status = polls.ok ? 200 : polls.status;
+}
+---
+
+<PollsPage />

@@ -1,5 +1,6 @@
 import type { CreateAgentInput } from '@prix/contracts';
 import { createApi } from '../lib/api.ts';
+import { mountTemplates, mountTemplatesSignedOut } from './build/picker.ts';
 import {
   clearMessage,
   clearOnInput,
@@ -24,17 +25,22 @@ function readDraft(): Record<string, string> {
   try {
     const raw = window.sessionStorage.getItem(DRAFT);
     const value: unknown = raw ? JSON.parse(raw) : null;
-    return value && typeof value === 'object' ? (value as Record<string, string>) : {};
+    return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, string>) : {};
   } catch {
     return {};
   }
 }
 
+/**
+ * Writes the form's fields into the draft. A key the builder does not own is left as it is: it is
+ * never read, shown or sent. A field the form no longer holds (an unticked box) leaves the draft.
+ */
 function writeDraft(form: HTMLFormElement): void {
   try {
     const data = new FormData(form);
-    const draft: Record<string, string> = {};
+    const draft: Record<string, unknown> = { ...readDraft() };
     for (const key of DRAFT_FIELDS) {
+      delete draft[key];
       const value = data.get(key);
       if (typeof value === 'string') draft[key] = value;
     }
@@ -59,27 +65,6 @@ function restoreDraft(form: HTMLFormElement): void {
         control.value = value;
       }
     }
-  }
-}
-
-/**
- * The example strategies: each fills the prompt field. The text goes in as an edit the browser
- * can undo, so a prompt the person wrote first is one undo away; where that is not supported the
- * value is set. The cursor ends in the field, ready to edit.
- */
-function mountExamples(form: HTMLFormElement, area: HTMLTextAreaElement): void {
-  for (const button of form.querySelectorAll<HTMLButtonElement>('[data-example]')) {
-    button.addEventListener('click', () => {
-      const example = button.dataset.example ?? '';
-      area.focus();
-      area.select();
-      const inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, example);
-      if (!inserted || area.value !== example) {
-        area.value = example;
-        area.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      area.setSelectionRange(area.value.length, area.value.length);
-    });
   }
 }
 
@@ -142,8 +127,12 @@ function mountPreview(form: HTMLFormElement, division: () => 'open' | 'pro'): vo
  * The agent builder, in the browser. It checks what was typed with the contract's constants and plain code,
  * sends one request, and puts a refusal beside the field it is about. Whether the agent is
  * built is the API's decision alone: nothing here claims a slot, a division or a limit.
+ *
+ * Signed out, the page has no form: the templates in the sign-in card keep a chosen text in this
+ * tab's draft, which `restoreDraft` puts in the prompt field once the person has signed in.
  */
 export function mountBuild(): void {
+  mountTemplatesSignedOut(document, DRAFT);
   const form = document.querySelector<HTMLFormElement>('form[data-build]');
   const button = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
   if (!form || !button) return;
@@ -172,7 +161,7 @@ export function mountBuild(): void {
 
   const area = form.querySelector<HTMLTextAreaElement>('textarea[name="prompt"]');
   if (area) {
-    mountExamples(form, area);
+    mountTemplates(form, area);
     mountMeter(form, area);
   }
   mountPreview(form, division);

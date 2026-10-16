@@ -15,6 +15,7 @@
     "@prix/reputation": "workspace:*",
     "@prix/runtime": "workspace:*",
     "@prix/sim": "workspace:*",
-    "@types/node": "^26.6.4"
+    "@types/node": "^26.6.4",
+    "viem": "^2.57.3"
   }
 }

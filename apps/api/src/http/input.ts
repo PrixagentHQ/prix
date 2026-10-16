@@ -47,38 +47,93 @@ export function validate<T>(schema: Schema<T>, input: unknown): T {
 }
 
 /**
- * Reads at most `MAX_BODY_BYTES` of a body. Null when the body is larger or is not UTF-8.
+ * How long a whole body may take to arrive, counted from the first read: ten seconds for a body of
+ * at most `MAX_BODY_BYTES` (16,384 bytes).
+ *
+ * From the security review of the server of 2026-10-12: a body that is written a byte at a time and
+ * then left open kept its request, and what the request held, for as long as the runtime lets a body
+ * stall, before any session. Ten seconds is far more than an honest body of this size needs, which
+ * arrives in one piece or a few, and still carries a connection as slow as 13 kbit/s.
+ */
+export const BODY_DEADLINE_MS = 10_000;
+
+/**
+ * Reads at most `MAX_BODY_BYTES` of a body. Null when the body is larger, is not UTF-8, does not
+ * arrive whole within `BODY_DEADLINE_MS`, or breaks while it is read: all four are a body this API
+ * cannot use, and the caller answers them alike.
  *
  * The size a request declares is checked first. A body that declares none, or declares less than
  * it sends, is counted as it arrives and dropped at the limit. Either way nothing larger than the
  * limit is ever decoded or handed to the JSON parser.
+ *
+ * No piece is kept. The Workers runtime hands each piece over on a buffer of 4,096 bytes of its own,
+ * whatever the piece carries, so a list of one-byte pieces would hold 67 MB for a body inside the
+ * limit. Each piece is copied into one buffer, and that buffer starts at the size of the first piece
+ * and doubles up to the limit: a small JSON body arrives whole and costs its own size, where a
+ * buffer of the limit's size would cost 16,384 bytes for every body.
+ *
+ * One timer covers the whole body, so pieces that keep coming slowly do not move the deadline. Each
+ * read races a promise made for that read alone: raced against one promise that lives as long as the
+ * body, every result would stay reachable from that promise, and with it every piece.
  */
 export async function readText(request: Request): Promise<string | null> {
   const declared = request.headers.get('content-length');
   if (declared !== null && !(Number(declared) <= MAX_BODY_BYTES)) return null;
   if (!request.body) return '';
   const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
+  // Nothing waits for the cancel: one that is slow or fails must not hold the answer, and it frees
+  // nothing that the end of the request does not free.
+  const drop = (): null => {
+    void reader.cancel().catch(() => undefined);
+    return null;
+  };
+  let late = false;
+  let wake: (() => void) | null = null;
+  const timer = setTimeout(() => {
+    late = true;
+    wake?.();
+  }, BODY_DEADLINE_MS);
+  // Empty until the first piece arrives.
+  let bytes = new Uint8Array(0);
   let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const chunk = value as Uint8Array;
-    size += chunk.byteLength;
-    if (size > MAX_BODY_BYTES) {
-      await reader.cancel();
-      return null;
+  try {
+    for (;;) {
+      // Asked before every read: a piece that settles its read in the turn in which the timer fires
+      // wins that race, and the timer fires once.
+      if (late) return drop();
+      let next: Awaited<ReturnType<typeof reader.read>> | null;
+      try {
+        next = await Promise.race([
+          reader.read(),
+          new Promise<null>((resolve) => {
+            wake = () => resolve(null);
+          }),
+        ]);
+      } catch {
+        // A read that rejects: the client went away or the body broke. Not a fault of this API.
+        // Only the read is caught: a fault in the lines below is this API's own and stays a 500.
+        return drop();
+      }
+      if (next === null) return drop();
+      if (next.done) break;
+      const piece = next.value;
+      const end = size + piece.byteLength;
+      if (end > MAX_BODY_BYTES) return drop();
+      if (end > bytes.byteLength) {
+        // The first piece makes a buffer of its own size. After that the buffer doubles, or takes
+        // what the piece needs if that is more, and never passes the limit.
+        const grown = new Uint8Array(Math.min(MAX_BODY_BYTES, Math.max(bytes.byteLength * 2, end)));
+        grown.set(bytes.subarray(0, size));
+        bytes = grown;
+      }
+      bytes.set(piece, size);
+      size = end;
     }
-    chunks.push(chunk);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
+  } finally {
+    clearTimeout(timer);
   }
   try {
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes.subarray(0, size));
   } catch {
     return null;
   }

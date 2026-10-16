@@ -9,14 +9,21 @@ const tiers = tierTable([10, 100, 1000]);
 export type TokenFixtureState = 'notLaunched' | 'flagOff' | 'flagOn';
 
 export const tokenFixtures: Record<TokenFixtureState, TokenInfoResponse> = {
-  notLaunched: { gatingOn: false, tokenAddress: null, explorerUrl: null, buyUrl: null, tiers, feedDelaySeconds: 900 },
+  notLaunched: {
+    gatingOn: false,
+    tokenAddress: null,
+    explorerUrl: null,
+    buyUrl: null,
+    tiers,
+    feedDelaySeconds: 86_400,
+  },
   flagOff: {
     gatingOn: false,
     tokenAddress: SAMPLE_ADDRESS,
     explorerUrl: `https://robinhoodchain.blockscout.com/token/${SAMPLE_ADDRESS}`,
     buyUrl: null,
     tiers,
-    feedDelaySeconds: 900,
+    feedDelaySeconds: 86_400,
   },
   flagOn: {
     gatingOn: true,
@@ -24,7 +31,7 @@ export const tokenFixtures: Record<TokenFixtureState, TokenInfoResponse> = {
     explorerUrl: `https://robinhoodchain.blockscout.com/token/${SAMPLE_ADDRESS}`,
     buyUrl: 'https://ponsfamily.com/sample',
     tiers,
-    feedDelaySeconds: 900,
+    feedDelaySeconds: 86_400,
   },
 };
 

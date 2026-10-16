@@ -1,0 +1,37 @@
+/* The holders' poll's vote control (web-account). Spacing and colour come from the design tokens only. */
+
+.poll-vote-state {
+  margin-top: var(--space-16);
+}
+
+/* Until GET /api/polls/me has answered, the place keeps one line's height so nothing jumps. */
+.poll-vote-state[aria-busy="true"] {
+  min-height: var(--leading-16);
+}
+
+.poll-vote-own {
+  margin-top: var(--space-8);
+  color: var(--grey);
+}
+
+.poll-vote-option {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+}
+
+/* "Your vote": words with a hairline ring, never a tick and never the blue of an action. */
+.poll-vote-yours {
+  display: inline-block;
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-medium);
+}
+
+.poll-vote-yours[hidden],
+.poll-vote-option [hidden] {
+  display: none;
+}

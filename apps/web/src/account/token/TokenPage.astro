@@ -3,6 +3,11 @@ import type { TokenInfoResponse } from '@prix/contracts';
 // The account tier page: the wallet's tier, its holding as a share of the supply, what each tier
 // unlocks, the next tier and the agent slots. Everything shown was read by the server for the
 // signed-in wallet. The page grants nothing: tiers are decided on the server.
+//
+// What each tier unlocks (docs/contracts/phase-6-holders.md section 2, revision 5, D1): while "Open to holders
+// now" shows, the tier table is folded into it (its badge column is that table's `badge` row, its tiers the
+// columns' headers) and is not shown on its own. Where that table does not show (GET /api/token failed, or its
+// tiers lack an amount), the tier table stays as it was.
 import { tokenInfoResponseSchema } from '@prix/contracts';
 import { formatCount } from '../../content/format.ts';
 import { text } from '../../content/index.ts';
@@ -20,8 +25,11 @@ import type { Session } from '../session.ts';
 import { herePath, signInHref } from '../session.ts';
 import { formatDelay } from './delay.ts';
 import { formatThreshold } from './format.ts';
+import HoldersBlock from './HoldersBlock.astro';
+import { ownerHoldsOnOf, readPicturesOn } from './holders-reads.ts';
+import { holdersTableShown, markTierOf } from './holders-view.ts';
 import TierCard from './TierCard.astro';
-import { fetchTokenMe } from './token-client.ts';
+import { fetchOwnerHolds, fetchTokenMe } from './token-client.ts';
 import '../account.css';
 
 interface Props {
@@ -49,7 +57,13 @@ async function readInfo(): Promise<TokenInfoResponse | null> {
   }
 }
 
-const [me, info] = signedIn ? await Promise.all([fetchTokenMe(Astro), readInfo()]) : [null, null];
+const [me, info, ownerHolds, picturesOn] = signedIn
+  ? await Promise.all([fetchTokenMe(Astro), readInfo(), fetchOwnerHolds(Astro), readPicturesOn(Astro)])
+  : [null, null, null, false];
+// "Open to holders now" (the holders round): the owner-holds route's status decides its row and the switch.
+const ownerHoldsOn = ownerHoldsOnOf(ownerHolds);
+const ownerHoldsShow = ownerHolds?.ok ? ownerHolds.data.show : null;
+const markTier = me?.ok ? markTierOf(me.data) : null;
 
 const title = text('token.pageTitle', 'The Prix token');
 const here = herePath(Astro.url);
@@ -57,6 +71,8 @@ const delay = info ? formatDelay(info.feedDelaySeconds) : '';
 const yes = text('common.yes', 'Yes');
 const no = text('common.no', 'No');
 
+// "Open to holders now" in place of the tier table, or the tier table whole where it does not show (D1).
+const holdersShown = holdersTableShown(info);
 const columns = [
   { key: 'tier', label: text('token.tierColumnTier', 'Tier') },
   { key: 'needs', label: text('token.tierColumnHolding', 'Holding'), align: 'end' as const },
@@ -121,7 +137,7 @@ const nextTierRow =
           </Notice>
         </div>
       ) : (
-        <div class="acct-grid token-grid">
+        <div class:list={['acct-grid', 'token-grid', holdersShown && 'token-folded']}>
           <AccountCard
             title={me.data.gatingOn ? text('token.yourTier', 'Your tier') : text('token.yourAllowance', 'Your allowance')}
             headingId="tier-heading"
@@ -152,52 +168,70 @@ const nextTierRow =
             )}
           </AccountCard>
 
-          <AccountCard
-            title={text('token.tiersTitle', 'What each tier unlocks')}
-            headingId="tiers-heading"
-            id="tiers"
-            intro={
-              info?.gatingOn
-                ? text('token.tiersIntro', 'A tier is the share of the token’s supply your wallet holds.')
-                : text(
-                    'token.tiersIntroPreview',
-                    'This is what the tiers will unlock once they are switched on. Until then everyone has the open allowance.',
-                  )
-            }
-          >
-            {info ? (
-              <Table id="tiers-table" caption={text('token.tiersCaption', 'Tiers and what each unlocks')} columns={columns} scroll>
-                <tbody>
-                  {info.tiers.map((tier) => (
-                    <tr aria-current={currentTier === tier.tier ? 'true' : undefined}>
-                      <th scope="row">
-                        {currentTier === tier.tier
-                          ? text('token.tierNameYours', 'Tier {tier}, yours', { tier: tier.tier })
-                          : text('token.tierName', 'Tier {tier}', { tier: tier.tier })}
-                      </th>
-                      <td class="num">{tier.tier === 0 ? text('token.none', 'None') : formatThreshold(tier.thresholdPpm)}</td>
-                      <td class="num">{formatCount(tier.maxAgents)}</td>
-                      <td>
-                        {tier.realtimeFeed
-                          ? text('token.feedLive', 'Live')
-                          : text('token.tierFeedLate', '{delay} late', { delay })}
-                      </td>
-                      <td>{tier.verifiedBadge ? yes : no}</td>
-                      <td class="num">{formatCount(tier.apiDailyQuota)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            ) : (
-              <Notice
-                tone="error"
-                title={text('token.tiersFailedTitle', 'The tiers could not be loaded')}
-                body={text('token.tiersFailedBody', 'Reload the page to see what each tier unlocks.')}
-              >
-                <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
-              </Notice>
-            )}
-          </AccountCard>
+          {holdersShown && info ? (
+            <div class="token-wide">
+              <HoldersBlock
+                tiers={info.tiers}
+                feedDelaySeconds={info.feedDelaySeconds}
+                picturesOn={picturesOn}
+                ownerHoldsOn={ownerHoldsOn}
+                ownerHoldsShow={ownerHoldsShow}
+                markTier={markTier}
+              />
+            </div>
+          ) : (
+            <AccountCard
+              title={text('token.tiersTitle', 'What each tier unlocks')}
+              headingId="tiers-heading"
+              id="tiers"
+              intro={
+                info?.gatingOn
+                  ? text('token.tiersIntro', 'A tier is the share of the token’s supply your wallet holds.')
+                  : text(
+                      'token.tiersIntroPreview',
+                      'This is what the tiers will unlock once they are switched on. Until then everyone has the open allowance.',
+                    )
+              }
+            >
+              {info ? (
+                <Table
+                  id="tiers-table"
+                  caption={text('token.tiersCaption', 'Tiers and what each unlocks')}
+                  columns={columns}
+                  scroll
+                >
+                  <tbody>
+                    {info.tiers.map((tier) => (
+                      <tr aria-current={currentTier === tier.tier ? 'true' : undefined}>
+                        <th scope="row">
+                          {currentTier === tier.tier
+                            ? text('token.tierNameYours', 'Tier {tier}, yours', { tier: tier.tier })
+                            : text('token.tierName', 'Tier {tier}', { tier: tier.tier })}
+                        </th>
+                        <td class="num">{tier.tier === 0 ? text('token.none', 'None') : formatThreshold(tier.thresholdPpm)}</td>
+                        <td class="num">{formatCount(tier.maxAgents)}</td>
+                        <td>
+                          {tier.realtimeFeed
+                            ? text('token.feedLive', 'Live')
+                            : text('token.tierFeedLate', '{delay} late', { delay })}
+                        </td>
+                        <td>{tier.verifiedBadge ? yes : no}</td>
+                        <td class="num">{formatCount(tier.apiDailyQuota)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              ) : (
+                <Notice
+                  tone="error"
+                  title={text('token.tiersFailedTitle', 'The tiers could not be loaded')}
+                  body={text('token.tiersFailedBody', 'Reload the page to see what each tier unlocks.')}
+                >
+                  <Button href={here} label={text('common.reloadPage', 'Reload the page')} variant="secondary" />
+                </Notice>
+              )}
+            </AccountCard>
+          )}
         </div>
       )
     }
@@ -205,7 +239,7 @@ const nextTierRow =
       {
         text(
           'token.pageDisclaimer',
-          'The token gives no rights to Prix and has no connection to any agent’s decisions. Prix is a simulation, and nothing on it is advice.',
+          'The token gives no rights to Prix and has no connection to any agent’s decisions. The league is a simulation, and nothing on Prix is advice.',
         )
       }
     </p>
@@ -218,6 +252,21 @@ const nextTierRow =
     .token-grid {
       grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     }
+  }
+
+  /*
+    With the tier table folded into "Open to holders now" (D1) the page is one column, and both cards fill it
+    at every width (revision 6, DC6-5): the wallet's own card and the holders table under it share one edge,
+    so that the five columns rarely need to scroll and the two cards never read as two widths. The prose and
+    the facts inside each card keep their own reading measure.
+  */
+  .token-folded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .token-wide {
+    grid-column: 1 / -1;
+    min-width: 0;
   }
 
   .token-disclaimer {

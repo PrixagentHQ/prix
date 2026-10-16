@@ -14,7 +14,11 @@
  * out, when its fonts arrive and when `main` changes size. The field itself never moves. Until
  * this has run the stylesheet keeps the field hidden; without scripts the stylesheet's own limit
  * (the height of `main` less 48 pixels) holds.
+ *
+ * What counts as a control, a figure, text of its own and an opaque surface is ground/surface.ts,
+ * shared with the crawler (crawler/scan.ts).
  */
+import { CONTROL, FIGURE, hasOwnText, onSurface } from './surface.ts';
 
 /** The height of the grid (field.ts: 34 rows of 14). */
 const FIELD_HEIGHT = 476;
@@ -25,35 +29,8 @@ const MIN_HEIGHT = 232;
 /** From the grid's right edge, the line left of which the field is nothing (field.ts). */
 const NOTHING_FROM_RIGHT = 830;
 
-/** A control: the field never meets one, whatever it stands on. */
-const CONTROL = 'a[href], button, input, select, textarea, summary, [role="button"], [tabindex]:not([tabindex="-1"])';
-/** A figure or a sign that is not text. */
-const FIGURE = 'img, svg, canvas, video, iframe, hr';
 /** A band across the page: a raised zone, or a block of a page without zones on its raised band. */
 const BAND = 'main > .zone--raised, main > .page.section';
-
-function hasOwnText(element: Element): boolean {
-  for (const node of element.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) return true;
-  }
-  return false;
-}
-
-/** An opaque fill: a colour that is not clear, a picture, or a band's border image. */
-function isSurface(element: Element): boolean {
-  const style = getComputedStyle(element);
-  const colour = style.backgroundColor;
-  const clear = colour === 'transparent' || /^rgba\(.*,\s*0\)$/u.test(colour);
-  return !clear || style.backgroundImage !== 'none' || style.borderImageSource !== 'none';
-}
-
-/** Whether the element or something between it and `main` is opaque: the field lies under it. */
-function onSurface(element: Element, main: Element): boolean {
-  for (let parent: Element | null = element; parent && parent !== main; parent = parent.parentElement) {
-    if (isSurface(parent)) return true;
-  }
-  return false;
-}
 
 /**
  * Where the element ends the head for the field (see above), as the top of what is in its reach,
@@ -99,7 +76,8 @@ function fit(ground: HTMLElement, main: HTMLElement): void {
   const footer = document.querySelector('body > footer');
   if (footer) end = Math.min(end, footer.getBoundingClientRect().top);
   for (const element of main.querySelectorAll<HTMLElement>('*')) {
-    if (element === ground || ground.contains(element)) continue;
+    // The crawler's layer (crawler/crawler.ts) is no part of the page: the field never ends for it.
+    if (element === ground || ground.contains(element) || element.closest('.crawler')) continue;
     const rect = element.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) continue;
     if (rect.top >= end || rect.bottom <= box.top) continue;
@@ -134,6 +112,3 @@ if (ground && main) {
   new ResizeObserver(queue).observe(main);
   window.addEventListener('resize', queue, { passive: true });
 }
-
-// A module of its own, so its names never meet another script's.
-export {};

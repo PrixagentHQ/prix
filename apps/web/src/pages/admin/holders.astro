@@ -1,0 +1,19 @@
+---
+import AdminHoldersPage from '../../account/admin/holders/AdminHoldersPage.astro';
+import { readSession } from '../../account/session.ts';
+import { readAccount } from '../../lib/account.ts';
+import { statusForCode } from '../../lib/status.ts';
+
+// /admin/holders (docs/contracts/phase-6-holders.md sections 4.4 and 7): the webhook's control and its watch,
+// and the tally of a closed poll. The status is decided here, because a component cannot set it. A wallet that
+// is signed in and is not an administrator gets 403 with the page that says so, and no admin read is made for
+// it. A visitor who is not signed in gets the sign-in, as 200. This page does not depend on POLLS_ENABLED: the
+// admin routes of the API are always mounted, and the API checks the wallet again on every control.
+const account = await readAccount(Astro);
+const session = await readSession(Astro);
+
+if (session.state === 'signed-in' && !session.me.isAdmin) Astro.response.status = 403;
+else if (session.state === 'failed') Astro.response.status = statusForCode(session.code);
+---
+
+<AdminHoldersPage account={account} session={session} />

@@ -23,6 +23,7 @@ import TextInput from '../design/TextInput.astro';
 import { readAccount } from '../lib/account.ts';
 import AccountCard from './AccountCard.astro';
 import BuildPreview from './BuildPreview.astro';
+import TemplatePicker from './build/TemplatePicker.astro';
 import Feedback from './Feedback.astro';
 import PageHead from './PageHead.astro';
 import SessionGate from './SessionGate.astro';
@@ -37,12 +38,18 @@ const me = session.state === 'signed-in' ? session.me : null;
 const agent = me?.agent ?? null;
 const keys = me?.modelKeys ?? [];
 
-// A wallet with an agent may build another while it has a free slot. The server decides again
-// when the agent is created: this only chooses between the form and the note.
-const slotsRead = me && agent ? await fetchTokenMe(Astro) : null;
+// The server's read of this wallet's tier, slots and entitlements: one request, made only for a
+// signed-in wallet. A wallet with an agent may build another while it has a free slot; the server
+// decides again when the agent is created, so this only chooses between the form and the note.
+const tokenRead = me ? await fetchTokenMe(Astro) : null;
+const slotsRead = agent ? tokenRead : null;
 const hasRoom = slotsRead?.ok === true && slotsRead.data.slots.used < slotsRead.data.slots.max;
 const full = agent !== null && !hasRoom;
 const gated = slotsRead?.ok === true && slotsRead.data.gatingOn;
+// The holder templates (D-161): only when the server read this session's entitlements at tier 1
+// or above. Nothing the request carries (a query, a cookie, a header) takes part, and a read that
+// failed shows the locked line, as tier 0 does.
+const holder = tokenRead?.ok === true && tokenRead.data.entitlements.tier >= 1;
 
 const title = text('common.buildAgent', 'Build an agent');
 const prompt = promptWords();
@@ -54,31 +61,6 @@ const showForm = me !== null && !full;
 
 const signInTitle = text('builder.stepSignIn', 'Sign in');
 const describeTitle = text('builder.stepDescribe', 'Describe your agent');
-
-// Three strategies to start from. Each fills the prompt field and can be edited freely.
-const examples = [
-  {
-    label: text('builder.exampleIndexLabel', 'Steady index'),
-    prompt: text(
-      'builder.exampleIndexPrompt',
-      'Hold 40% in SPY and 30% in QQQ, and keep the rest in cash. When SPY falls more than 2% in one trading day, move a tenth of the cash into SPY.',
-    ),
-  },
-  {
-    label: text('builder.exampleMomentumLabel', 'Weekly momentum'),
-    prompt: text(
-      'builder.exampleMomentumPrompt',
-      'Each trading day, hold the three symbols with the highest return over the last five trading days, at 25% each, and keep the rest in cash. Never hold SGOV or USO. While no return is known yet, hold cash only.',
-    ),
-  },
-  {
-    label: text('builder.exampleCushionLabel', 'Treasury cushion'),
-    prompt: text(
-      'builder.exampleCushionPrompt',
-      'Keep 40% in SGOV at all times. Give NVDA, AMD and MU 20% each, but only while that symbol’s return over the last five trading days is above zero. Keep any part not in use in cash.',
-    ),
-  },
-];
 
 // The form is `method="dialog"`: outside a dialog that sends nothing, so without its script
 // the form cannot put a prompt into an address or a request.
@@ -201,6 +183,10 @@ const limits = text(
                     },
                   ]}
                 />
+                {/* The templates for a reader who has not signed in: a choice waits in this tab's draft. */}
+                <div class="build-templates-out">
+                  <TemplatePicker id="templates-out" signedOut signInId="step-sign-in" />
+                </div>
               </AccountCard>
             </>
           ) : (
@@ -240,21 +226,7 @@ const limits = text(
                     />
 
                     <div class="build-prompt">
-                      <div class="stack-8 build-examples">
-                        <p class="caption" id="examples-label">
-                          {text('builder.examplesLabel', 'Start from an example')}
-                        </p>
-                        <p class="cluster" role="group" aria-labelledby="examples-label" data-examples>
-                          {examples.map((example) => (
-                            <Button
-                              label={example.label}
-                              variant="secondary"
-                              size="sm"
-                              data-example={example.prompt}
-                            />
-                          ))}
-                        </p>
-                      </div>
+                      <TemplatePicker holder={holder} />
                       <Textarea
                         label={prompt.label}
                         name="prompt"
@@ -390,6 +362,14 @@ const limits = text(
     margin-bottom: var(--space-16);
   }
 
+  /*
+    Signed out, the templates follow the sign-in steps with no rule between: the section's own
+    title separates them, as it does in the signed-in form.
+  */
+  .build-templates-out {
+    margin-top: var(--space-24);
+  }
+
   .build-form > .panel-part {
     margin-top: var(--space-24);
     padding-top: var(--space-24);
@@ -399,8 +379,9 @@ const limits = text(
     margin-top: var(--space-8);
   }
 
-  .build-prompt > .build-examples {
-    margin-bottom: var(--space-16);
+  /* The templates, then the field they fill: the field's label stands clear of the last row. */
+  .build-prompt > :global(.tpl) {
+    margin-bottom: var(--space-24);
   }
 
   /* The share of the 2,000 characters used: the bar under the field moves as the prompt grows. */

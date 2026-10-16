@@ -1,0 +1,270 @@
+---
+// The holders' poll, /polls (docs/contracts/phase-6-holders.md section 4.5). Server-rendered from
+// GET /api/polls and nothing else: the question and the options are Prix's own (HOLDER_POLLS), every
+// count, state and leader is the API's, and the page computes none of them. The route file
+// (apps/web/src/pages/polls.astro, platform) answers the site's 404 while the status probe is off and
+// sets the status; this page renders what the read returned.
+//
+// The open poll stands first as a ballot: one row an option, its name, the votes cast so far as a figure
+// and a bar (a picture of the figure beside it, never a score), and a link to the agent whose strategy it
+// is. The vote control is web-account's (apps/web/src/account/polls/**): `PollVoteControl` wraps the
+// ballot, and each row holds a `PollVoteOption` with its button (the integration's seam; the control also
+// says that Prix's own wallets do not vote). Then the closed
+// polls, each with its state: being counted, a count that could not be completed, or the counted result
+// beside the votes cast. Never "winner", "governance" or "DAO".
+import PollVoteControl from '../../account/polls/PollVoteControl.astro';
+import PollVoteOption from '../../account/polls/PollVoteOption.astro';
+import { herePath, signInHref } from '../../account/session.ts';
+import { text } from '../../content/index.ts';
+import EmptyState from '../../design/EmptyState.astro';
+import Layout from '../../design/Layout.astro';
+import Meter from '../../design/Meter.astro';
+import Notice from '../../design/Notice.astro';
+import { readAccount } from '../../lib/account.ts';
+import PageHead from '../PageHead.astro';
+import ShareMeta from '../ShareMeta.astro';
+import { siteShareImage } from '../share.ts';
+import { barShare, castLabel, countedLabel, countOf, outcomeLine, pollAmount, pollTime, splitPolls } from './polls.ts';
+import { readPolls } from './read-polls.ts';
+
+const account = await readAccount(Astro);
+const result = await readPolls(Astro);
+const data = result.ok ? result.data : null;
+const { open, closed } = splitPolls(data?.polls ?? []);
+const amount = pollAmount(data?.minTokens ?? 0);
+
+const title = text('polls.title', "Holders' poll");
+const lead = text(
+  'polls.lead',
+  'Holders choose between options Prix writes for its paper league. A wallet has one vote, which it can change until the close, and it counts only if the wallet still holds at least {amount} $PRIX when Prix counts the votes after the close.',
+  { amount },
+);
+---
+
+<Layout title={title} description={lead} account={account} signInHref={signInHref(herePath(Astro.url))}>
+  <ShareMeta slot="head" title={title} description={lead} image={siteShareImage()} />
+
+  <div class="page site-top">
+    <PageHead title={title} lead={data ? lead : undefined} />
+  </div>
+
+  {
+    !data ? (
+      <section class="page section">
+        <Notice tone="error" title={text('polls.loadFailed', 'The poll did not load. Reload the page to try again.')} />
+      </section>
+    ) : (
+      <>
+        <section class="page section" aria-labelledby={open ? 'poll-open-question' : undefined}>
+          {open ? (
+            <div class="poll stack-16" data-poll={open.id}>
+              <div class="poll-head">
+                <h2 class="headline" id="poll-open-question">{open.question}</h2>
+                <p class="small">{text('polls.closesAt', 'Closes {time} UTC', { time: pollTime(open.closesAt) })}</p>
+              </div>
+              <PollVoteControl pollId={open.id} minTokens={data.minTokens}>
+                <ul class="ballot" role="list">
+                  {open.options.map((option) => (
+                    <li class="ballot-row">
+                      <div class="ballot-line">
+                        <span class="ballot-name">{option.name}</span>
+                        <span class="ballot-figure figures">{castLabel(countOf(open.cast, option.id))}</span>
+                      </div>
+                      <Meter share={barShare(open.cast, option.id)} class="ballot-bar" />
+                      <div class="ballot-foot">
+                        <a href={`/agents/${encodeURIComponent(option.agentId)}`}>
+                          {text('polls.optionLink', 'See the agent')}
+                          <span class="visually-hidden">{`: ${option.name}`}</span>
+                        </a>
+                        <div class="ballot-vote">
+                          <PollVoteOption optionId={option.id} optionName={option.name} />
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <p class="small poll-note">
+                  {text(
+                    'polls.castNote',
+                    'Votes cast so far. A vote counts only if its wallet still holds at least {amount} $PRIX when Prix counts the votes after the close. Once an hour, Prix may remove the votes of wallets that no longer hold it.',
+                    { amount },
+                  )}
+                </p>
+              </PollVoteControl>
+            </div>
+          ) : (
+            <EmptyState title={text('polls.noneOpen', 'No poll is open right now.')} boxed />
+          )}
+        </section>
+
+        {closed.length > 0 && (
+          <section class="page section" aria-labelledby="polls-closed-title">
+            <h2 class="headline" id="polls-closed-title">{text('polls.closedTitle', 'Closed polls')}</h2>
+            <div class="closed-list">
+              {closed.map((poll) => (
+                <article class="poll stack-16" data-poll={poll.id} aria-labelledby={`poll-${poll.id}`}>
+                  <div class="poll-head">
+                    <h3 class="title" id={`poll-${poll.id}`}>{poll.question}</h3>
+                    <p class="small">{text('polls.closedAt', 'Closed {time} UTC', { time: pollTime(poll.closesAt) })}</p>
+                  </div>
+                  {poll.state === 'closed' && poll.result ? (
+                    <>
+                      <p class="poll-outcome">{outcomeLine(poll, poll.result.leaders)}</p>
+                      <ul class="ballot" role="list">
+                        {poll.options.map((option) => (
+                          <li
+                            class:list={['ballot-row', poll.result?.leaders.includes(option.id) && 'ballot-row--lead']}
+                            data-poll-option={option.id}
+                          >
+                            <div class="ballot-line">
+                              <span class="ballot-name">{option.name}</span>
+                              <span class="ballot-figure figures">
+                                {countedLabel(countOf(poll.result?.counted, option.id))}
+                              </span>
+                            </div>
+                            <Meter share={barShare(poll.result?.counted, option.id)} class="ballot-bar" />
+                            <div class="ballot-foot">
+                              <span class="small figures">{castLabel(countOf(poll.result?.cast, option.id))}</span>
+                              <a href={`/agents/${encodeURIComponent(option.agentId)}`}>
+                                {text('polls.optionLink', 'See the agent')}
+                                <span class="visually-hidden">{`: ${option.name}`}</span>
+                              </a>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                      <p class="small poll-note">
+                        {text(
+                          'polls.countedNote',
+                          'Counted from wallets that still held at least {amount} $PRIX when Prix counted, after the close ({time} UTC).',
+                          { amount, time: pollTime(poll.result.countedAt) },
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p class="poll-outcome">
+                        {poll.state === 'uncounted'
+                          ? text('polls.countFailed', 'The count could not be completed; Prix will say what happens.')
+                          : text('polls.counting', 'Closed. The votes are being counted.')}
+                      </p>
+                      <ul class="ballot" role="list">
+                        {poll.options.map((option) => (
+                          <li class="ballot-row" data-poll-option={option.id}>
+                            <div class="ballot-line">
+                              <span class="ballot-name">{option.name}</span>
+                              <span class="ballot-figure figures">{castLabel(countOf(poll.cast, option.id))}</span>
+                            </div>
+                            <Meter share={barShare(poll.cast, option.id)} class="ballot-bar" />
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section class="page section polls-end">
+          <p class="prose">
+            {text(
+              'polls.notAdvice',
+              'The options are strategies Prix wrote for a paper Model War. Nothing here is investment advice, and holding $PRIX gives access to features, never a return.',
+            )}
+          </p>
+        </section>
+      </>
+    )
+  }
+</Layout>
+
+<style>
+  .poll {
+    max-width: 44rem;
+  }
+
+  .poll-head > * + * {
+    margin-top: var(--space-4);
+  }
+
+  /*
+    The ballot: one row an option, divided by a hairline as a table's rows are. The name reads at the
+    title size, the figure sits at the row's end in tabular figures, and the bar under them is a picture
+    of that figure (aria-hidden in Meter), as long as the row.
+  */
+  .ballot {
+    border-top: var(--rule-hair) solid var(--line);
+  }
+
+  .ballot-row {
+    display: grid;
+    gap: var(--space-8);
+    padding-block: var(--space-16);
+    border-bottom: var(--rule-hair) solid var(--line);
+  }
+
+  .ballot-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-16);
+  }
+
+  .ballot-name {
+    font-size: var(--text-16);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .ballot-figure {
+    color: var(--grey);
+    white-space: nowrap;
+  }
+
+  /* A leading option of a counted poll: its figure in ink and its bar in full ink, so no colour alone tells. */
+  .ballot-row--lead .ballot-figure {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .ballot-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-8) var(--space-16);
+    min-height: var(--space-32);
+  }
+
+  .ballot-foot a {
+    display: inline-block;
+    padding-block: var(--space-4);
+  }
+
+  .ballot-vote:empty {
+    display: none;
+  }
+
+  .poll-outcome {
+    font-size: var(--text-16);
+    line-height: var(--leading-16);
+    font-weight: 600;
+  }
+
+  .poll-note {
+    max-width: var(--measure);
+  }
+
+  .closed-list {
+    display: grid;
+    gap: var(--space-48);
+    margin-top: var(--space-24);
+  }
+
+  .polls-end {
+    padding-bottom: var(--space-48);
+  }
+</style>

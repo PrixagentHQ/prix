@@ -4,7 +4,8 @@ import { usd } from './league.ts';
 /**
  * The price strip, GET /api/market/prices (docs/CONTRACTS.md section 17.2): every symbol of the
  * universe at the latest round, in universe order, with the names packages/market gives them: the
- * twenty Stock Tokens in symbol order, then the crypto assets BTC and ETH (section 21).
+ * twenty Stock Tokens in symbol order, then the crypto assets BTC and ETH (section 21), then BNB,
+ * HYPE and SOL (section 23).
  *
  * The strip follows the market fixture: its round is the market's `lastTickId`, and a market
  * without a round, or a site without a season, answers a null round and no prices. The prices of
@@ -15,9 +16,10 @@ import { usd } from './league.ts';
  * fixture when it names some (market-halted: AMD and QQQ, market-crypto-halted: BTC), USO
  * otherwise, so the mark can be seen.
  *
- * The coins carry their own scale: a price in five or six figures beside the stocks' two or three,
- * and a daily change of a few percent. In the round of the first week they have no change yet, as
- * on the first trading day the league reads them (section 21, rule 5: nothing is backfilled).
+ * The coins carry their own scale: BTC and ETH a price in five or six figures beside the stocks'
+ * two or three, and each coin a daily change of a few percent. In the round of the first week they
+ * have no change yet, as on the first trading day the league reads them (section 21, rule 5:
+ * nothing is backfilled).
  */
 
 /** Symbol, name, price in USD, change in basis points. In universe order. */
@@ -47,6 +49,9 @@ const NAMES: readonly (readonly [TokenSymbol, string])[] = [
   ['USO', 'United States Oil Fund'],
   ['BTC', 'Bitcoin'],
   ['ETH', 'Ethereum'],
+  ['BNB', 'BNB'],
+  ['HYPE', 'Hyperliquid'],
+  ['SOL', 'Solana'],
 ];
 
 /** Price in USD and change in basis points, by symbol. */
@@ -76,6 +81,9 @@ const SAMPLE_ROUND: Round = {
   USO: [71.3, -63],
   BTC: [121_345.67, 182],
   ETH: [4_486.12, -264],
+  BNB: [1_182.4, 96],
+  HYPE: [46.27, -412],
+  SOL: [221.63, 327],
 };
 
 /** The daily round of Thursday 8 October, which the first week is as of (early.ts). */
@@ -102,6 +110,9 @@ const EARLY_ROUND: Round = {
   USO: [70.58, -101],
   BTC: [122_084.9, null],
   ETH: [4_431.58, null],
+  BNB: [1_176.85, null],
+  HYPE: [47.9, null],
+  SOL: [218.14, null],
 };
 
 /** The prices of the first week's round in USD, by symbol: what the early agents hold is valued at them. */

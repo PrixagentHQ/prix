@@ -9,9 +9,14 @@ interface Props {
   eyebrow?: string;
   eyebrowHref?: string;
   lead?: string;
+  /**
+   * The paper line, when a page says the advice sentence itself elsewhere (the tape: tape.notAdvice above
+   * its list), so that "Nothing here is advice" is said once. Default: the social area's paper line.
+   */
+  paper?: string;
 }
 
-const { title, eyebrow, eyebrowHref, lead } = Astro.props;
+const { title, eyebrow, eyebrowHref, lead, paper } = Astro.props;
 ---
 
 <section class="page section social-top">
@@ -23,7 +28,7 @@ const { title, eyebrow, eyebrowHref, lead } = Astro.props;
   <h1 class="display social-title">{title}</h1>
   {lead && <p class="social-lead">{lead}</p>}
   <slot />
-  <p class="small social-paper">{paperLine()}</p>
+  <p class="small social-paper">{paper ?? paperLine()}</p>
 </section>
 
 <style>

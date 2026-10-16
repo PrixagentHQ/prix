@@ -28,13 +28,16 @@ import { createApi } from '../lib/api.ts';
 import { agentShare } from '../site/follow/share.ts';
 import ShareMeta from '../site/ShareMeta.astro';
 import { siteShareImage } from '../site/share.ts';
+import { readTokenInfoCached } from '../site/token/read-token.ts';
 import Decisions from './agent/Decisions.astro';
 import Holdings from './agent/Holdings.astro';
+import { ownerHoldsMark } from './agent/owner-holds.ts';
 import { returnLabel } from './board/board.ts';
 import FollowControl from './follow/FollowControl.astro';
 import { buildChart, chartTick, modelText, toneOf } from './record.ts';
 import { recordHref } from './reputation/words.ts';
 import AgentSocial from './social/AgentSocial.astro';
+import AgentChat from './social/voice/AgentChat.astro';
 import { leagueHref, pageNow, readFailure, siteHref, startingCash, stateText, statusSentences } from './words.ts';
 
 const api = createApi(Astro);
@@ -71,6 +74,9 @@ const rankWords = agent
       : stateText('states.notRankedYet')
   : '';
 const promptNote = agent?.prompt == null ? stateText('states.promptPrivate') : stateText('states.promptPublished');
+// "Owner holds $PRIX" (part B of the holders round): only when the API sends it true. Its amount is
+// the tier-2 threshold of GET /api/token, the read the layout's footer already makes for this request.
+const holds = agent?.ownerHolds === true ? ownerHoldsMark(agent, await readTokenInfoCached(Astro)) : null;
 
 // --- the chart --------------------------------------------------------------------------------
 
@@ -198,6 +204,11 @@ const pageTitle = agent ? agent.name : text('agent.recordTitle', 'Agent record')
               <Chip label={division} kind={agent.division === 'pro' ? 'pro' : 'open'} />
               {house && <Chip label={text('agent.houseChip', 'House')} kind="house" />}
               {agent.status === 'paused' && <Chip label={stateText('states.paused')} />}
+              {holds && (
+                <span class="agent-holds" aria-describedby={holds.noteId}>
+                  {holds.label}
+                </span>
+              )}
             </p>
           </div>
           <div class="agent-line">
@@ -337,6 +348,7 @@ const pageTitle = agent ? agent.name : text('agent.recordTitle', 'Agent record')
             </p>
           )}
         </section>
+        <AgentChat agent={agent} />
         </div>
       </div>
       </div>
@@ -390,6 +402,11 @@ const pageTitle = agent ? agent.name : text('agent.recordTitle', 'Agent record')
 
         <div class="stack-16">
           <DefinitionList items={about} labelWidth="8.5rem" />
+          {holds && (
+            <p class="small" id={holds.noteId}>
+              {holds.note}
+            </p>
+          )}
           <p class="small">
             {text('methodology.methodLine', 'Ranked by scoring method {version}.', { version: agent.method })}{' '}
             {text(
@@ -569,6 +586,18 @@ const pageTitle = agent ? agent.name : text('agent.recordTitle', 'Agent record')
     color: var(--grey);
     font-size: var(--text-13);
     font-weight: var(--weight-medium);
+  }
+
+  /*
+    "Owner holds $PRIX": words in graphite at the small size, after the chips. No outline, no fill,
+    no glyph and no link, so it never reads as a chip, a badge or a tick. Its note sits beside the
+    owner in "About this agent" and is the mark's description for a screen reader.
+  */
+  .agent-holds {
+    color: var(--grey);
+    font-size: var(--text-13);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
   }
 
   .agent-summary {

@@ -17,7 +17,8 @@ jobs:
   check:
     name: Lint, types, tests, builds
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Raised from 15 when the nine suites beside the code got their steps (2026-10-11).
+    timeout-minutes: 30
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -38,7 +39,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # The TypeScript packages, the API Worker and the tests.
+      # The TypeScript packages, the API Worker and the tests, tests/workers among them: that folder has a
+      # tsconfig of its own (tests/tsconfig.json leaves it out), which the root script names.
       - name: Typecheck
         run: pnpm typecheck
 
@@ -46,15 +48,83 @@ jobs:
       - name: Check the site
         run: pnpm --filter @prix/web run check
 
+      # tests/social/room-picture-page.test.ts launches headless Chromium. The runner has no browser,
+      # so install the one this lockfile's Playwright (1.63.0) needs: the headless shell alone, with
+      # the system libraries it loads. `pnpm exec` runs that same Playwright, so the build matches.
+      - name: Install the browser for the page tests
+        run: pnpm exec playwright install --with-deps --only-shell chromium
+
       - name: Test
         run: pnpm test
+
+      # The copy gate: two files that `pnpm test` above already ran, once more with PRIX_GATE set. Only then
+      # do they apply the rules that hold at a gate, such as a key in use with no entry in the deck.
+      - name: Test the copy at the gate
+        run: pnpm exec vitest run tests/unit/content.test.ts tests/social/words.test.ts
+        env:
+          PRIX_GATE: "1"
 
       # The D1 store against a local D1 database, in the Workers runtime.
       - name: Test in the Workers runtime
         run: pnpm test:workers
+
+      # The suites that sit beside the code they prove. `pnpm test` and `pnpm test:workers` read
+      # tests/** only, so every vitest config outside tests/ has a step of its own from here on.
+      # `git ls-files "*vitest*config*"` lists them: a new one gets its step in the commit that adds it.
+
+      # platform: the room's D1 store on a local D1, and the entry's rules for the room through its fetch.
+      - name: Test the API's stores and entry in the Workers runtime
+        run: pnpm exec vitest run --config apps/api/vitest.workers.config.ts
+
+      # api-core: the room's routes, with a store in memory.
+      - name: Test the room's routes
+        run: pnpm exec vitest run --config apps/api/src/http/social/room/vitest.config.ts
+
+      # api-core: the API's http suites, the holders' poll, owner-holds and Telegram routes among them (HB1-SEC-6).
+      - name: Test the API's http routes
+        run: pnpm exec vitest run --config apps/api/src/http/vitest.config.ts
+
+      # engine-runtime: the runtime's own unit tests, the room's prune job among them.
+      - name: Test the runtime package
+        run: pnpm --filter @prix/runtime test
+
+      # platform: the site's server helpers, the redirect of plain http and HSTS among them.
+      - name: Test the site's server helpers
+        run: pnpm exec vitest run --config apps/web/src/lib/vitest.config.ts
+
+      # editor: the site's sentences.
+      - name: Test the site's copy
+        run: pnpm exec vitest run --config apps/web/src/content/vitest.config.ts
+
+      # web-account: the room's composer and the admins' page.
+      - name: Test the room's composer
+        run: pnpm exec vitest run --config apps/web/src/account/social/room/vitest.config.ts
+
+      # web-account: the token page's holders block, the vote control and the admins' holders page (HB1-SEC-6).
+      - name: Test the account token and holders pages
+        run: pnpm exec vitest run --config apps/web/src/account/token/vitest.config.ts
+
+      # web-account: the Build page's strategy templates (D-155), in the container and in Chromium,
+      # which the browser step above installs. The browser file serves on 127.0.0.1, ports 9040 to 9049.
+      - name: Test the Build page's templates
+        run: pnpm exec vitest run --config apps/web/src/account/build/vitest.config.ts
+
+      # web-arena: the arena's pure helpers.
+      - name: Test the arena's helpers
+        run: pnpm exec vitest run --config apps/web/src/arena/vitest.config.ts
+
+      # web-site: the site's own modules.
+      - name: Test the site's modules
+        run: pnpm exec vitest run --config apps/web/src/site/vitest.config.ts
+
+      # The holders round (docs/contracts/phase-6-holders.md section 5): the token read's block tag and the
+      # lean balanceOf encoding, against viem's own coder. The root config collects tests/** alone.
+      - name: Test the market package's own tests
+        run: pnpm exec vitest run --config packages/market/vitest.config.ts
 
       - name: Build the site
         run: pnpm --filter @prix/web run build
 
       - name: Bundle the API Worker, dry run
         run: pnpm --filter @prix/api run bundle
+

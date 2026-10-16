@@ -4,6 +4,7 @@ import type {
   DecisionRow,
   Division,
   MarketSnapshot,
+  OtherChainRead,
   PortfolioState,
   PriceMap,
   RowStatus,
@@ -46,9 +47,10 @@ export function testAddress(n: number): string {
 
 /**
  * The test universe: the UNIVERSE_SIZE symbols of `UNIVERSE` in `packages/market`, in universe order
- * (the Stock Tokens by symbol, then the crypto assets by symbol, docs/CONTRACTS.md section 21), each
- * with a starting price in micro-USD. tests/unit/market.test.ts and tests/unit/universe-kinds.test.ts
- * fail if the lists ever differ, so a regenerated universe is noticed in one place.
+ * (the Stock Tokens by symbol, then BTC and ETH, docs/CONTRACTS.md section 21, then BNB, HYPE and SOL
+ * from Arbitrum One, section 23), each with a starting price in micro-USD. tests/unit/market.test.ts
+ * and tests/unit/universe-kinds.test.ts fail if the lists ever differ, so a regenerated universe is
+ * noticed in one place.
  */
 export const TEST_PRICES: Readonly<PriceMap> = Object.freeze({
   AAPL: 187_370_000,
@@ -73,10 +75,18 @@ export const TEST_PRICES: Readonly<PriceMap> = Object.freeze({
   USO: 281_140_000,
   BTC: 121_480_250_000,
   ETH: 4_386_120_000,
+  BNB: 612_340_000,
+  HYPE: 38_710_000,
+  SOL: 152_880_000,
 });
 export const TEST_SYMBOLS: readonly string[] = Object.freeze(Object.keys(TEST_PRICES));
-/** The crypto assets of the test universe (section 21): their feeds never open or close the market. */
-export const TEST_CRYPTO_SYMBOLS: readonly string[] = Object.freeze(['BTC', 'ETH']);
+/**
+ * The crypto assets of the test universe (sections 21 and 23): their feeds never open or close the
+ * market.
+ */
+export const TEST_CRYPTO_SYMBOLS: readonly string[] = Object.freeze(['BTC', 'ETH', 'BNB', 'HYPE', 'SOL']);
+/** The crypto assets whose feeds are read on Arbitrum One (section 23). */
+export const TEST_ARBITRUM_SYMBOLS: readonly string[] = Object.freeze(['BNB', 'HYPE', 'SOL']);
 /** The Stock Tokens of the test universe, in universe order. */
 export const TEST_STOCK_SYMBOLS: readonly string[] = Object.freeze(
   TEST_SYMBOLS.filter((symbol) => !TEST_CRYPTO_SYMBOLS.includes(symbol)),
@@ -175,6 +185,8 @@ export interface SnapshotOptions {
   rpcDown?: boolean;
   blockNumber?: number;
   staleAfterSeconds?: number;
+  /** The provenance of a second feed chain (section 23); left out when not given, as in a stage 1 tick. */
+  otherChains?: readonly OtherChainRead[];
 }
 
 /**
@@ -218,6 +230,7 @@ export function makeSnapshot(now: Date, options: SnapshotOptions = {}): MarketSn
     open: closedReason === null,
     closedReason,
     prices: points,
+    ...(options.otherChains === undefined ? {} : { otherChains: options.otherChains.map((read) => ({ ...read })) }),
   };
 }
 

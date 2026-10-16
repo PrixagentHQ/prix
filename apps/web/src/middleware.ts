@@ -1,4 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
+import { HSTS_VALUE, httpsRedirect } from './lib/https.ts';
 import { PRIVATE_CACHE_CONTROL, readSessionCookie } from './lib/session.ts';
 
 /**
@@ -46,7 +47,7 @@ function secure(response: Response, personal: boolean): Response {
   if (!secured.headers.has('Content-Security-Policy')) {
     secured.headers.set('Content-Security-Policy', import.meta.env.DEV ? DEV_POLICY : FALLBACK_POLICY);
   }
-  if (import.meta.env.PROD) secured.headers.set('Strict-Transport-Security', 'max-age=31536000');
+  if (import.meta.env.PROD) secured.headers.set('Strict-Transport-Security', HSTS_VALUE);
   if (FIXTURES) secured.headers.set('X-Prix-Fixtures', '1');
   // What this Worker answers depends on whether the request carries a session.
   secured.headers.append('Vary', 'Cookie');
@@ -145,6 +146,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
       false,
     );
   }
+  // Plain http on prixagent.com goes to https before anything is rendered (lib/https.ts). Static
+  // files never reach this code; infra/README.md says which paths are covered and which are not.
+  const toHttps = httpsRedirect(new URL(context.request.url), context.request.method, {
+    production: import.meta.env.PROD && !FIXTURES,
+  });
+  if (toHttps) return secure(toHttps, false);
   const personal = readSessionCookie(context.request).present;
   return compress(context.request, secure(await next(), personal));
 });

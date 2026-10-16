@@ -8,7 +8,14 @@
 //   decisions  date, change and reason; under 640 pixels the reason drops to its own line
 //
 // `scroll` is for a table that cannot fit a phone: it scrolls inside its own container,
-// which takes keyboard focus while it overflows.
+// which takes keyboard focus while it overflows. With `openAt` the box opens at a named column,
+// next to a sticky first column; with `cue` a line of the page's words stands above the box's
+// end edge while columns lie out of view on either side, and a column cut by an edge of the box fades into
+// the ground while columns lie out of view beyond that edge (table-scroll.ts, docs/DESIGN.md section 12.3,
+// R20, R21).
+//
+// The `league` variant holds one agent in each body row: the table carries `data-crawler-rows`,
+// so the crawler may read those rows from their edge (docs/DESIGN.md section 30).
 interface Column {
   /** Becomes the class `c-<key>` on the header cell. Put the same class on each body cell. */
   key: string;
@@ -18,6 +25,11 @@ interface Column {
   align?: 'start' | 'end';
   /** A width from 640 pixels up, for example "16%". The league and decisions variants set their own. */
   width?: string;
+  /**
+   * A few words on a second line of the header, in small text (class `table-note`), for example the column
+   * a page marks as the reader's own. The label stays as short as the other headers.
+   */
+  note?: string;
 }
 
 interface Props {
@@ -30,20 +42,71 @@ interface Props {
   scroll?: boolean;
   /** With `scroll`: the width under which the table scrolls, for example "40rem". */
   minWidth?: string;
+  /**
+   * With `scroll`: the `key` of a column to open at. While the box overflows, it opens scrolled so that this
+   * column's start sits against the end of the first column when the page makes that column sticky (against
+   * the box's start otherwise), at once and with no smooth scroll. Leave it out to open at the start.
+   */
+  openAt?: string;
+  /**
+   * With `scroll`: the first column (the row names) stays at the box's start edge while the others scroll
+   * beside it, on `--table-ground` (the page's surface unless the page sets it). A row whose first cell spans
+   * columns (`colspan`) scrolls with the others.
+   */
+  stickyFirst?: boolean;
+  /**
+   * With `scroll`: a few words above the box's end edge, shown only while the box overflows and columns lie
+   * out of view on either side of it, for example "Swipe to see every tier". The page's own words.
+   */
+  cue?: string;
   id: string;
 }
 
 import { columnWidthClass, tableMinClass } from './scale.ts';
 
-const { caption, captionVisible = false, columns, variant = 'plain', scroll = false, minWidth, id } = Astro.props;
+const {
+  caption,
+  captionVisible = false,
+  columns,
+  variant = 'plain',
+  scroll = false,
+  minWidth,
+  openAt,
+  stickyFirst = false,
+  cue,
+  id,
+} = Astro.props;
 const restacks = variant !== 'plain';
 const captionId = `${id}-caption`;
+if (openAt !== undefined && !columns.some((column) => column.key === openAt)) {
+  throw new Error(`Table ${id}: openAt "${openAt}" names no column`);
+}
+if ((openAt !== undefined || cue !== undefined || stickyFirst) && !scroll) {
+  throw new Error(`Table ${id}: openAt, stickyFirst and cue need scroll`);
+}
 ---
 
 {
+  scroll && cue && (
+    <p class="table-cue" aria-hidden="true" data-table-cue>
+      {cue}
+    </p>
+  )
+}
+{
   scroll ? (
-    <div class="table-scroll" role="region" aria-labelledby={captionId} tabindex="0" data-table-scroll>
-      <table class:list={['table', 'table--scroll', tableMinClass(minWidth)]} id={id}>
+    <div
+      class="table-scroll"
+      role="region"
+      aria-labelledby={captionId}
+      tabindex="0"
+      data-table-scroll
+      data-open-at={openAt}
+    >
+      <table
+        class:list={['table', 'table--scroll', stickyFirst && 'table--sticky-first', tableMinClass(minWidth)]}
+        id={id}
+      >
         <caption class:list={[captionVisible ? 'small' : 'visually-hidden']} id={captionId}>
           {caption}
         </caption>
@@ -52,6 +115,7 @@ const captionId = `${id}-caption`;
             {columns.map((column) => (
               <th scope="col" class:list={[`c-${column.key}`, column.align === 'end' && 'num']}>
                 {column.label}
+                {column.note && <span class="table-note">{column.note}</span>}
               </th>
             ))}
           </tr>
@@ -60,7 +124,12 @@ const captionId = `${id}-caption`;
       </table>
     </div>
   ) : (
-    <table class:list={['table', restacks && `table--${variant}`]} id={id} role={restacks ? 'table' : undefined}>
+    <table
+      class:list={['table', restacks && `table--${variant}`]}
+      id={id}
+      role={restacks ? 'table' : undefined}
+      data-crawler-rows={variant === 'league' ? '' : undefined}
+    >
       <caption class:list={[captionVisible ? 'small' : 'visually-hidden']} id={captionId}>
         {caption}
       </caption>
@@ -73,6 +142,7 @@ const captionId = `${id}-caption`;
               class:list={[`c-${column.key}`, column.align === 'end' && 'num', columnWidthClass(column.width)]}
             >
               {column.label}
+              {column.note && <span class="table-note">{column.note}</span>}
             </th>
           ))}
         </tr>
@@ -83,16 +153,8 @@ const captionId = `${id}-caption`;
 }
 
 <script>
-  // A scrolling table is a tab stop only while it overflows.
-  const regions = document.querySelectorAll<HTMLElement>('[data-table-scroll]');
-  const sync = () => {
-    for (const region of regions) {
-      if (region.scrollWidth > region.clientWidth) region.tabIndex = 0;
-      else region.removeAttribute('tabindex');
-    }
-  };
-  if (regions.length > 0) {
-    sync();
-    window.addEventListener('resize', sync);
-  }
+  // A scrolling table is a tab stop only while it overflows; `openAt` and `cue` (table-scroll.ts).
+  import { wireScrollTables } from './table-scroll.ts';
+
+  wireScrollTables(document);
 </script>

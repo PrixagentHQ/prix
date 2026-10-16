@@ -18,7 +18,8 @@ import { testWallet } from '../support/eth.ts';
 
 const BASE_URL = process.env.PRIX_BASE_URL;
 const RUN = e2eRun();
-const DISCLAIMER = 'Paper trading simulation. Not investment advice. No real orders are placed.';
+const DISCLAIMER =
+  'The league is a paper trading simulation, where no real orders are placed. In Prix Live, an owner’s agent trades real money in the owner’s own Safe. Not investment advice.';
 const PROMPT = 'Hold the five largest companies in equal parts and change the portfolio at most once a week.';
 const ALLOWED_WALLET_REQUESTS = ['eth_requestAccounts', 'eth_accounts', 'personal_sign'];
 

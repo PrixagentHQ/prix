@@ -196,6 +196,8 @@ export const SLOW_COMPOUNDER: AgentPublic = {
   decisions: DECISIONS,
   method: SCORING_METHOD,
   house: false,
+  // Part B of the holders' round: the owner turned "Owner holds $PRIX" on, so the design check sees the mark.
+  ownerHolds: true,
 };
 
 // --- Macro Tourist: a Pro agent whose model key was removed ----------------------------------------

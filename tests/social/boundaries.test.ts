@@ -185,7 +185,9 @@ describe('the wallet', () => {
     for (const path of paths) {
       const text = code(read(path));
       expect(text, rel(path)).not.toMatch(
-        /eth_sendTransaction|eth_signTransaction|eth_sign\b|personal_sign|signTypedData|wallet_|sendTransaction|writeContract|createWalletClient|signMessage/,
+        // `wallet_` and a camelCase name is a wallet RPC method (wallet_switchEthereumChain); the room's
+        // refusal field `wallet_day` is not one.
+        /eth_sendTransaction|eth_signTransaction|eth_sign\b|personal_sign|signTypedData|wallet_[a-z]+[A-Z]|sendTransaction|writeContract|createWalletClient|signMessage/,
       );
     }
   });

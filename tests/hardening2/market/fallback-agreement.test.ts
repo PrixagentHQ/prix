@@ -1,6 +1,6 @@
 import type { MarketEndpointFailure, MarketSnapshot, UniverseToken } from '@prix/contracts';
 import {
-  CRYPTO_FEED_STALE_AFTER_SECONDS,
+  CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
   FEED_STALE_AFTER_SECONDS,
   MARKET_QUIET_AFTER_SECONDS,
   marketSnapshotSchema,
@@ -8,6 +8,13 @@ import {
 import { createMarket, PUBLIC_RPC_URL, PUBLIC_RPC_URLS, rpcEndpoints, UNIVERSE } from '@prix/market';
 import { createMarketWith, type MarketLogLine } from '@prix/market/market';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  aboutArbitrum,
+  isArbitrumUrl,
+  robinhoodFailures,
+  robinhoodLines,
+  TEST_ARBITRUM,
+} from '../../support/fake-arbitrum.ts';
 import { FakeRpc } from '../../support/fake-rpc.ts';
 import { utc } from '../../support/fixtures.ts';
 
@@ -73,10 +80,16 @@ function allStale(): FakeRpc {
 
 type Route = FakeRpc | { status: number } | { throws: 'network' };
 
+/**
+ * What one snapshot did on Robinhood Chain. The Arbitrum read of section 23 runs beside it on a
+ * healthy fake Arbitrum; its requests, failures and log lines are left out of `asked`, `failures`
+ * and `logs`, and kept whole in `allLogs`.
+ */
 interface Run {
   snapshot: MarketSnapshot;
   failures: MarketEndpointFailure[];
-  logs: MarketLogLine[];
+  logs: Record<string, unknown>[];
+  allLogs: MarketLogLine[];
   asked: string[];
 }
 
@@ -91,7 +104,7 @@ async function take(rpcUrls: readonly string[], routes: Record<string, Route> = 
   const routed = new Map(Object.entries(routes).map(([url, route]) => [norm(url), route]));
   const fetchFn: typeof fetch = async (input, init) => {
     const url = norm(new Request(input, init).url);
-    asked.push(url);
+    if (!isArbitrumUrl(url)) asked.push(url);
     const route = routed.get(url) ?? honest;
     if (route instanceof FakeRpc) return route.fetch(input, init);
     if ('status' in route) return new Response('no', { status: route.status });
@@ -100,8 +113,9 @@ async function take(rpcUrls: readonly string[], routes: Record<string, Route> = 
   const market = createMarketWith(
     {
       rpcUrls,
+      arbitrum: TEST_ARBITRUM,
       staleAfterSeconds: FEED_STALE_AFTER_SECONDS,
-      cryptoStaleAfterSeconds: CRYPTO_FEED_STALE_AFTER_SECONDS,
+      cryptoStaleAfterSecondsBySymbol: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
       quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
       fetch: fetchFn,
       onEndpointFailure: (failure) => failures.push(failure),
@@ -109,7 +123,7 @@ async function take(rpcUrls: readonly string[], routes: Record<string, Route> = 
     { pause: async () => {}, log: (line) => logs.push(line) },
   );
   const snapshot = await market.takeSnapshot(NOW);
-  return { snapshot, failures, logs, asked };
+  return { snapshot, failures: robinhoodFailures(failures), logs: robinhoodLines(logs), allLogs: logs, asked };
 }
 
 const CLOSED = { open: false, closedReason: 'rpc_unavailable', blockNumber: 0, prices: [] };
@@ -326,17 +340,19 @@ describe('fallback agreement: the log line', () => {
       await take(rpcEndpoints(KEYED), { [KEYED]: DOWN, [OFFICIAL]: DOWN }),
       await take(rpcEndpoints(KEYED), { [KEYED]: DOWN, [OFFICIAL]: DOWN, [PUBLICNODE]: lyingPrice() }),
     ];
-    const text = JSON.stringify(runs.map((run) => run.logs));
-    for (const piece of ['secret-key', 'rpc-keyed', 'publicnode', 'drpc', 'robinhood'])
-      expect(text).not.toContain(piece);
+    // Every line, the Arbitrum ones of section 23 included.
+    const text = JSON.stringify(runs.map((run) => run.allLogs));
+    const pieces = ['secret-key', 'rpc-keyed', 'publicnode', 'drpc', 'chain.robinhood.com', 'https:', '.test'];
+    for (const piece of pieces) expect(text).not.toContain(piece);
   });
 
   it('changes nothing when the logger throws', async () => {
     const market = createMarketWith(
       {
         rpcUrls: [PUBLICNODE, DRPC],
+        arbitrum: TEST_ARBITRUM,
         staleAfterSeconds: FEED_STALE_AFTER_SECONDS,
-        cryptoStaleAfterSeconds: CRYPTO_FEED_STALE_AFTER_SECONDS,
+        cryptoStaleAfterSecondsBySymbol: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
         quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
         fetch: honestChain().fetch,
       },
@@ -355,15 +371,20 @@ describe('fallback agreement: the log line', () => {
     const info = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const market = createMarket({
       rpcUrls: [KEYED],
+      arbitrum: TEST_ARBITRUM,
       staleAfterSeconds: FEED_STALE_AFTER_SECONDS,
-      cryptoStaleAfterSeconds: CRYPTO_FEED_STALE_AFTER_SECONDS,
+      cryptoStaleAfterSecondsBySymbol: CRYPTO_FEED_STALE_AFTER_SECONDS_BY_SYMBOL,
       quietAfterSeconds: MARKET_QUIET_AFTER_SECONDS,
       fetch: honestChain().fetch,
     });
     const snapshot = await market.takeSnapshot(NOW);
     expect(snapshot.open).toBe(true);
     const lines = info.mock.calls.map((call) => String(call[0]));
-    expect(lines).toContain(JSON.stringify({ event: 'market_endpoint_used', endpoint: 0, confirmedBy: null }));
+    // Each line is one JSON object; the Robinhood one names endpoint 0, taken alone. Section 23 lets
+    // every line say its chain, so only the Robinhood line's own fields are compared.
+    const parsed = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(robinhoodLines(parsed)).toContainEqual({ event: 'market_endpoint_used', endpoint: 0, confirmedBy: null });
+    expect(parsed.filter((line) => aboutArbitrum(line)).length).toBeGreaterThan(0);
     for (const line of lines) expect(line).not.toContain('secret-key');
   });
 });

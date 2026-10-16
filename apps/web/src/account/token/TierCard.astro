@@ -2,8 +2,8 @@
 // The wallet's tier as the server read it: the tier, its holding as a share of the supply, the
 // agent slots used, the next tier and what it needs. "Check again" asks the server to read the
 // balance once more. Nothing here is computed in the page: every figure is the API's answer.
-import type { TokenInfoResponse, TokenMeResponse } from '@prix/contracts';
-import { formatAddress, formatDateTimeUtc } from '../../content/format.ts';
+import { type TokenInfoResponse, type TokenMeResponse, wholeTokensAtPpm } from '@prix/contracts';
+import { formatAddress, formatCount, formatDateTimeUtc } from '../../content/format.ts';
 import { text } from '../../content/index.ts';
 import Button from '../../design/Button.astro';
 import DefinitionList from '../../design/DefinitionList.astro';
@@ -24,14 +24,17 @@ const items = [
     : []),
   ...(me.holdingPpm !== null
     ? [
-        {
-          term: text('token.holdingLabel', 'Holding'),
-          value: text('token.holdingValue', '{share} of the supply', { share: formatHolding(me.holdingPpm) }),
-          detail:
-            me.balance !== null && me.decimals !== null
-              ? text('token.balanceDetail', '{amount} tokens', { amount: formatUnits(me.balance, me.decimals) })
-              : undefined,
-        },
+        // Whole tokens first, as the holders table counts them (HB-DC-3); the share of the supply beneath, small.
+        me.balance !== null && me.decimals !== null
+          ? {
+              term: text('token.holdingLabel', 'Holding'),
+              value: text('token.holdingTokens', '{amount} $PRIX', { amount: formatUnits(me.balance, me.decimals) }),
+              detail: text('token.holdingValue', '{share} of the supply', { share: formatHolding(me.holdingPpm) }),
+            }
+          : {
+              term: text('token.holdingLabel', 'Holding'),
+              value: text('token.holdingValue', '{share} of the supply', { share: formatHolding(me.holdingPpm) }),
+            },
       ]
     : []),
   {
@@ -50,9 +53,10 @@ const items = [
     ? [
         {
           term: text('token.nextLabel', 'Next tier'),
-          value: text('token.nextValue', 'Tier {tier}, from {share}', {
+          // The amount in whole tokens of the API's own threshold (HB-DC-3), as the holders table heads it.
+          value: text('token.nextValueTokens', 'Tier {tier}, from {amount} $PRIX', {
             tier: me.nextTier.tier,
-            share: formatThreshold(me.nextTier.thresholdPpm),
+            amount: formatCount(wholeTokensAtPpm(me.nextTier.thresholdPpm)),
           }),
           detail: text('token.nextDetail', 'A further {share} of the supply is needed.', {
             share: formatThreshold(me.nextTier.missingPpm),

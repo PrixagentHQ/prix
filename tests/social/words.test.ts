@@ -65,7 +65,10 @@ describe('the social copy area', () => {
 
 describe('what a Phase 6 route says', () => {
   const dir = join(process.cwd(), 'apps/api/src/http/social');
-  const files = readdirSync(dir).filter((name) => name.endsWith('.ts'));
+  // The top-level route files, and the room's folder (Phase 6.3) without its tests and their support.
+  const files = [...readdirSync(dir), ...readdirSync(join(dir, 'room')).map((name) => `room/${name}`)].filter(
+    (name) => name.endsWith('.ts') && !/(\.test|test-support|\.config)\.ts$/.test(name),
+  );
 
   /** Quoted strings of a source that read as a sentence: a space in them and 20 characters or more. */
   function sentences(source: string): string[] {
@@ -83,6 +86,8 @@ describe('what a Phase 6 route says', () => {
   it('reads the route files', () => {
     expect(files).toContain('routes-managers.ts');
     expect(files).toContain('routes-wars.ts');
+    expect(files).toContain('room/refusals.ts');
+    expect(files).toContain('room/routes-room.ts');
   });
 
   it('uses none of the refused words in a message, a title or a sentence of its own', () => {

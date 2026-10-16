@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     root: 'apps/web/src/arena',
     include: ['**/*.test.ts'],
+    // Rendered by Astro's container under its own config (tape/vitest.config.ts).
+    exclude: ['**/node_modules/**', 'tape/render.test.ts'],
     environment: 'node',
   },
 });

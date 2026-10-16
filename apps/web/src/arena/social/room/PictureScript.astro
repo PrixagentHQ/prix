@@ -1,0 +1,12 @@
+---
+// The one script of the Community chat's list (docs/contracts/phase-6-pictures.md, section 11), in a
+// component of its own so that MessageList can leave it out: a page whose list offers no picture ships no
+// script, and reading stays what it was. Astro sends a script once however often its component is
+// rendered.
+---
+
+<script>
+  import { mountPictures } from './pictures.ts';
+
+  mountPictures();
+</script>

@@ -1,6 +1,7 @@
-import type { ApiApp, DataDeps } from '@prix/contracts';
+import type { ApiApp, DataDeps, LiveLinkStore } from '@prix/contracts';
 import { Hono } from 'hono';
 import { assertBodyDeclaredSmall, clientSubject } from '../guard.ts';
+import { createLiveDelay } from '../league/delay.ts';
 import { createDataCache } from './cache.ts';
 import { dataErrorResponse, dataFailures, toDataFailure } from './errors.ts';
 import { createDataHandlers } from './handlers.ts';
@@ -21,15 +22,21 @@ export function isDataPath(pathname: string): boolean {
   );
 }
 
+/** What the data API takes beside its contract deps. */
+export interface DataAppOptions {
+  /** `live_links` of the league's D1, for the publication delay of Prix Live (docs/CONTRACTS.md section 24.8). */
+  liveLinks?: LiveLinkStore;
+}
+
 /**
  * The keyed read API, the key and payment routes of the site, and MCP. docs/contracts/phase-5-data.md
  * section 3. Switched off, every route answers 404 like an unknown one. No CORS header is sent.
  */
-export function createDataApp(deps: DataDeps): ApiApp {
+export function createDataApp(deps: DataDeps, options: DataAppOptions = {}): ApiApp {
   const authenticator = createAuthenticator(deps);
   const meter = createDataMeter(deps);
   const cache = createDataCache();
-  const handlers = createDataHandlers(deps);
+  const handlers = createDataHandlers(deps, createLiveDelay(options.liveLinks));
   const runner = createEndpointRunner(deps, { handlers, meter, cache });
   const payments = createPaymentService(deps);
 

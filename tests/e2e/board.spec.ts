@@ -11,7 +11,8 @@ import { expect, test } from '@playwright/test';
  */
 
 const BASE_URL = process.env.PRIX_BASE_URL;
-const DISCLAIMER = 'Paper trading simulation. Not investment advice. No real orders are placed.';
+const DISCLAIMER =
+  'The league is a paper trading simulation, where no real orders are placed. In Prix Live, an owner’s agent trades real money in the owner’s own Safe. Not investment advice.';
 const HOUSE_NAMES = [
   'Semis Rotation',
   'Treasury First',

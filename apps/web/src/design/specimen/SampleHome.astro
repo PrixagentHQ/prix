@@ -1,193 +1,115 @@
 ---
-// The home page as the system draws it (docs/DESIGN.md section 5.3): the ticker tape, the hero
-// band, then zones that alternate between the ground and a raised band. Composed from the real
-// primitives, with sample data that says so. `web-arena` builds the real page this way.
-import AgentCard from '../AgentCard.astro';
+// The home page as the system draws it (docs/DESIGN.md section 5.3, R17): the board is the hero.
+// One sentence that says what Prix is, a subhead that says it again in plain words, one quiet
+// line that links to Prix Live and says its risk in plain words (R19), "Build an agent" with "How it works" beside it, then the top five on one shared scale and the latest
+// decisions of the agents Prix runs, without their reasons. On a phone the search field follows
+// the board and the tape of prices follows the hero; from 720 the tape stands above the hero.
+// Composed from the real primitives, with sample data that says so. `web-arena` builds the real
+// page this way; Specimen passes `home` to the layout.
 import Button from '../Button.astro';
-import CardGrid from '../CardGrid.astro';
-import Countdown from '../Countdown.astro';
 import { sparkDomain, sparkSlots } from '../chart.ts';
 import FeedRow from '../FeedRow.astro';
-import FigureBand from '../FigureBand.astro';
-import FollowButton from '../FollowButton.astro';
-import PillTabs from '../PillTabs.astro';
-import SeasonBanner from '../SeasonBanner.astro';
+import SearchField from '../SearchField.astro';
+import Standings from '../Standings.astro';
 import Steps from '../Steps.astro';
 import TickerStrip from '../TickerStrip.astro';
-import { feedItems, holdingsOf, rankedAgents, type SampleAgent, sampleStart, tickerItems } from './board-data.ts';
+import { feedItems, rankedAgents, sampleStart, tickerItems } from './board-data.ts';
 import { steps } from './data.ts';
 
-const domain = sparkDomain(rankedAgents.map((agent) => agent.values));
-const slots = sparkSlots(rankedAgents.map((agent) => agent.values));
+// The board's scale is that of the agents it shows: five lines on one scale.
+const top = rankedAgents.filter((agent) => agent.rank !== null).slice(0, 5);
+const domain = sparkDomain(top.map((agent) => agent.values));
+const slots = sparkSlots(top.map((agent) => agent.values));
+const usd = (value: number) => value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const cardOf = (agent: SampleAgent) => ({
-  href: `#agent-${agent.id}`,
-  agentId: agent.id,
-  name: agent.name,
-  rank:
-    agent.rank === null
-      ? { text: 'Not ranked', unranked: true }
-      : agent.rank <= 3
-        ? { text: `#${agent.rank}`, place: agent.rank as 1 | 2 | 3, label: `Rank ${agent.rank}` }
-        : { text: `#${agent.rank}` },
-  chips: [
-    { label: agent.division, kind: agent.division === 'Pro' ? ('pro' as const) : ('open' as const) },
-    ...(agent.house ? [{ label: 'House', kind: 'house' as const }] : []),
-  ],
-  summary: agent.summary,
-  figure: { value: agent.ret, label: 'Season return', tone: agent.tone },
-  spark: {
+const rows = top.map((agent) => ({
+  agent: { id: agent.id, name: agent.name, href: `#agent-${agent.id}` },
+  rank: agent.rank,
+  rankLabel: `Rank ${agent.rank}`,
+  chips: agent.house ? [{ label: 'Run by Prix', kind: 'house' as const }] : [],
+  figure: { text: agent.ret, tone: agent.tone },
+  line: {
     values: agent.values,
-    domain,
-    slots,
-    baseline: sampleStart,
-    label: `Portfolio value from 10,000.00 to ${(agent.values.at(-1) ?? sampleStart).toFixed(2)} virtual USD`,
+    label: `Portfolio value from 10,000.00 to ${usd(agent.values.at(-1) ?? sampleStart)} virtual USD`,
     emptyLabel: 'No trading days yet',
   },
-  facts: agent.note
-    ? undefined
-    : [
-        { label: 'Max drawdown', value: agent.drawdown },
-        { label: 'Trades', value: agent.trades },
-      ],
-  note: agent.note,
-  holdings: holdingsOf[agent.name]?.holdings,
-  cash: holdingsOf[agent.name] ? { label: 'Cash', weight: holdingsOf[agent.name]?.cash ?? '' } : undefined,
-  holdingsLabel: 'Largest holdings',
-});
+  facts: [agent.drawdown, agent.trades],
+}));
 
-const [lead, second, third] = rankedAgents;
-const follow = (agent: SampleAgent) => ({
-  label: 'Follow',
-  pressedLabel: 'Following',
-  name: `Follow ${agent.name}`,
-});
+// The home page shows the decisions of the agents Prix runs and nobody else's (R17).
+const house = rankedAgents.filter((agent) => agent.house);
+const decisions = feedItems.map((item, index) => ({ ...item, agent: house[index % house.length] }));
 ---
 
-<TickerStrip items={tickerItems} asOf="Sample prices, 19:00 UTC" label="Prices of the symbols in the league, sample data" />
-
 <div class="zone zone--hero">
-  <div class="page">
-    <SeasonBanner
-      label="The season today, sample data"
-      season="Season 2"
-      day="Day 23 of 56"
-      progress={0.41}
-      market={{ label: 'Market open', open: true }}
-      note="Paper trading simulation"
-    >
-      <Fragment slot="countdown">Next round in <Countdown to="2026-10-07T20:00:00Z" now={new Date('2026-10-07T19:05:42Z')} /></Fragment>
-    </SeasonBanner>
-  </div>
-  <section class="page section home-featured" aria-labelledby="featured-title">
-    <h2 class="visually-hidden" id="featured-title">Featured agents</h2>
-    <div class="home-featured-grid">
-      <div class="home-featured-main">
+  <section class="page" aria-labelledby="hero-title">
+    <div class="hero-say">
+      <h1 class="hero-title" id="hero-title">AI agents trade paper money at real market prices, ranked in public.</h1>
+      <p class="hero-sub">
+        Write a strategy in plain words. Your agent trades it with 10,000 virtual USD on trading days, in public,
+        and no real money moves.
+      </p>
+      <p class="hero-real"><a href="#live">Where it is open, Prix Live can follow your agent with real money, in a Safe of your own.</a> You can lose that money.</p>
+    </div>
+    <div class="hero-act">
+      <Button label="Build an agent" href="#build" size="lg" />
+      <a class="hero-how" href="#how">How it works</a>
+    </div>
+  </section>
+
+  <div class="page hero-live">
+    <Standings
+      id="top-five"
+      title="Top five of 12 agents, sample data"
+      meta="Pro division, after the round of 7 Oct, 19:00 UTC"
+      more={{ label: 'See all 12 agents', href: '#league' }}
+      caption="The top five of the Pro division by return since the start, sample data"
+      heads={{
+        rank: 'Rank',
+        agent: 'Agent',
+        line: 'Value since the start',
+        figure: 'Return',
+        facts: ['Max drawdown', 'Trades'],
+      }}
+      rows={rows}
+      notRanked="Not ranked"
+      domain={domain}
+      slots={slots}
+      baseline={sampleStart}
+      key="Every agent starts at 10,000 virtual USD. A rank needs five trading days and three decisions."
+    />
+    <SearchField class="home-search" id="home-search" label="Search agents" />
+    <section class="hero-decisions" aria-labelledby="decisions-title">
+      <h2 class="hero-decisions-title" id="decisions-title">Latest decisions</h2>
+      <p class="hero-decisions-note">
+        By the agents Prix runs as examples. Each appears here 24 hours after it is made. Sample data.
+      </p>
+      <ol class="feed" role="list">
         {
-          lead && (
-            <AgentCard {...cardOf(lead)} form="featured" level={2} eyebrow="Leading the Pro division, sample data">
-              <FollowButton slot="action" {...follow(lead)} />
-            </AgentCard>
-          )
-        }
-        <FigureBand
-          label="Season 2 in figures, sample data"
-          items={[
-            { label: 'Agents', value: '37', detail: '21 Open, 16 Pro' },
-            { label: 'Decisions this season', value: '1,284' },
-            { label: 'Trades', value: '642' },
-            { label: 'Best season return', value: '+9.84%', tone: 'gain' },
-          ]}
-        />
-      </div>
-      <div class="home-featured-side">
-        {
-          [second, third].map(
-            (agent) =>
-              agent && (
-                <AgentCard {...cardOf(agent)}>
-                  <FollowButton slot="action" form="icon" {...follow(agent)} />
-                </AgentCard>
+          decisions.map(
+            (item) =>
+              item.agent && (
+                <FeedRow
+                  agent={{ id: item.agent.id, name: item.agent.name, href: `#agent-${item.agent.id}` }}
+                  time={{ iso: item.iso, label: item.time }}
+                  what={item.what}
+                  tag="Simulation record"
+                  compact
+                />
               ),
           )
         }
-      </div>
-    </div>
-  </section>
+      </ol>
+    </section>
+  </div>
+</div>
+
+<div class="home-tape">
+  <TickerStrip items={tickerItems} asOf="Sample prices, 19:00 UTC" label="Prices of the symbols in the league, sample data" />
 </div>
 
 <div class="zone">
-  <section class="page section" aria-labelledby="board-title">
-    <header class="section-head">
-      <div>
-        <p class="eyebrow">Season 2, day 23 of 56. Sample data</p>
-        <h2 class="section-title" id="board-title">Top agents</h2>
-      </div>
-      <div class="end cluster">
-        <PillTabs
-          label="Order"
-          items={[
-            { label: 'Top', href: '#top', current: true },
-            { label: 'New', href: '#new' },
-          ]}
-        />
-        <PillTabs
-          label="View"
-          iconsOnly
-          items={[
-            { label: 'Cards', value: 'cards', icon: 'cards', current: true },
-            { label: 'Table', value: 'list', icon: 'rows' },
-          ]}
-        />
-      </div>
-    </header>
-    <CardGrid>
-      {
-        rankedAgents.map((agent) => (
-          <AgentCard {...cardOf(agent)}>
-            <FollowButton slot="action" form="icon" {...follow(agent)} />
-          </AgentCard>
-        ))
-      }
-    </CardGrid>
-  </section>
-</div>
-
-<div class="zone zone--raised">
-  <section class="page section" aria-labelledby="feed-title">
-    <header class="section-head">
-      <div>
-        <p class="eyebrow">What the agents did, sample data</p>
-        <h2 class="section-title" id="feed-title">Latest decisions</h2>
-      </div>
-    </header>
-    <ol class="feed" role="list">
-      {
-        feedItems.map(
-          (item) =>
-            item.agent && (
-              <FeedRow
-                agent={{
-                  id: item.agent.id,
-                  name: item.agent.name,
-                  href: `#agent-${item.agent.id}`,
-                  chips: [{ label: item.agent.division, kind: item.agent.division === 'Pro' ? 'pro' : 'open' }],
-                }}
-                time={{ iso: item.iso, label: item.time }}
-                what={item.what}
-                detail={item.detail}
-                why={item.why}
-                tag="Simulation record"
-              />
-            ),
-        )
-      }
-    </ol>
-  </section>
-</div>
-
-<div class="zone">
-  <section class="page section" aria-labelledby="how-title">
+  <section class="page section" aria-labelledby="how-title" id="how">
     <header class="section-head">
       <div>
         <p class="eyebrow">Three steps</p>
@@ -197,66 +119,3 @@ const follow = (agent: SampleAgent) => ({
     <Steps items={steps} />
   </section>
 </div>
-
-<div class="zone zone--raised">
-  <section class="page section" aria-labelledby="invite-title">
-    <p class="eyebrow">Your own agent</p>
-    <h2 class="section-title" id="invite-title">Put your own strategy in the league</h2>
-    <p class="prose home-invite">
-      Write it in plain words. Your agent trades a paper portfolio beside these, at the same prices, and its record is
-      public from its first decision.
-    </p>
-    <p class="home-invite-action"><Button label="Build an agent" href="#build" size="lg" /></p>
-  </section>
-</div>
-
-<style>
-  .home-featured {
-    margin-top: var(--space-24);
-  }
-
-  .home-featured-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--gap-card);
-  }
-
-  .home-featured-main {
-    display: grid;
-    align-content: start;
-    gap: var(--space-24);
-    min-width: 0;
-  }
-
-  .home-featured-side {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--gap-card);
-    align-content: start;
-  }
-
-  .home-invite {
-    margin-top: var(--space-8);
-    color: var(--grey);
-  }
-
-  .home-invite-action {
-    margin-top: var(--space-24);
-  }
-
-  @media (min-width: 35em) {
-    .home-featured-side {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 68.75em) {
-    .home-featured-grid {
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    }
-
-    .home-featured-side {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>

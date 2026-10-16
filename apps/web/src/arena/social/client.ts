@@ -36,7 +36,8 @@ import {
  * parsed with the contract's schema. A call never throws; it resolves to `{ ok: true, data }` or to
  * `{ ok: false, status, error }`, with the API's own status, so a route file can send the API's 404
  * as its own. Under __PRIX_FIXTURES__ the same functions answer from ./fixtures.ts, and
- * `?fixture=social-<state>` picks the state (fixtures.ts lists them).
+ * `?fixture=social-<state>` picks the state (fixtures.ts lists them). The two reads of the Community
+ * chat and the probe of its switch are in ./room/client.ts.
  *
  * While the switch SOCIAL_ENABLED is off, every public route answers 404: the pages then answer
  * 404 and AgentSocial renders nothing. A read is made once per request: the route file and the
@@ -94,6 +95,14 @@ async function fetchFromApi<T>(context: Context, path: string, schema: Schema<T>
   return parsed.success ? { ok: true, status: response.status, data: parsed.data } : unusable(502);
 }
 
+/**
+ * One GET of a Phase 6 path, made once per request and parsed with `schema`. Exported for the reads
+ * that live in a folder of their own (./room/client.ts); every read of this file goes through it.
+ */
+export function socialRead<T>(context: Context, path: string, schema: Schema<T>): Promise<Read<T>> {
+  return read(context, path, schema);
+}
+
 function read<T>(context: Context, path: string, schema: Schema<T>): Promise<Read<T>> {
   context.locals.apiReads ??= new Map();
   const reads = context.locals.apiReads;
@@ -147,8 +156,13 @@ const PROBE_FAILED_KEEP_MS = 10_000;
  * while it is off. A route file of a Phase 6 page asks it first and answers 404 for 'off'. In
  * fixtures it follows `?fixture=social-off` and `social-error` and keeps nothing.
  */
+/** What a status read says of its switch: on, off for the route's 404, and failed for anything else. */
+export function switchOf(result: Read<unknown>): SocialSwitch {
+  return result.ok ? 'on' : result.status === 404 ? 'off' : 'failed';
+}
+
 export async function socialIsOn(context: Context): Promise<SocialSwitch> {
-  const answer = (result: Read<unknown>): SocialSwitch => (result.ok ? 'on' : result.status === 404 ? 'off' : 'failed');
+  const answer = switchOf;
   if (FIXTURES) return answer(await fetchSocialStatus(context));
   const memory = globalThis as { __prixSocialOn?: { at: number; value: SocialSwitch } };
   const now = Date.now();

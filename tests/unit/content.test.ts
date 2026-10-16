@@ -49,8 +49,12 @@ import {
 
 const AT_GATE = process.env.PRIX_GATE === '1';
 const EXTENSIONS = ['.astro', '.ts', '.tsx', '.js', '.jsx', '.mjs'];
-/** The definition of `text` and the direction studies, which are static and get deleted. */
-const SKIPPED = (path: string): boolean => path === 'apps/web/src/content/index.ts' || path.includes('/design/studies');
+/**
+ * The definition of `text`, the direction studies, which are static and get deleted, and the tests that sit
+ * beside the pages: a test names `text(key, draft)` in a title or a pattern, and shows no word to anyone.
+ */
+const SKIPPED = (path: string): boolean =>
+  path === 'apps/web/src/content/index.ts' || path.includes('/design/studies') || /\.(?:test|spec)\.[a-z]+$/.test(path);
 
 const sources = readSources('apps/web/src', EXTENSIONS, SKIPPED);
 const calls: TextCall[] = sources.flatMap((file) => findTextCalls(file.path, file.source));
@@ -114,7 +118,7 @@ describe('the copy deck', () => {
 
   it('carries the disclaimer word for word', () => {
     expect(deck['common.disclaimer']).toBe(
-      'Paper trading simulation. Not investment advice. No real orders are placed.',
+      'The league is a paper trading simulation, where no real orders are placed. In Prix Live, an owner’s agent trades real money in the owner’s own Safe. Not investment advice.',
     );
   });
 
@@ -251,6 +255,37 @@ describe('the scanner of this test', () => {
       'deck-slot',
     ]);
     expect(rules("text('league.dayOf', 'Day {day} of {total}')", { 'league.dayOf': 'Day {day}' })).toEqual([]);
+  });
+
+  it('reads Safe{Wallet} as the name of Safe’s app, not as a slot, and still reads a slot beside it', () => {
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Act now in Safe{Wallet}' })).toEqual([]);
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Pay {usd} in Safe{Wallet}' })).toEqual([
+      'deck-slot',
+    ]);
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Open {Wallet}' })).toEqual([
+      'deck-slot',
+    ]);
+  });
+
+  it('exempts that one name and nothing shaped like it: another word in the braces after Safe is a slot', () => {
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Pay into your Safe{address}' })).toEqual(
+      ['deck-slot'],
+    );
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Open Safe{wallet}' })).toEqual([
+      'deck-slot',
+    ]);
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Open Safe{Wallets}' })).toEqual([
+      'deck-slot',
+    ]);
+    expect(rules("text('live.urgentTitle', 'Act now')", { 'live.urgentTitle': 'Open Unsafe{Wallet}' })).toEqual([
+      'deck-slot',
+    ]);
+    // twice in one sentence, and with a real slot between
+    expect(
+      rules("text('live.urgentTitle', 'In Safe{Wallet}, pay {usd}')", {
+        'live.urgentTitle': 'Safe{Wallet}: pay {usd} in Safe{Wallet}',
+      }),
+    ).toEqual([]);
   });
 
   it('fails at the gate, and only at the gate, on a key in use with no deck entry', () => {

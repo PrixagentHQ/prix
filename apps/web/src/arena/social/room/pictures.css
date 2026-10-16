@@ -1,0 +1,179 @@
+/*
+  The row of a picture in the Community chat's list (docs/contracts/phase-6-pictures.md, section 11).
+  A plain stylesheet and not a scoped one: the picture itself is made by ./pictures.ts after a click, and
+  an element a script makes carries no scope.
+
+  Everything in this block is Prix speaking about a file, not a user writing, and is smaller than the
+  lines users write.
+*/
+.room-picture {
+  display: grid;
+  grid-area: text;
+  row-gap: var(--space-4);
+  min-width: 0;
+  max-width: var(--measure);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+}
+
+/*
+  A row of the note and the facts has a rule at its left, so that what stands beside it cannot be read as
+  something its writer said. A row of one sentence (hidden after reports, no longer available) has none:
+  its grey sets it apart already.
+*/
+.room-picture--file {
+  padding-left: var(--space-12);
+  border-left: var(--rule) solid var(--line-strong);
+}
+
+/* The note over the facts: what this is, then what the file is. */
+.room-picture-about {
+  display: grid;
+  row-gap: var(--space-4);
+  min-width: 0;
+}
+
+/* The contract's sentence that Prix has not looked at this picture: in ink, the first thing of the row. */
+.room-picture-note {
+  overflow-wrap: anywhere;
+}
+
+/* What the file is, by the server's figures. */
+.room-picture-facts {
+  color: var(--grey);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  overflow-wrap: anywhere;
+}
+
+/* A state said in a sentence: hidden after reports, gone, off, resting, a load that failed. */
+.room-picture-said {
+  color: var(--grey);
+}
+
+/*
+  The line of the button, or of the sentence that stands in its place. It holds two lines of that
+  sentence from the start: at a phone's width the sentence of a load that failed takes two, and the row
+  is then no taller after a failure than it was with its button.
+*/
+.room-picture-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  min-width: 0;
+  min-height: calc(2 * var(--leading-13));
+}
+
+/* In the size of the facts, which it stands under or beside. */
+.room-picture-controls > .room-picture-said {
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+}
+
+/*
+  "Report" is in the row from the first byte and is shown by this stylesheet alone: only in a row whose
+  picture is shown, and only under a list that the account's script has marked for a wallet that may
+  report. No script of this folder shows, hides or handles it.
+*/
+.room-picture [data-room-picture-report] {
+  display: none;
+}
+
+[data-room-list][data-room-report-on] [data-room-picture-shown] .room-picture [data-room-picture-report] {
+  display: inline-flex;
+}
+
+/*
+  The place of a report's question and of its answer, both written by the account's script. Nothing of
+  it while it is empty. The answer is a sentence in grey. The question is in ink, with its two buttons
+  after it on the same line where they fit and under it where they do not: they are found by the
+  contract's two names and by nothing else of the account's.
+*/
+.room-picture-answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  min-width: 0;
+  max-width: var(--measure);
+  color: var(--grey);
+}
+
+.room-picture-answer:empty {
+  display: none;
+}
+
+.room-picture-answer:has([data-room-picture-report-yes]) {
+  color: var(--ink);
+}
+
+.room-picture-answer :is([data-room-picture-report-yes], [data-room-picture-report-no]) {
+  flex: none;
+}
+
+/*
+  The picture opens under its button, so the button stays where the pointer is. The script gives the
+  frame the picture's proportion (width over height, from the server's two numbers); the frame is then
+  never wider than a picture twenty lines high would be, so the box the browser keeps is the picture's
+  own and not a wider one around it. Without that property the frame is as wide as its column. It is
+  never wider than a line of text is long.
+*/
+.room-picture-frame {
+  max-width: min(var(--measure), calc(20rem * var(--room-picture-ratio, 100)));
+  margin-top: var(--space-4);
+}
+
+/*
+  The one picture a click makes. Its width and height are attributes with the server's numbers, so the
+  browser keeps its box before the first byte arrives and nothing moves when the picture does: until
+  then the box is a plate of the wash in the picture's shape. It never leaves its column and is at most
+  twenty lines of text high.
+
+  It has a hairline edge, drawn inside its own box so that the edge takes no room: a picture on the
+  page's own colour would otherwise merge with the page, and a row or a mark drawn inside it would read
+  as Prix's. Its corners are square: a rounded corner would cut pixels from a file the page says it
+  shows as it is, and turns the smallest picture into a dot.
+*/
+.room-picture-image {
+  display: block;
+  max-width: 100%;
+  max-height: 20rem;
+  height: auto;
+  object-fit: contain;
+  background: var(--wash);
+  outline: var(--rule-hair) solid var(--line-strong);
+  outline-offset: calc(var(--rule-hair) * -1);
+}
+
+/*
+  From 45em a message is a row of a ledger, and a closed picture is about as tall as a row of text: the
+  button, or the sentence in its place, stands beside the note and the facts, on the note's own line.
+  The two columns are sized by nothing inside them, so "Report" appearing beside the button moves
+  neither the button nor the note. A question, an answer and the picture take the whole width under them.
+
+  A button is higher than a line of the note. Its label is set on the note's baseline, and what the
+  button has above and below that line stands in the row's own padding: so a row with a button is as
+  high as a row with a sentence in the button's place, and the button adds no line.
+*/
+@media (min-width: 45em) {
+  .room-picture--file {
+    grid-template-columns: minmax(0, 22rem) minmax(8rem, 1fr);
+    column-gap: var(--space-16);
+    align-items: baseline;
+    max-width: none;
+  }
+
+  .room-picture-controls {
+    min-height: 0;
+  }
+
+  .room-picture-controls:has(> [data-room-picture-toggle]:not([hidden])) {
+    margin-block: calc((var(--leading-14) - var(--control-sm)) / 2);
+  }
+
+  .room-picture-answer,
+  .room-picture-frame {
+    grid-column: 1 / -1;
+  }
+}

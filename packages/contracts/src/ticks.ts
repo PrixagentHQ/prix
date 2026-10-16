@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { AgentRecord } from './agents.ts';
 import { marketSnapshotSchema } from './market.ts';
 import type { PortfolioState } from './portfolio.ts';
@@ -6,6 +5,7 @@ import { fillSchema, portfolioStateSchema } from './portfolio.ts';
 import { amountSchema, divisionSchema, idSchema, isoTimeSchema, symbolSchema, tickIdSchema } from './primitives.ts';
 import type { AgentStats } from './scoring.ts';
 import { rowStatusSchema } from './scoring.ts';
+import { z } from './zod.ts';
 
 export const seasonSchema = z.strictObject({
   id: idSchema,

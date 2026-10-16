@@ -1,0 +1,119 @@
+---
+// "Open to holders now" on /account/token (docs/contracts/phase-6-holders.md section 2): web-site's table
+// with the signed-in wallet's column marked, the five lines beneath it in the contract's order, and the
+// owner's switch for "Owner holds $PRIX" (section 3). Every amount is `wholeTokensAtPpm` of GET /api/token's
+// own tiers; never a share of the supply in percent, a price or a value. The row of pictures shows only
+// while the room says pictures are on; the owner-holds row, the switch and the second sentence of the badge
+// line only while GET /api/token/me/owner-holds is there (200 or 401, not 404).
+//
+// Revision 5: the tier table is folded into this one (D1), so TokenPage shows this block in its place and only
+// while the table's amounts are there (`holdersTableShown`); the wallet's column is `markTier`, which web-site's
+// table also opens at on a narrow screen (D2); the badge line is one plain sentence under the table, with no
+// label (D5).
+import { type TokenInfoResponse, wholeTokensAtPpm } from '@prix/contracts';
+import { formatCount } from '../../content/format.ts';
+import { text } from '../../content/index.ts';
+import Choice from '../../design/Choice.astro';
+import Choices from '../../design/Choices.astro';
+import HoldersTable from '../../site/token/HoldersTable.astro';
+import AccountCard from '../AccountCard.astro';
+import Feedback from '../Feedback.astro';
+import { badgeValueShown, thresholdPpmOf } from './holders-view.ts';
+
+interface Props {
+  tiers: TokenInfoResponse['tiers'];
+  /** GET /api/token's `feedDelaySeconds`: the `{delay}` of the `realtime` row (revision 5, D4). */
+  feedDelaySeconds: number;
+  picturesOn: boolean;
+  ownerHoldsOn: boolean;
+  /** The wallet's stored choice, read from GET /api/token/me/owner-holds; null when the route is not there. */
+  ownerHoldsShow: boolean | null;
+  /** The wallet's tier while tiers are on; null while they are off. */
+  markTier: 0 | 1 | 2 | 3 | null;
+}
+
+const { tiers, feedDelaySeconds, picturesOn, ownerHoldsOn, ownerHoldsShow, markTier } = Astro.props;
+const tierTwoPpm = thresholdPpmOf(tiers, 2);
+const tierTwoAmount = tierTwoPpm === null ? null : formatCount(wholeTokensAtPpm(tierTwoPpm));
+const showSwitch = ownerHoldsOn && ownerHoldsShow !== null && tierTwoAmount !== null;
+const badge = badgeValueShown(
+  text(
+    'token.holdersBadgeValue',
+    'A listed on-chain agent keeps its badge as before. A paper agent\'s own page can say "Owner holds $PRIX" once its owner turns it on.',
+  ),
+  ownerHoldsOn,
+);
+---
+
+<AccountCard
+  title={text('token.holdersTitle', 'Open to holders now')}
+  headingId="holders-heading"
+  id="holders"
+  intro={text('token.holdersIntro', 'What a wallet gets, by how much $PRIX it holds. Amounts are whole tokens.')}
+>
+  <HoldersTable
+    id="holders-table"
+    tiers={tiers}
+    feedDelaySeconds={feedDelaySeconds}
+    picturesOn={picturesOn}
+    ownerHoldsOn={ownerHoldsOn}
+    markTier={markTier}
+    markLabel={text('token.holdersYourColumn', 'your wallet')}
+  />
+
+  <div class="stack-8 holders-notes">
+    <p class="small">
+      {
+        text(
+          'token.holdersRiseNote',
+          "A higher tier counts about an hour after Prix first sees the holding. A lower one counts at Prix's next check.",
+        )
+      }
+    </p>
+    <p class="small">
+      {
+        text(
+          'token.holdersLiveHeld',
+          "The day's trades of an agent linked to Prix Live show at 20:00 UTC to everyone, holders included; only its owner sees them sooner.",
+        )
+      }
+    </p>
+    <p class="small">{text('token.holdersLiveNothing', 'Holding $PRIX changes nothing in Prix Live.')}</p>
+    <p class="small" data-holders-badge>{badge}</p>
+    <p class="small holders-access">
+      {text('token.holdersAccess', 'What $PRIX gives is access to features, never a return.')}
+    </p>
+  </div>
+
+  {
+    showSwitch && (
+      <form class="stack-8 panel-part" data-owner-holds-form novalidate>
+        <Choices legend={text('agent.ownerHolds', 'Owner holds $PRIX')} id="owner-holds" role="group">
+          <Choice
+            type="checkbox"
+            name="ownerHolds"
+            value="on"
+            checked={ownerHoldsShow === true}
+            label={text('token.ownerHoldsToggle', 'Show "Owner holds $PRIX" on my agents\' pages')}
+            hint={text(
+              'token.ownerHoldsToggleNote',
+              'Off unless you turn it on. Anyone who sees the mark can tell that the wallet holds at least {amount} $PRIX.',
+              { amount: tierTwoAmount ?? '' },
+            )}
+          />
+        </Choices>
+        <Feedback failedTitle={text('token.ownerHoldsFailedTitle', 'Your choice was not saved')} />
+      </form>
+    )
+  }
+</AccountCard>
+
+<style>
+  .holders-notes {
+    margin-top: var(--space-16);
+  }
+
+  .holders-access {
+    color: var(--ink);
+  }
+</style>

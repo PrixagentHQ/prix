@@ -18,7 +18,9 @@ const SUMMARY_ASKED = Math.max(80, SUMMARY_MAX - 40);
 
 /**
  * What each symbol is, from the names in `UNIVERSE`, grouped by kind (section 21, rule 5):
- * "Stock Tokens: AAPL Apple, AMD, ...; crypto: BTC Bitcoin, ETH Ethereum". A symbol whose name is
+ * "Stock Tokens: AAPL Apple, AMD, ...; crypto: BTC Bitcoin, ETH Ethereum, BNB, HYPE Hyperliquid,
+ * SOL Solana" (section 23 adds the last three, whose feeds are on Arbitrum One; the prompt does not
+ * name a chain, since an agent trades a symbol, not a feed). A symbol whose name is
  * the symbol itself is written once. Each group keeps universe order, and the crypto group is left
  * out while the universe has no crypto asset. Grouped, so that a strategy that says "stocks only"
  * or "crypto" can be followed. Without names a model does not find "the Treasury bill fund"
@@ -46,6 +48,10 @@ export function describeSymbols(universe: readonly UniverseToken[]): string {
  * real price with cents will cost a little more per symbol, which has not been measured.
  * Section 21 (2026-10-09) grouped the symbol line, added ETH and BTC and made the returns sentence
  * per symbol; that text is not measured yet: the probe at 22 symbols runs after the integration.
+ * Section 23 (2026-10-09) adds BNB, HYPE and SOL: about 35 more input tokens a decision while the
+ * three have no return, about 62 with every return and about 80 when the agent holds them, so 0.9
+ * to 2.2 neurons (packages/runtime/scripts/stage2-check.mjs counts Llama 3 pre-tokens, a close
+ * lower bound; the probe at 25 symbols gives the real count).
  *
  * The rule on the sum is worded as a ceiling on purpose. Written as "the weights add up to at
  * most 100", the model filled the portfolio to 100 with a fund nobody asked for.

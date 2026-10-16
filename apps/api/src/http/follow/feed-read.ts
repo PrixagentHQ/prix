@@ -11,8 +11,10 @@ import {
 /**
  * One feed item. `houseOwners` is `ApiConfig.houseOwners`: the store returns the agent's owner
  * with every feed row, the mark is set from it here, and the owner itself reaches no response.
+ * Exported for the holders' tape (docs/contracts/phase-6-holders-2.md section 3.1, step 5), which maps
+ * its rows exactly as the league feed does.
  */
-function toItem(feedRow: FeedRow, houseOwners: readonly string[] | undefined): FeedItem {
+export function toFeedItem(feedRow: FeedRow, houseOwners: readonly string[] | undefined): FeedItem {
   const { row } = feedRow;
   return {
     agentId: row.agentId,
@@ -42,7 +44,7 @@ function page(
   limit: number,
   houseOwners: readonly string[] | undefined,
 ): { items: FeedItem[]; nextCursor: string | null } {
-  const items = rows.slice(0, limit).map((row) => toItem(row, houseOwners));
+  const items = rows.slice(0, limit).map((row) => toFeedItem(row, houseOwners));
   const last = items[items.length - 1];
   const nextCursor =
     rows.length > limit && last !== undefined ? feedCursorBase({ tickId: last.tickId, agentId: last.agentId }) : null;

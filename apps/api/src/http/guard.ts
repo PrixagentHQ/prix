@@ -1,5 +1,10 @@
 import type { ApiDeps, RateLimitRule, SessionRecord } from '@prix/contracts';
-import { API_WRITE_ROWS_PER_DAY, MAX_BODY_BYTES, WALLET_WRITES_PER_DAY } from '@prix/contracts';
+import {
+  API_WRITE_ROWS_PER_DAY,
+  MAX_BODY_BYTES,
+  ROOM_PICTURE_UPLOAD_CONTENT_TYPE,
+  WALLET_WRITES_PER_DAY,
+} from '@prix/contracts';
 import { failures } from './errors.ts';
 import { hashToken, readSessionToken } from './session.ts';
 
@@ -76,6 +81,40 @@ export function assertFromSite(deps: ApiDeps, request: Request): void {
   }
 }
 
+/**
+ * `assertFromSite` for an admin route whose every refusal must be the generic 404 (the holders round's
+ * tally and webhook routes, docs/contracts/phase-6-holders.md section 11 C and E): the same two checks, and
+ * byte for byte the answer to an unknown path when either fails, so the route cannot be found by asking.
+ */
+export function sameSiteOr404(deps: ApiDeps, request: Request): void {
+  try {
+    assertFromSite(deps, request);
+  } catch {
+    throw failures.routeNotFound();
+  }
+}
+
+/**
+ * The one request that changes state and is not JSON: the upload of a picture
+ * (docs/contracts/phase-6-pictures.md section 5, step 1). It is a function of its own, and
+ * `assertFromSite` is loosened for no route. Four things, each exactly so: the site's `Origin`; the
+ * content type `application/octet-stream` with nothing after it; `Sec-Fetch-Site: same-origin`; and no
+ * `Content-Encoding` at all. A form on another site cannot send that type, and a script on another site
+ * cannot send it without a preflight, which this API never answers. No claimed type and no file name is
+ * ever read: the body is bytes and nothing else.
+ */
+export function assertPictureFromSite(deps: ApiDeps, request: Request): void {
+  const headers = request.headers;
+  if (
+    headers.get('origin') !== deps.config.siteOrigin ||
+    headers.get('content-type') !== ROOM_PICTURE_UPLOAD_CONTENT_TYPE ||
+    headers.get('sec-fetch-site') !== 'same-origin' ||
+    headers.get('content-encoding') !== null
+  ) {
+    throw failures.badPictureOrigin();
+  }
+}
+
 /** The session of a request, or null. The store sees only the hash of the token. */
 export async function readSession(deps: ApiDeps, request: Request): Promise<SessionRecord | null> {
   const token = readSessionToken(request);
@@ -100,14 +139,26 @@ export async function requireSession(deps: ApiDeps, request: Request): Promise<S
 export async function requireWriter(deps: ApiDeps, request: Request, rows: number): Promise<SessionRecord> {
   assertFromSite(deps, request);
   const session = await requireSession(deps, request);
-  await enforceLimit(deps, 'write', session.address);
+  await spendWrite(deps, session.address, rows);
+  return session;
+}
+
+/**
+ * What a write costs its wallet, after the request is known to come from the site and from a session: the
+ * limiter's `write` rule for the address, the wallet's write of the day, and `rows` of the day's budget.
+ * Each refusal keeps its own code, and a refusal writes nothing further. `requireWriter` calls it, and so
+ * does the upload of a picture, whose own guard is `assertPictureFromSite` and not `assertFromSite`. It
+ * reads its own clock: a caller's `now` is not handed in, so at the turn of a UTC day the write may be
+ * booked on the day after the caller's.
+ */
+export async function spendWrite(deps: ApiDeps, address: string, rows: number): Promise<void> {
+  await enforceLimit(deps, 'write', address);
   const day = deps.now().toISOString().slice(0, 10);
-  // The wallet's own count first, then the day's rows. A refusal writes nothing further.
-  if (!(await deps.store.spendWalletWrite(session.address, day, WALLET_WRITES_PER_DAY))) {
+  // The wallet's own count first, then the day's rows.
+  if (!(await deps.store.spendWalletWrite(address, day, WALLET_WRITES_PER_DAY))) {
     throw failures.dailyLimit(deps.now());
   }
   await spendDay(deps, rows);
-  return session;
 }
 
 /** Takes `rows` from the day's budget for API writes. 503 `daily_limit` when it would pass the maximum. */

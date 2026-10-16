@@ -93,6 +93,12 @@ export const failures = {
       'forbidden',
       'This request was refused. Send it from the Prix site, with the JSON content type, and try again.',
     ),
+  /** The guard's answer to an upload of a picture that does not come from the chat's own page as that page sends it. */
+  badPictureOrigin: () =>
+    new ApiFailure(
+      'forbidden',
+      'This request was refused. Add the picture on the chat page of the Prix site, and try again.',
+    ),
   notAdmin: () => new ApiFailure('forbidden', 'This wallet is not an admin. Sign in with an admin wallet.'),
   notYourAgent: () =>
     new ApiFailure('forbidden', 'This agent belongs to another wallet. Sign in with the wallet that created it.'),

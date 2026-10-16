@@ -1,0 +1,381 @@
+---
+// The admins' page of the Community chat (docs/contracts/phase-6-room.md sections 7 and 9): every
+// stored message with the whole address of its writer, why the public does not see one, and its
+// controls, each by the message's id and each asked once before it runs. A row of text carries a chip
+// only when the public does not see its message, or when an admin wallet wrote it.
+//
+// Pictures (docs/contracts/phase-6-pictures.md sections 9 and 11). At the top, whether pictures are
+// off, since when and by whom or by which count, with the switch. Then the pictures that reports hid
+// and that wait for a decision, each with the whole addresses of its writer and of the wallets that
+// reported it. In the list a picture message shows what its file is, its state, its count of reports
+// and whether its file is deleted, in place of its text. An admin never sees every picture at once:
+// a picture is looked at one press at a time, small and blurred first (./AdminLook.astro). An API older
+// than pictures has no read of the reported ones, and the page then shows nothing of pictures.
+//
+// Whether a wallet is an administrator is the API's answer, and the API checks it again on the read
+// and on every control (an admin route answers the generic 404 to anyone else). Any other wallet is
+// told the page is not for it, and the route sends that with status 403.
+//
+// A message is text. It is written into the page as text and nowhere else: never into an attribute, a
+// script or a data island, and nothing in it is made a link. This is the one page that shows a whole
+// address.
+import type { RoomAdminPicture } from '@prix/contracts';
+import { formatDateTimeUtc } from '../../../content/format.ts';
+import Button from '../../../design/Button.astro';
+import Chip from '../../../design/Chip.astro';
+import Layout from '../../../design/Layout.astro';
+import Notice from '../../../design/Notice.astro';
+import type { PageAccount } from '../../../lib/account.ts';
+import AccountCard from '../../AccountCard.astro';
+import Done from '../../Done.astro';
+import PageHead from '../../PageHead.astro';
+import SessionGate from '../../SessionGate.astro';
+import type { Session } from '../../session.ts';
+import { herePath, signInHref } from '../../session.ts';
+import { goToAccountLabel } from '../../words.ts';
+import { noScript, unreadable } from '../words.ts';
+import AdminControl from './AdminControl.astro';
+import AdminLook from './AdminLook.astro';
+import type { AdminRead } from './admin-read.ts';
+import { fetchAdminPictures } from './admin-read.ts';
+import { factsSentence } from './answers.ts';
+import { adminPictureWords } from './picture-words.ts';
+import { adminScriptWords, adminWords } from './words.ts';
+import '../../account.css';
+import '../social.css';
+import './room.css';
+
+interface Props {
+  account: PageAccount | null;
+  session: Session;
+  /** The admins' read, or null for a visitor who is not an administrator: the read is then never made. */
+  list: AdminRead | null;
+  /** The `before` of the page's address: null on the newest page. */
+  before: number | null;
+}
+
+const { account, session, list, before } = Astro.props;
+const here = herePath(Astro.url);
+const words = adminWords();
+const pic = adminPictureWords();
+const me = session.state === 'signed-in' ? session.me : null;
+const admin = me?.isAdmin === true;
+const messages = list?.ok ? list.data.messages : [];
+const older = list?.ok ? list.data.older : null;
+const failed = unreadable(words.title);
+
+// The second read, made only for an administrator whose first read answered. Its 404 is an API older
+// than pictures: nothing of pictures is shown then. Any other failure is said in the section's place.
+const pictures = admin && list?.ok ? await fetchAdminPictures(Astro) : null;
+const unread = unreadable(pic.reportedTitle);
+const off = pictures?.ok ? pictures.data.off : null;
+const reported = pictures?.ok ? pictures.data.reported : [];
+const offBy =
+  off === null
+    ? ''
+    : off.why === 'admin'
+      ? pic.offByAdmin
+      : off.why === 'reports_hour'
+        ? pic.offByReportsHour
+        : pic.offByReportsDay;
+// By whom (section 11): the deck's sentence has no slot, so the page sets the admin's whole address
+// beside it as a piece of its own, as a row sets its writer's.
+const offWho = off !== null && off.why === 'admin' ? (off.by ?? null) : null;
+
+/** The address of this page with another `before`, keeping the rest of the query (a fixture's name). */
+function pageHref(next: number | null): string {
+  const url = new URL(Astro.url);
+  if (next === null) url.searchParams.delete('before');
+  else url.searchParams.set('before', String(next));
+  return `${url.pathname}${url.search}`;
+}
+
+const controls = {
+  hide: {
+    label: words.hide,
+    busy: words.hideBusy,
+    question: words.hideQuestion,
+    consequence: words.hideConsequence,
+    failed: words.hideFailed,
+  },
+  mute: {
+    label: words.mute,
+    busy: words.muteBusy,
+    question: words.muteQuestion,
+    consequence: words.muteConsequence,
+    failed: words.muteFailed,
+  },
+  unmute: {
+    label: words.unmute,
+    busy: words.unmuteBusy,
+    question: words.unmuteQuestion,
+    consequence: words.unmuteConsequence,
+    failed: words.unmuteFailed,
+  },
+  remove: pic.remove,
+  keep: pic.keep,
+  'pictures-off': pic.off,
+  'pictures-on': pic.on,
+} as const;
+type Act = keyof typeof controls;
+
+/**
+ * The controls a message gets. A hidden message cannot be hidden again. "Mute writer" and "Lift the
+ * mute" are never both offered, and an admin's writer cannot be muted, so no mute is offered on its
+ * message; a wallet muted before it became an admin still has its mute lifted here.
+ *
+ * A picture message gets "Remove picture" in the place of "Hide message", for as long as its picture
+ * is not removed: also when the message is hidden already, since a message an older API hid still has
+ * its file. "Keep picture" is offered where there is something to decide: a picture that reports hid,
+ * or one that is shown and has a report.
+ */
+function controlsFor(message: (typeof messages)[number]): Act[] {
+  const picture = message.picture ?? null;
+  const acts: Act[] = [];
+  if (picture !== null) {
+    if (picture.state !== 'removed') acts.push('remove');
+    if (picture.state === 'reported' || (picture.state === 'ok' && picture.reports > 0)) acts.push('keep');
+  } else if (!message.hidden) acts.push('hide');
+  if (message.muted) acts.push('unmute');
+  else if (!message.admin) acts.push('mute');
+  return acts;
+}
+
+const STATE: Record<RoomAdminPicture['state'], string> = {
+  ok: pic.stateOk,
+  reported: pic.stateReported,
+  kept: pic.stateKept,
+  removed: pic.stateRemoved,
+};
+const reportsOf = (count: number): string =>
+  count === 1 ? pic.reportsOne : pic.reportsOther.replace('{count}', String(count));
+/** Whether the file is deleted: said when it is, and for a removed picture also while the delete is still owed. */
+const fileOf = (picture: RoomAdminPicture): string | null =>
+  picture.bytesGone ? pic.bytesGone : picture.state === 'removed' ? pic.bytesOwed : null;
+---
+
+<Layout title={words.title} description={words.description} account={account} signInHref={signInHref(here)} noindex>
+  <meta slot="head" name="format-detection" content="telephone=no" />
+  <PageHead title={words.title} back={{ href: '/admin', label: words.back }} intro={admin ? words.intro : words.notForYou} />
+
+  <div class="page section">
+    {
+      !admin ? (
+        <div class="acct-column">
+          {session.state !== 'signed-in' ? (
+            <AccountCard title={words.signInTitle} headingId="room-admin-sign-in-heading">
+              <SessionGate session={session} steps />
+            </AccountCard>
+          ) : (
+            <AccountCard>
+              <Notice tone="status" title={words.notAdminTitle} body={words.notAdminBody}>
+                <Button href="/account" label={goToAccountLabel()} variant="secondary" />
+              </Notice>
+            </AccountCard>
+          )}
+        </div>
+      ) : (
+        <div class="acct-cards room-admin" data-room-admin data-words={JSON.stringify(adminScriptWords())}>
+          <noscript>
+            <Notice tone="status" title={noScript().title} body={noScript().body} />
+          </noscript>
+          <Done
+            items={[
+              { name: 'room-hidden', title: words.hideDone, body: words.cacheNote },
+              { name: 'room-muted', title: words.muteDone, body: words.cacheNote },
+              { name: 'room-unmuted', title: words.unmuteDone, body: words.cacheNote },
+              { name: 'room-picture-removed', title: pic.remove.done, body: words.cacheNote },
+              { name: 'room-picture-kept', title: pic.keep.done, body: words.cacheNote },
+              { name: 'room-pictures-off', title: pic.off.done, body: words.cacheNote },
+              { name: 'room-pictures-on', title: pic.on.done, body: words.cacheNote },
+            ]}
+          />
+
+          {pictures !== null && !pictures.ok && pictures.status !== 404 && (
+            <AccountCard title={pic.reportedTitle} headingId="room-pictures-heading">
+              <Notice tone="error" title={unread.title} body={unread.body}>
+                <Button href={here} label={unread.action} variant="secondary" />
+              </Notice>
+            </AccountCard>
+          )}
+
+          {pictures?.ok && (
+            <AccountCard title={pic.picturesTitle} headingId="room-switch-heading">
+              <div class="room-switch" data-scope data-room-switch={off === null ? 'on' : 'off'}>
+                <div class="stack-4">
+                  <p class="body">
+                    <strong>
+                      {off === null ? pic.onState : pic.offState.replace('{at}', formatDateTimeUtc(off.at))}
+                    </strong>
+                  </p>
+                  {off !== null && (
+                    <p class="body room-switch-by">
+                      {offBy}{' '}
+                      {offWho !== null && <span class="room-admin-author">{offWho}</span>}
+                    </p>
+                  )}
+                </div>
+                <div class="acct-actions room-admin-controls">
+                  <AdminControl
+                    act={off === null ? 'pictures-off' : 'pictures-on'}
+                    words={off === null ? pic.off : pic.on}
+                    cancel={words.cancel}
+                    questionId="room-pictures-switch"
+                  />
+                </div>
+                <div class="acct-outlet" data-outlet></div>
+              </div>
+            </AccountCard>
+          )}
+
+          {pictures?.ok && (
+            <AccountCard title={pic.reportedTitle} headingId="room-pictures-heading">
+                <div class="room-pictures" data-room-reported>
+                  {reported.length === 0 ? (
+                    <p class="body room-reported-none">{pic.reportedEmpty}</p>
+                  ) : (
+                    <ul class="acct-list room-admin-list">
+                      {reported.map((entry) => (
+                        <li data-scope class="room-admin-row">
+                          <p class="room-admin-meta">
+                            <time datetime={entry.at}>{formatDateTimeUtc(entry.at)}</time>
+                            <span class="room-admin-author">{entry.author}</span>
+                          </p>
+                          <p class="cluster">
+                            <Chip label={STATE[entry.picture.state]} />
+                            <Chip label={reportsOf(entry.picture.reports)} />
+                            {fileOf(entry.picture) !== null && <Chip label={fileOf(entry.picture) ?? ''} />}
+                          </p>
+                          <p class="body room-admin-facts">{factsSentence(entry.picture, pic)}</p>
+                          <p class="small room-admin-hash">{pic.hash.replace('{hash}', entry.picture.sha256Short)}</p>
+                          <div class="room-reporters">
+                            <p class="small room-reporters-label">{pic.reportedBy}</p>
+                            <ul class="room-reporters-list">
+                              {entry.reporters.map((reporter) => (
+                                <li class="room-admin-meta">
+                                  <time datetime={reporter.at}>{formatDateTimeUtc(reporter.at)}</time>
+                                  <span class="room-admin-author">{reporter.address}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          {entry.picture.viewable ? (
+                            <AdminLook
+                              id={entry.id}
+                              author={entry.author}
+                              width={entry.picture.width}
+                              height={entry.picture.height}
+                            />
+                          ) : (
+                            <p class="small room-look-none">{pic.notViewable}</p>
+                          )}
+                          <div class="acct-actions room-admin-controls">
+                            {(['remove', 'keep', 'mute'] as const).map((act) => (
+                              <AdminControl
+                                act={act}
+                                id={entry.id}
+                                words={controls[act]}
+                                cancel={words.cancel}
+                                questionId={`room-reported-${act}-${entry.id}`}
+                              />
+                            ))}
+                          </div>
+                          <div class="acct-outlet" data-outlet></div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {pictures.data.more && <p class="small room-reported-more">{pic.reportedMore}</p>}
+                </div>
+            </AccountCard>
+          )}
+
+          <AccountCard title={pic.messagesTitle} headingId="room-messages-heading">
+            {list && !list.ok ? (
+              <Notice tone="error" title={failed.title} body={words.loadFailedBody}>
+                <Button href={here} label={failed.action} variant="secondary" />
+              </Notice>
+            ) : messages.length === 0 ? (
+              <Notice tone="empty" title={words.emptyTitle} body={words.emptyBody} />
+            ) : (
+              <ul class="acct-list room-admin-list">
+                {messages.map((message) => {
+                  const unseen = message.hidden || message.muted || message.cut;
+                  const picture = message.picture ?? null;
+                  return (
+                    <li data-scope class:list={['room-admin-row', unseen && 'room-admin-row--off']}>
+                      <p class="room-admin-meta">
+                        <time datetime={message.at}>{formatDateTimeUtc(message.at)}</time>
+                        <span class="room-admin-author">{message.author}</span>
+                      </p>
+                      {(message.admin || unseen || picture !== null) && (
+                        <p class="cluster">
+                          {message.admin && <Chip label={words.stateAdmin} kind="house" />}
+                          {picture !== null && <Chip label={STATE[picture.state]} />}
+                          {picture !== null && picture.reports > 0 && <Chip label={reportsOf(picture.reports)} />}
+                          {picture !== null && fileOf(picture) !== null && <Chip label={fileOf(picture) ?? ''} />}
+                          {message.hidden && picture?.state !== 'removed' && <Chip label={words.stateHidden} />}
+                          {message.muted && <Chip label={words.stateMuted} />}
+                          {message.cut && <Chip label={words.stateCut} />}
+                        </p>
+                      )}
+                      {picture === null ? (
+                        <p class="body room-line">{message.text}</p>
+                      ) : (
+                        <p class="body room-line room-admin-facts">{factsSentence(picture, pic)}</p>
+                      )}
+                      {picture !== null &&
+                        (picture.viewable ? (
+                          <AdminLook id={message.id} author={message.author} width={picture.width} height={picture.height} />
+                        ) : (
+                          <p class="small room-look-none">{pic.notViewable}</p>
+                        ))}
+                      <div class="acct-actions room-admin-controls">
+                        {controlsFor(message).map((act) => (
+                          <AdminControl
+                            act={act}
+                            id={message.id}
+                            words={controls[act]}
+                            cancel={words.cancel}
+                            questionId={`room-${act}-${message.id}`}
+                          />
+                        ))}
+                      </div>
+                      <div class="acct-outlet" data-outlet></div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </AccountCard>
+
+          {(older !== null || before !== null) && (
+            <p class="acct-actions room-admin-pager">
+              {before !== null && <Button href={pageHref(null)} label={words.newest} variant="secondary" />}
+              {older !== null && <Button href={pageHref(older)} label={words.older} variant="secondary" />}
+            </p>
+          )}
+
+          {(Object.keys(controls) as Act[]).map((act) => (
+            <template data-room-message={`${act}-failed`}>
+              <Notice tone="error" title={controls[act].failed} body="{message}" />
+            </template>
+          ))}
+          <template data-room-message="session">
+            <Notice tone="error" title={words.signedOutTitle} body={words.signedOut}>
+              <Button href={signInHref(here)} label={words.signInTitle} variant="secondary" />
+            </Notice>
+          </template>
+        </div>
+      )
+    }
+  </div>
+</Layout>
+
+<script>
+  import { mountAdminLook } from './admin-look.ts';
+  import { mountRoomAdmin } from './admin.ts';
+
+  mountRoomAdmin();
+  mountAdminLook();
+</script>

@@ -16,6 +16,7 @@ import { createFollowApi } from '../../lib/follow-api.ts';
 import AccountCard from '../AccountCard.astro';
 import Done from '../Done.astro';
 import Feedback from '../Feedback.astro';
+import LoungeBlock from '../lounge/LoungeBlock.astro';
 import PageHead from '../PageHead.astro';
 import SessionGate from '../SessionGate.astro';
 import { herePath, readSession, signInHref } from '../session.ts';
@@ -264,6 +265,8 @@ const done = [
               )}
             </div>
           )}
+
+          <LoungeBlock />
         </Panel>
 
         <section aria-labelledby="feed-heading">

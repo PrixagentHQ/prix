@@ -1,0 +1,21 @@
+// Local only. tools/perf/room-pictures.mjs starts this Worker on this machine, in workerd, to time the
+// room's picture check and a real upload through the API's own entry. It is never deployed: it has no
+// route, its database id names no database and its KV id names no namespace. Nothing here makes a KV
+// namespace on any account: Wrangler keeps both in memory while the script runs (`remote: false`).
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "prix-perf-room-pictures",
+  "main": "worker.mjs",
+  // The same date as apps/api/wrangler.jsonc, so that the runtime behaves as the API's does.
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prix-perf-local",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "ROOM_PICTURES", "id": "local-only-names-no-namespace" }]
+}

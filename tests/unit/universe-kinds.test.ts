@@ -19,9 +19,9 @@ const stocks = UNIVERSE.filter((entry) => isStockToken(entry));
 const coins = UNIVERSE.filter((entry) => !isStockToken(entry));
 
 describe('the universe with crypto assets', () => {
-  it('counts UNIVERSE_SIZE = STOCK_UNIVERSE_SIZE + CRYPTO_UNIVERSE_SIZE = 22', () => {
+  it('counts UNIVERSE_SIZE = STOCK_UNIVERSE_SIZE + CRYPTO_UNIVERSE_SIZE = 25 (section 23)', () => {
     expect(UNIVERSE_SIZE).toBe(STOCK_UNIVERSE_SIZE + CRYPTO_UNIVERSE_SIZE);
-    expect([STOCK_UNIVERSE_SIZE, CRYPTO_UNIVERSE_SIZE, UNIVERSE_SIZE]).toEqual([20, 2, 22]);
+    expect([STOCK_UNIVERSE_SIZE, CRYPTO_UNIVERSE_SIZE, UNIVERSE_SIZE]).toEqual([20, 5, 25]);
     expect(UNIVERSE).toHaveLength(UNIVERSE_SIZE);
     expect(stocks).toHaveLength(STOCK_UNIVERSE_SIZE);
     expect(coins).toHaveLength(CRYPTO_UNIVERSE_SIZE);
@@ -31,10 +31,10 @@ describe('the universe with crypto assets', () => {
     for (const entry of UNIVERSE) expect(universeTokenSchema.safeParse(entry).success, entry.symbol).toBe(true);
   });
 
-  it('lists the Stock Tokens by symbol, then the crypto assets by symbol (BTC, ETH)', () => {
+  it('lists the Stock Tokens by symbol, then BTC and ETH, then BNB, HYPE and SOL (sections 21 and 23)', () => {
     const symbols = UNIVERSE.map((entry) => entry.symbol);
     const stockSymbols = stocks.map((entry) => entry.symbol);
-    expect(symbols).toEqual([...stockSymbols, 'BTC', 'ETH']);
+    expect(symbols).toEqual([...stockSymbols, 'BTC', 'ETH', 'BNB', 'HYPE', 'SOL']);
     expect(stockSymbols).toEqual([...stockSymbols].sort());
   });
 

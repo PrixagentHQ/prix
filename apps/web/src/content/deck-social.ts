@@ -21,6 +21,22 @@ import type {
   RIVALRY_MAX_GAP_SMALL,
   RIVALRY_SMALL_TABLE,
   RIVALRY_WINDOW_TAPE_DAYS,
+  ROOM_KEEP,
+  ROOM_MESSAGES_PER_WALLET_PER_DAY,
+  ROOM_PAGE,
+  ROOM_PICTURE_ANIMATED_MAX_SIDE,
+  ROOM_PICTURE_MAX_BYTES,
+  ROOM_PICTURE_MAX_FRAMES,
+  ROOM_PICTURE_MAX_SIDE,
+  ROOM_PICTURE_MIN_SIDE,
+  ROOM_PICTURE_REPORTER_AGE_SECONDS,
+  ROOM_PICTURE_TTL_SECONDS,
+  ROOM_PICTURE_WRITER_AGE_SECONDS,
+  ROOM_PICTURES_PER_WALLET_PER_DAY,
+  ROOM_SECONDS_BETWEEN,
+  ROOM_TEXT_MAX,
+  ROOM_WRITE_MIN_TOKENS,
+  TOKEN_CACHE_SECONDS,
   WAR_ENTRANTS_MAX,
   WAR_ENTRANTS_MIN,
   WAR_MAX_OUTPUT_TOKENS,
@@ -29,7 +45,7 @@ import type {
   WAR_TRADING_DAYS_MAX,
   WAR_TRADING_DAYS_MIN,
 } from '@prix/contracts';
-import { facts, grouped, inWords } from './facts.ts';
+import { facts, grouped, inWords, links, minutesOf } from './facts.ts';
 
 /**
  * The `social` copy area: every string of Phase 6, which is Strategy profiles (the measured profile
@@ -41,7 +57,12 @@ import { facts, grouped, inWords } from './facts.ts';
  * - "paper manager" every time, never a bare "manager" and never a word for a pooled product;
  * - "model war" for the experiment, and "one run under these conditions" for what it shows;
  * - a record, a profile and a rivalry are descriptions of what happened in a simulation;
- * - no "season": the league is one continuous league (D-109), and a figure is a "return".
+ * - no "season": the league is one continuous league (D-109), and a figure is a "return";
+ * - "Community chat" for the chat between users (Phase 6.3), which the code calls the room: no
+ *   sentence a visitor reads says "room";
+ * - "picture" for what a user adds to the Community chat (Phase 6.4) and "file" for what Prix stores of
+ *   it: no sentence says "image", "upload" or "bytes", and none says that a picture is safe, verified or
+ *   checked.
  *
  * Words this area never uses: `SOCIAL_FORBIDDEN_WORDS` and `ADVICE_WORDS` of the contract. A test in
  * tests/social/words.test.ts reads every string below against both lists, and tests/unit/content.test.ts
@@ -82,6 +103,26 @@ const socialFacts = {
   managerMinWeightBps: 500,
   managerMaxWeightBps: 4_000,
   managerExitAfterMissingDays: 3,
+  roomTextMax: 280,
+  roomPage: 50,
+  roomSecondsBetween: 20,
+  roomMessagesPerWalletPerDay: 30,
+  roomKeep: 2_000,
+  /** Whole $PRIX a wallet must hold to write (revision 7 of the contract: a holding, and no tier). */
+  roomWriteMinTokens: 1,
+  /** How old a stored read of a wallet’s balance may be before Prix reads the chain again. */
+  tokenCacheSeconds: 900,
+  // Pictures in the Community chat (Phase 6.4): the constants behind ROOM_PICTURE_LIMITS of the contract,
+  // which holds every number a sentence of pictures states.
+  pictureMaxBytes: 262_144,
+  pictureMinSide: 16,
+  pictureMaxSide: 2_048,
+  pictureMaxFrames: 120,
+  pictureAnimatedMaxSide: 512,
+  picturesPerWalletPerDay: 3,
+  pictureTtlSeconds: 604_800,
+  pictureWriterAgeSeconds: 3_600,
+  pictureReporterAgeSeconds: 86_400,
 } as const;
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -118,6 +159,22 @@ export type SocialFactsMatchContract = [
   Holds<Same<typeof socialFacts.managerMinWeightBps, typeof MANAGER_MIN_WEIGHT_BPS>>,
   Holds<Same<typeof socialFacts.managerMaxWeightBps, typeof MANAGER_MAX_WEIGHT_BPS>>,
   Holds<Same<typeof socialFacts.managerExitAfterMissingDays, typeof MANAGER_EXIT_AFTER_MISSING_DAYS>>,
+  Holds<Same<typeof socialFacts.roomTextMax, typeof ROOM_TEXT_MAX>>,
+  Holds<Same<typeof socialFacts.roomPage, typeof ROOM_PAGE>>,
+  Holds<Same<typeof socialFacts.roomSecondsBetween, typeof ROOM_SECONDS_BETWEEN>>,
+  Holds<Same<typeof socialFacts.roomMessagesPerWalletPerDay, typeof ROOM_MESSAGES_PER_WALLET_PER_DAY>>,
+  Holds<Same<typeof socialFacts.roomKeep, typeof ROOM_KEEP>>,
+  Holds<Same<typeof socialFacts.roomWriteMinTokens, typeof ROOM_WRITE_MIN_TOKENS>>,
+  Holds<Same<typeof socialFacts.tokenCacheSeconds, typeof TOKEN_CACHE_SECONDS>>,
+  Holds<Same<typeof socialFacts.pictureMaxBytes, typeof ROOM_PICTURE_MAX_BYTES>>,
+  Holds<Same<typeof socialFacts.pictureMinSide, typeof ROOM_PICTURE_MIN_SIDE>>,
+  Holds<Same<typeof socialFacts.pictureMaxSide, typeof ROOM_PICTURE_MAX_SIDE>>,
+  Holds<Same<typeof socialFacts.pictureMaxFrames, typeof ROOM_PICTURE_MAX_FRAMES>>,
+  Holds<Same<typeof socialFacts.pictureAnimatedMaxSide, typeof ROOM_PICTURE_ANIMATED_MAX_SIDE>>,
+  Holds<Same<typeof socialFacts.picturesPerWalletPerDay, typeof ROOM_PICTURES_PER_WALLET_PER_DAY>>,
+  Holds<Same<typeof socialFacts.pictureTtlSeconds, typeof ROOM_PICTURE_TTL_SECONDS>>,
+  Holds<Same<typeof socialFacts.pictureWriterAgeSeconds, typeof ROOM_PICTURE_WRITER_AGE_SECONDS>>,
+  Holds<Same<typeof socialFacts.pictureReporterAgeSeconds, typeof ROOM_PICTURE_REPORTER_AGE_SECONDS>>,
 ];
 
 const START = grouped(facts.startingCashUsd);
@@ -131,6 +188,29 @@ const WAR_MAX = inWords(socialFacts.warEntrantsMax);
 const MGR_MIN = inWords(socialFacts.managerMinAgents);
 const MGR_MAX = inWords(socialFacts.managerMaxAgents);
 const MGR_EXIT = inWords(socialFacts.managerExitAfterMissingDays);
+const CHAT_MAX = String(socialFacts.roomTextMax);
+/** What a wallet must hold to write, by the ticker: "1 $PRIX". No sentence of the chat names a tier. */
+const CHAT_MIN = `${grouped(socialFacts.roomWriteMinTokens)} $PRIX`;
+/** How soon Prix reads a wallet’s holding again: "15 minutes". */
+const CHAT_READ = minutesOf(socialFacts.tokenCacheSeconds);
+/** What a writer does with a message the text rule refused. The same words under every such sentence. */
+const CHAT_FIX = 'Take it out and send the message again.';
+const CHAT_FIX_WORDS = 'Take those words out and send the message again.';
+
+// The figures of pictures, derived as ROOM_PICTURE_LIMITS of the contract derives them. The test beside
+// this file reads every sentence of pictures against that record: none states a figure it does not hold.
+/** The largest file, as a file manager shows it: "256 KB". */
+const PIC_SIZE = `${grouped(socialFacts.pictureMaxBytes / 1_024)} KB`;
+const PIC_MIN = grouped(socialFacts.pictureMinSide);
+const PIC_MAX = grouped(socialFacts.pictureMaxSide);
+const PIC_FRAMES = grouped(socialFacts.pictureMaxFrames);
+const PIC_ANIMATED = grouped(socialFacts.pictureAnimatedMaxSide);
+const PIC_PER_DAY = String(socialFacts.picturesPerWalletPerDay);
+/** How old a wallet’s first message is before the wallet adds a picture, and before it reports one. */
+const PIC_WRITER_MINUTES = String(socialFacts.pictureWriterAgeSeconds / 60);
+const PIC_REPORTER_HOURS = String(socialFacts.pictureReporterAgeSeconds / 3_600);
+/** Under a refusal that came after the wallet’s turn was taken: the same words each time. */
+const PIC_COUNTED = 'The try still counts as one of this wallet’s pictures for today.';
 
 /** The sentence under every Phase 6 page that describes something of the simulation. */
 const NOT_ADVICE = 'A paper trading simulation, not investment advice.';
@@ -716,6 +796,414 @@ export const socialStrings = {
   'social.warCellNoteShort': '{slot}: {word}.',
   'social.warChartTitleDaily': 'Value each day',
   'social.warResultsRunningNote': 'Figures so far. No order until the last day; listed in slot order.',
+
+  // --- the agent chat on an agent's page (D-138) --------------------------------------------------------
+  //
+  // "Ask {name}": five questions an agent answers from its own public record. The page is live, and each
+  // string below is the one `apps/web/src/arena/social/voice/AgentChat.astro` shipped with as its draft,
+  // word for word. The public word is "personality". Slots: `{personality}` and `{name}`.
+
+  'social.chatEyebrow': 'Personality: {personality}',
+  'social.chatTitle': 'Ask {name}',
+  /** Read by a screen reader before each answer. */
+  'social.chatAnswerBy': '{name} answers:',
+  'social.chatNoteHow':
+    'Each answer is a sentence Prix wrote, filled with facts from this agent’s own record. No model is asked when a question is opened.',
+  'social.chatNoteHouse':
+    'Words in quotation marks were written by the agent’s model and are quoted from that record as stored. {name} is a house agent: Prix runs it and chose its personality.',
+  'social.chatNoteOwner':
+    'This agent’s stored reason and description are not quoted here: they stand on its record, on this page. Owners cannot choose a personality yet.',
+
+  // --- the Community chat (Phase 6.3; the code calls it the room) ------------------------------------
+  //
+  // docs/contracts/phase-6-room.md, section 9. Written before the two pages, which are built in a later
+  // wave: a web owner reads a key below with `text(key, draft)` and names any key it adds in its report.
+  // The sentence above the messages and the note on the token are the contract's (ROOM_DISCLAIMER and
+  // ROOM_TOKEN_NOTE): a page reads them from the contract, and no key here says them again. Where a
+  // sentence below names $PRIX, the page shows the token's address in that note, above the composer.
+  // The only slot is `{count}`, in `roomComposerCount` and `roomLeftOther`.
+
+  // The page /chat.
+  'social.roomTitle': 'Community chat',
+  /** The entry in the Social navigation, shown only while the chat is on. */
+  'social.roomNav': 'Chat',
+  'social.roomEyebrow': 'Between users',
+  'social.roomDescription': 'One public page of short text messages between people who use Prix.',
+  /** For `social.loadFailedBody` and `social.unreadableTitle`. */
+  'social.roomSubject': 'The Community chat',
+  /** The word beside the Prix mark on a message from an admin wallet: an element of its own, never part of the text. */
+  'social.roomAdminMark': 'Prix',
+  'social.roomAdminMarkLabel': 'Written from an admin wallet of Prix',
+  /** Beside the mark, shown once above the messages. */
+  'social.roomAdminMarkNote':
+    'Only a message that carries this mark is from Prix. A message that uses the name in its text, or says it is from Prix, is not.',
+  'social.roomLoadNew': 'Load new messages',
+  'social.roomMessagesTitle': 'Messages',
+  'social.roomNewestNote': `Newest first, at most ${socialFacts.roomPage}. This page does not update by itself.`,
+  'social.roomColTime': 'Time',
+  'social.roomColWriter': 'Writer',
+  'social.roomColMessage': 'Message',
+  'social.roomEmptyTitle': 'No messages to show',
+  /** For a visitor who is not signed in. */
+  'social.roomEmptyBody': `There is nothing to read here right now. To write a message, sign in with a wallet that holds at least ${CHAT_MIN}.`,
+  /** For a signed-in visitor, whose wallet may or may not be one that can write: the composer above says which. */
+  'social.roomEmptyBodySignedIn':
+    'There is nothing to read here right now. If this wallet can write, the first message is yours to send above.',
+  /** When the chat is switched off between the page and a send. */
+  'social.roomClosedTitle': 'The Community chat is closed',
+  'social.roomClosedBody': 'It is switched off for now. Nothing can be read or written here until it opens again.',
+
+  // The composer.
+  /** Who may write, in one sentence: for a visitor who is not signed in, with the sign-in link. */
+  'social.roomWhoWrites': `Anyone can read the Community chat, and a signed-in wallet that holds at least ${CHAT_MIN} can write in it.`,
+  'social.roomSignIn': 'Sign in to write',
+  /**
+   * A link to the Account page, where Prix reads the signed-in wallet’s balance again: beside
+   * `roomWhoWrites` and under the sentence of `not_holder`. The key keeps its first name, from when
+   * writing asked for a tier; its words name none.
+   */
+  'social.roomTiersLink': 'Check your wallet’s $PRIX on the Account page',
+  'social.roomChecking': 'Checking whether this wallet can write',
+  'social.roomCheckFailedTitle': 'Not checked',
+  'social.roomCheckFailedBody': 'Prix could not check whether this wallet can write. Reload the page to try again.',
+  'social.roomNoScript': 'Writing a message needs JavaScript. Reading the chat does not.',
+  'social.roomComposerLabel': 'Your message',
+  'social.roomComposerHint': `One line of plain text, up to ${CHAT_MAX} characters.`,
+  /** Said before the first send: a message cannot be taken back by its writer. */
+  'social.roomComposerPublicNote':
+    'A message is public as soon as you send it, beside a shortened form of your wallet address. You cannot edit or delete it.',
+  /** `{count}` is the length of the text once runs of spaces are folded into one. */
+  'social.roomComposerCount': `{count} of ${CHAT_MAX} characters`,
+  'social.roomSend': 'Send message',
+  'social.roomSendBusy': 'Sending message',
+  'social.roomSendFailedTitle': 'Message not sent',
+  /** For a send that got no answer, or a fault of the server. A refusal with no sentence of its own has `roomRefusalOther`. */
+  'social.roomSendFailedBody':
+    'The message did not reach Prix, and your text is still in the field. Try again in a minute.',
+  'social.roomSignedOut': 'Your session has ended. Sign in again to send a message.',
+  /**
+   * What is left of the wallet’s day. At zero the composer shows `roomRefusalWalletDay`. (The field's own
+   * name is not written in quotation marks here: tests/unit/wallet-requests.test.ts reads it as a wallet request.)
+   */
+  'social.roomLeftOne': 'This wallet can send 1 more message today.',
+  'social.roomLeftOther': 'This wallet can send {count} more messages today.',
+
+  // One sentence for each field of ROOM_REFUSALS, read through `roomRefusalText` of states.ts, whose
+  // record does not compile while a field has none. A sentence of a text rule says which rule the text
+  // broke and never repeats the text, so none has a slot. The sentences of `text_bait` and `text_words`
+  // name the words an honest writer meets, and so do those of `text_link` and `text_spelled`: section 4 of
+  // the contract lists the honest lines the rule still refuses.
+  //
+  // A text rule's refusal stands beside the field, so it has two keys: its first sentence, which says
+  // what the text broke, and under `…More` the rest, which the composer sets under it in regular weight
+  // (`roomRefusalMoreFor` of states.ts). Every other refusal is shown whole, as a notice or as a sentence
+  // of the page, and has one key.
+  'social.roomRefusalTextEmpty': 'The message is empty.',
+  'social.roomRefusalTextEmptyMore': 'Write something, then send it.',
+  'social.roomRefusalTextLength': `The message is longer than ${CHAT_MAX} characters.`,
+  'social.roomRefusalTextLengthMore': 'Shorten it and send it again.',
+  'social.roomRefusalTextCharacters': 'The message holds a character the chat does not take.',
+  'social.roomRefusalTextCharactersMore':
+    'Use plain letters, digits and common punctuation: no emoji, no accented or look-alike letters, no markup, and no mark repeated many times in a row.',
+  'social.roomRefusalTextAddress':
+    'The message holds a wallet or contract address, or a long run of letters and digits that reads as one.',
+  'social.roomRefusalTextAddressMore': `The only address the chat takes is the contract of $PRIX, written whole. ${CHAT_FIX}`,
+  'social.roomRefusalTextCashtag':
+    'The message names a token with a dollar sign, or a second token under the name of Prix.',
+  'social.roomRefusalTextCashtagMore': `The only one the chat takes is $PRIX, written exactly so. ${CHAT_FIX}`,
+  'social.roomRefusalTextLink':
+    'The message holds a link, a web address, an at sign, or words that spell one out, such as “dot com”.',
+  'social.roomRefusalTextLinkMore':
+    'A full stop reads as part of a web address when it has no space after it, when it has a space before it, or when the next word is an ending such as “io”, “com” or “org”, and so does the word “com” by itself. The chat takes no link but one to this site. Take the link out or fix the full stop, then send the message again.',
+  'social.roomRefusalTextNumber': 'The message holds a telephone number or another long number.',
+  'social.roomRefusalTextNumberMore': `A date or an amount is fine. ${CHAT_FIX}`,
+  'social.roomRefusalTextBait':
+    'The message uses words the chat does not take in any sense, because scams use them too.',
+  'social.roomRefusalTextBaitMore': `Among them: the name of another platform or service, such as Telegram, Discord, Reddit or email; “Prix” close to a word for staff, such as “team”, “support”, “admin” or “owner”; “claim”, “ticket”, “airdrop”, “giveaway”, “presale”, “bonus”, “refund” and “snapshot”; a seed phrase or a private key; a wallet to connect or verify; and a way to reach someone, such as “text me”, “send me”, “inbox” or “my profile”. ${CHAT_FIX_WORDS}`,
+  'social.roomRefusalTextSpelled':
+    'The message spells a word with spaces or marks between its letters, or has a digit or a mark such as “*” or “#” between two letters, as in “5m30s” or “L1s”.',
+  'social.roomRefusalTextSpelledMore':
+    'Write each word plainly, with a space where a number meets a word, and send the message again.',
+  'social.roomRefusalTextWords':
+    'The message uses words the chat does not take: abuse, or a phrase of promise or hype such as “financial advice”, “easy money” or “100% safe”, even with “not” before it.',
+  'social.roomRefusalTextWordsMore': CHAT_FIX_WORDS,
+  /**
+   * The holding is Prix’s own read of the wallet, which the composer asks for when the page loads and
+   * which is made again once it is TOKEN_CACHE_SECONDS old; the Account page asks for a new read each
+   * time a signed-in wallet opens it.
+   */
+  'social.roomRefusalNotHolder': `Writing here takes a wallet that holds at least ${CHAT_MIN}, and this wallet held less when Prix last read it. Prix reads a new holding within ${CHAT_READ}, so reload this page after that. The Account page reads it again at once.`,
+  'social.roomRefusalGateOff': 'Writing is closed for now. It opens when Prix reads $PRIX holdings again.',
+  'social.roomRefusalMuted': `Prix has muted this wallet in the Community chat, so it cannot write here. Write to ${links.supportEmail} to ask why.`,
+  'social.roomRefusalTooSoon': `This wallet sent a message less than ${socialFacts.roomSecondsBetween} seconds ago. Wait, then send this one again.`,
+  /**
+   * Names no figure (Phase 6.8, docs/contracts/phase-6-holders-2.md section 7): a wallet's day cap rises
+   * with its holding, so the number is `social.roomDayCaps`, under the composer while the caps by holding
+   * are on.
+   */
+  'social.roomRefusalWalletDay': 'This wallet has sent all its messages for today. It can write again after 00:00 UTC.',
+  'social.roomRefusalRoomHour':
+    'The Community chat has taken as many messages as it takes in one hour. Send yours again after the hour turns.',
+  'social.roomRefusalRoomDay':
+    'The Community chat has taken as many messages as it takes in one day. It takes messages again after 00:00 UTC.',
+  /** For "Mute writer" on a message that an admin wallet wrote. */
+  'social.roomRefusalAdmin': 'An admin wallet wrote this message, and an admin wallet cannot be muted.',
+  /** One sentence for both codes of `requireWriter`, `rate_limited` and `daily_limit`: `roomWriterRefusalText`. */
+  'social.roomRefusalWriter':
+    'Prix has reached a limit on changes, for this wallet or for the day. Try again in a minute and, if that fails too, after 00:00 UTC.',
+  /**
+   * The one general sentence, for a refusal the page has no sentence for: a body the server's schema
+   * refused, or a field this version of the page does not know. `roomRefusalTextFor` of states.ts falls
+   * back to it. It promises nothing about the next try.
+   */
+  'social.roomRefusalOther':
+    'The message was not sent, and this page cannot say why. Try again, and reload the page if it is refused a second time.',
+
+  // The page /admin/chat. Each control keeps its name through its confirmation: the button that confirms
+  // carries the control's own label, beside `common.cancel`.
+  'social.roomAdminTitle': 'Community chat',
+  'social.roomAdminDescription':
+    'Hide a message or mute its writer in the Community chat. For the people who run Prix.',
+  'social.roomAdminIntro':
+    'Every stored message, newest first, each with the whole address of its writer. A message the public page does not show is listed here with the reason: it is hidden, its writer is muted, or it was written before or during a mute.',
+  /** The whole body of the notice when the admins’ read fails: the page sets no second sentence beside it. */
+  'social.roomAdminLoadFailedBody':
+    'Prix could not load the messages because of a server fault. Reload the page; if it keeps failing, come back in a few minutes.',
+  'social.roomAdminStateOpen': 'Not hidden',
+  // Why the public does not see a message (section 7): `hidden`, `muted` and `cut` of the admin's read.
+  'social.roomAdminStateHidden': 'Hidden',
+  'social.roomAdminStateMuted': 'Writer muted',
+  /**
+   * Written at or before its writer’s cut: the time of the mute while it is on, and the writer’s newest
+   * message once it is lifted. So a message written while the mute was on its way carries it too.
+   */
+  'social.roomAdminStateCut': 'Written before or during a mute',
+  'social.roomAdminStateAdmin': 'Admin wallet',
+  'social.roomAdminHide': 'Hide message',
+  'social.roomAdminHideBusy': 'Hiding message',
+  'social.roomAdminHideQuestion': 'Hide this message?',
+  'social.roomAdminHideConsequence':
+    'It leaves the public page for good: a hidden message cannot be shown again. Its writer can still write.',
+  'social.roomAdminHideDone': 'Message hidden',
+  'social.roomAdminHideFailed': 'The message was not hidden',
+  'social.roomAdminMute': 'Mute writer',
+  'social.roomAdminMuteBusy': 'Muting writer',
+  'social.roomAdminMuteQuestion': 'Mute the writer of this message?',
+  'social.roomAdminMuteConsequence':
+    'This wallet can no longer write in the Community chat, and everything it has written up to now leaves the public page for good.',
+  'social.roomAdminMuteDone': 'Writer muted',
+  'social.roomAdminMuteFailed': 'The writer was not muted',
+  'social.roomAdminUnmute': 'Lift the mute',
+  'social.roomAdminUnmuteBusy': 'Lifting the mute',
+  'social.roomAdminUnmuteQuestion': 'Lift the mute on the writer of this message?',
+  'social.roomAdminUnmuteConsequence':
+    'This wallet can write again. Lifting the mute brings back nothing it has written up to now: those messages stay off the public page.',
+  'social.roomAdminUnmuteDone': 'Mute lifted',
+  'social.roomAdminUnmuteFailed': 'The mute was not lifted',
+  /** Under a result: the public page is kept for a short time, so a change can show late. */
+  'social.roomAdminCacheNote': 'The public page can show the earlier state for up to half a minute.',
+  /** For the 404 of a control: the message was deleted as one of the oldest. */
+  'social.roomAdminGone': 'This message is no longer stored. Reload the page.',
+  'social.roomAdminOlder': 'Older messages',
+  'social.roomAdminNewest': 'Newest messages',
+  'social.roomAdminEmptyTitle': 'No messages stored',
+  'social.roomAdminEmptyBody': 'Nothing has been written in the Community chat yet.',
+
+  // --- pictures in the Community chat (Phase 6.4) ---------------------------------------------------
+  //
+  // docs/contracts/phase-6-pictures.md, section 11. The key names are the contract's
+  // (ROOM_PICTURE_COPY_KEYS of packages/contracts/src/phase6-room-pictures.ts), the words are these. Five
+  // sentences are the contract's own and no key says them again: ROOM_PICTURE_DISCLAIMER,
+  // ROOM_PICTURE_ROW_NOTE, ROOM_PICTURE_COMPOSER_NOTE, ROOM_PICTURE_ADMIN_NOTE and ROOM_PICTURE_ALT.
+  //
+  // No sentence here speaks for what a picture shows, and none says that a picture is safe, verified or
+  // checked (section 17). Every figure is one of ROOM_PICTURE_LIMITS. The slots, which the page fills:
+  // `{type}`, `{width}`, `{height}` and `{size}` in `roomPictureFacts`; `{frames}`, `{width}`, `{height}`
+  // and `{size}` in `roomPictureFactsAnimated`; `{count}` in `roomPictureSizeKb`, in `roomPictureLeftOther`
+  // and in `roomPictureAdminReportsOther`; `{minutes}` in `roomPictureNewWriter`; `{at}`, a time in UTC,
+  // in `roomPictureAdminOffState`; `{hash}`, the first characters of a file’s fingerprint, in
+  // `roomPictureAdminHash`. No other key has one. The page prints `{width}` and `{height}` grouped, as the
+  // site prints numbers, and fills `{size}` with the sentence of `roomPictureSizeKb`.
+
+  // The row of a picture on /chat.
+  'social.roomPictureShow': 'Show picture',
+  'social.roomPictureHide': 'Hide picture',
+  /** What the server counted, said before the click: "JPEG, 1,200 × 800 pixels, 212 KB". */
+  'social.roomPictureFacts': '{type}, {width} × {height} pixels, {size}',
+  /** For a GIF of more than one frame. */
+  'social.roomPictureFactsAnimated': 'GIF, animated, {frames} frames, {width} × {height} pixels, {size}',
+  /**
+   * The one size of a picture, on /chat, in the composer and on /admin/chat: whole kilobytes of 1,024
+   * bytes, which the page rounds up, so that a file never reads smaller than it is and the smallest
+   * reads "1 KB". The unit is the one the sentence of the limits gives the largest file in.
+   */
+  'social.roomPictureSizeKb': '{count} KB',
+  'social.roomPictureOff': 'Pictures are switched off for now.',
+  /** The day’s views have reached their cap. Said once, under the heading of the list. */
+  'social.roomPictureResting':
+    'The chat has shown as many pictures as it shows in one day. Pictures can be shown again after 00:00 UTC.',
+  /** The short form in the row of each picture while that sentence stands above the list. */
+  'social.roomPictureRestingRow': 'Not shown until 00:00 UTC.',
+  'social.roomPictureReported': 'Hidden after reports from users. An admin of Prix decides whether it is shown again.',
+  /** It names no reason: the days of a picture are over, its file is gone, or its writer is an admin wallet now. */
+  'social.roomPictureGone': 'This picture is no longer available.',
+  /** The one string for every load that failed: a picture’s error carries no status. Nothing asks again by itself. */
+  'social.roomPictureLoadFailed': 'This picture is not available right now. Reload the page to try again.',
+  'social.roomPictureReport': 'Report picture',
+  /** The same words whatever the report did: a reporter learns no count and not whether the picture was hidden. */
+  'social.roomPictureReportDone':
+    'Reported. When enough users report a picture it is hidden, and an admin of Prix then decides.',
+  /** For a report that got no answer. The button is used up, so the next try starts with a reload. */
+  'social.roomPictureReportFailed': 'The report did not reach Prix. Reload the page to try again.',
+  /** For the generic 404 of a report: the picture is not one that may be reported. It names no reason. */
+  'social.roomPictureReportClosed': 'This picture cannot be reported now.',
+  /**
+   * What the first press on "Report picture" opens, before anything is sent. It says what a report does
+   * in the words of the answer that follows it, and types no figure. "Report picture" stays in its place
+   * beside the question, so the answer that sends the report is the one word.
+   */
+  'social.roomPictureReportAsk':
+    'Report this picture? When enough users report a picture it is hidden for everyone, and an admin of Prix then decides.',
+  'social.roomPictureReportYes': 'Report',
+  'social.roomPictureReportNo': 'Cancel',
+
+  // The composer.
+  'social.roomPictureAdd': 'Add a picture',
+  /** Takes the chosen picture out again, before it is sent. Not "Remove picture", which is the admins’ control. */
+  'social.roomPictureDiscard': 'Discard picture',
+  /** The send button while a picture is chosen, and its label while the picture is on its way. */
+  'social.roomPictureSend': 'Send picture',
+  'social.roomPictureSending': 'Sending picture',
+  /**
+   * For a picture that got no answer, or a fault of the server: the picture stays chosen. The words are
+   * those of a message that did not reach Prix (`social.roomSendFailedBody`), with the picture in place of the text.
+   */
+  'social.roomPictureSendFailedTitle': 'Picture not sent',
+  'social.roomPictureSendFailed': 'The picture did not reach Prix, and it is still chosen here. Try again in a minute.',
+  /** In place of the control. It says the rule and no time of day: the page knows none. */
+  'social.roomPictureNewWriter': 'You can add a picture {minutes} minutes after your first message here.',
+  /** What a picture may be. A still picture is redrawn by the composer; a GIF cannot be. */
+  'social.roomPictureLimits': `A JPEG, a PNG or a GIF of at most ${PIC_SIZE}, with each side from ${PIC_MIN} to ${PIC_MAX} pixels. A larger photo or other still picture is made smaller in your browser before it is sent. A GIF is sent as it is, and an animated one has at most ${PIC_FRAMES} frames and sides of at most ${PIC_ANIMATED} pixels.`,
+  'social.roomPictureLeftOne': 'This wallet can add 1 more picture today.',
+  'social.roomPictureLeftOther': 'This wallet can add {count} more pictures today.',
+
+  // The page /admin/chat. An admin sees the state of the switch first, then the pictures that wait.
+  // The titles of the card of the switch and of the card that lists every message.
+  'social.roomPictureAdminPicturesTitle': 'Pictures',
+  'social.roomPictureAdminMessagesTitle': 'All messages',
+  'social.roomPictureAdminOnState': 'Pictures are on.',
+  'social.roomPictureAdminOffState':
+    'Pictures have been off since {at}. They stay off until an admin switches them on.',
+  // Who or what switched them off, set beside the sentence above.
+  'social.roomPictureAdminOffByAdmin': 'An admin switched them off.',
+  'social.roomPictureAdminOffByReportsHour':
+    'The chat switched them off by itself, after reports had hidden several pictures within one hour.',
+  'social.roomPictureAdminOffByReportsDay':
+    'The chat switched them off by itself, when it reached its limit of reports for one day.',
+  'social.roomPictureAdminReportedTitle': 'Reported pictures',
+  'social.roomPictureAdminReportedEmpty': 'No picture is waiting for a decision.',
+  'social.roomPictureAdminReportedMore':
+    'More reported pictures are waiting than this list shows. Decide on these, then reload the page.',
+  /** Before the whole addresses of the wallets that reported a picture. */
+  'social.roomPictureAdminReportedBy': 'Reported by',
+  'social.roomPictureAdminReportsOne': '1 report',
+  'social.roomPictureAdminReportsOther': '{count} reports',
+  /** The file’s SHA-256, which the privacy page calls its fingerprint. The sentence types no figure. */
+  'social.roomPictureAdminHash': 'File fingerprint begins {hash}',
+  'social.roomPictureAdminShow': 'Show picture',
+  /** The second click: a picture is shown small and blurred first. */
+  'social.roomPictureAdminUnblur': 'Unblur picture',
+  'social.roomPictureAdminNotViewable':
+    'This picture can no longer be looked at: its file is deleted or has expired, or its writer is an admin wallet now.',
+  // The state of a picture, beside the state of its message.
+  'social.roomPictureAdminStateOk': 'Picture not hidden',
+  'social.roomPictureAdminStateReported': 'Picture hidden after reports',
+  'social.roomPictureAdminStateKept': 'Picture kept by an admin',
+  'social.roomPictureAdminStateRemoved': 'Picture removed',
+  'social.roomPictureAdminBytesGone': 'File deleted',
+  /** A removed picture whose file Prix has not deleted yet: nothing serves it, and a job deletes it later. */
+  'social.roomPictureAdminBytesOwed':
+    'File not deleted yet. Nobody can load it, and Prix tries the delete again by itself.',
+  // Each control keeps its name through its confirmation, as the three controls of a message do.
+  'social.roomPictureAdminRemove': 'Remove picture',
+  'social.roomPictureAdminRemoveBusy': 'Removing picture',
+  'social.roomPictureAdminRemoveQuestion': 'Remove this picture?',
+  'social.roomPictureAdminRemoveConsequence':
+    'It leaves the public page for good and its file is deleted: a removed picture cannot be brought back. Prix refuses the same file if anyone adds it again. Its writer can still write.',
+  'social.roomPictureAdminRemoveDone': 'Picture removed',
+  'social.roomPictureAdminRemoveFailed': 'The picture was not removed',
+  'social.roomPictureAdminKeep': 'Keep picture',
+  'social.roomPictureAdminKeepBusy': 'Keeping picture',
+  'social.roomPictureAdminKeepQuestion': 'Keep this picture?',
+  'social.roomPictureAdminKeepConsequence':
+    'It stays on the public page, or returns to it if reports had hidden it, and it can no longer be reported. Each wallet that reported it is given a strike, and after enough strikes a wallet’s reports no longer count.',
+  'social.roomPictureAdminKeepDone': 'Picture kept',
+  'social.roomPictureAdminKeepFailed': 'The picture was not kept',
+  // The switch is named by its act, as its question is: "Pictures off" under "Pictures are on." read as a state.
+  'social.roomPictureAdminOff': 'Switch pictures off',
+  'social.roomPictureAdminOffBusy': 'Switching pictures off',
+  'social.roomPictureAdminOffQuestion': 'Switch pictures off?',
+  'social.roomPictureAdminOffConsequence':
+    'No picture is shown, added or reported in the Community chat until an admin switches pictures on. Nothing is deleted, text messages go on, and a reported picture can still be decided.',
+  'social.roomPictureAdminOffDone': 'Pictures are off',
+  'social.roomPictureAdminOffFailed': 'Pictures were not switched off',
+  'social.roomPictureAdminOn': 'Switch pictures on',
+  'social.roomPictureAdminOnBusy': 'Switching pictures on',
+  'social.roomPictureAdminOnQuestion': 'Switch pictures on?',
+  'social.roomPictureAdminOnConsequence':
+    'Pictures can be shown, added and reported again. The chat starts its count of reports for the day and its count of pictures hidden in the hour again, so the reports that switched pictures off do not switch them off a second time.',
+  'social.roomPictureAdminOnDone': 'Pictures are on',
+  'social.roomPictureAdminOnFailed': 'Pictures were not switched on',
+
+  // One sentence for each field of ROOM_PICTURE_REFUSALS that a page can show, under the key that
+  // `roomPictureRefusalKey` of the contract gives it, read through `roomPictureRefusalText` of states.ts,
+  // whose record does not compile while a field has none. A sentence about a file says which rule the
+  // file broke and what its sender does next. None has a slot, and none repeats anything of the file.
+  /**
+   * For a still picture the composer could not make small enough, for a GIF above the largest size, and
+   * for what the server refuses for its size. It stands above the sentence of the limits, which says that
+   * a larger still picture is made smaller in the browser: so it says that this one could not be. The
+   * same field answers a file too short to be a picture, which no picker makes.
+   */
+  'social.roomPictureRefusalSize': `This picture could not be made small enough: the chat takes a file of at most ${PIC_SIZE}, and a GIF is sent as it is. Choose another picture, or save this one smaller, and add it again.`,
+  /** Also for a WebP, an AVIF or a HEIC, which the composer does not convert. */
+  'social.roomPictureRefusalType':
+    'This file is not a JPEG, a PNG or a GIF, and the chat takes no other kind of picture. Save it as a JPEG or a PNG and add it again.',
+  /**
+   * One sentence for three things, and true of each: a file Prix cannot read through as a picture, a
+   * picture that did not arrive whole within the time an upload has, and a file the browser cannot draw
+   * (the composer then sends nothing). It never says that the file is broken. Nothing was spent.
+   */
+  'social.roomPictureRefusalMalformed':
+    'This picture did not arrive whole, or it cannot be read as a picture. Try again, or choose another picture and add that one.',
+  'social.roomPictureRefusalDimensions': `This picture is outside the sizes the chat takes: each side from ${PIC_MIN} to ${PIC_MAX} pixels, and at most ${PIC_ANIMATED} pixels a side for an animated GIF. Resize it and add it again.`,
+  'social.roomPictureRefusalFrames': `This GIF has more than ${PIC_FRAMES} frames, or none at all. Shorten it, or save one frame as a still picture, and add it again.`,
+  /** An admin removed these same bytes before. Answered after the turn was taken. */
+  'social.roomPictureRefusalBlocked': `Prix removed this same file from the Community chat before, so it is not taken again. ${PIC_COUNTED}`,
+  /** For an upload and for a report from an admin wallet. */
+  'social.roomPictureRefusalAdmin':
+    'This is an admin wallet, and an admin wallet neither adds nor reports a picture. An admin removes a picture on the admin page of the chat.',
+  'social.roomPictureRefusalNewWriter': `Adding a picture takes a wallet whose first message in the Community chat is at least ${PIC_WRITER_MINUTES} minutes old, and this wallet has none that old yet. Write a message if you have not, then add the picture after that time.`,
+  /** The wallet was muted once. A lift gives back writing, not pictures. For an upload and for a report. */
+  'social.roomPictureRefusalNotAllowed':
+    'This wallet was muted in the Community chat once, and a wallet that was muted cannot add or report pictures, also after the mute is lifted. It can still write messages.',
+  'social.roomPictureRefusalPaused':
+    'Reports have hidden pictures from this wallet, and it cannot add another until an admin of Prix has decided on them. It can still write messages.',
+  'social.roomPictureRefusalOff':
+    'Pictures are switched off in the Community chat for now, so none can be added or reported. Text messages go on as before.',
+  /** A try that was refused after the turn counts too, so the sentence says "used" and not "added". */
+  'social.roomPictureRefusalWalletDay': `This wallet has used its ${PIC_PER_DAY} pictures for today. It can add another after 00:00 UTC.`,
+  'social.roomPictureRefusalRoomHour':
+    'The Community chat has taken as many pictures as it takes in one hour. Add yours again after the hour turns.',
+  'social.roomPictureRefusalRoomDay':
+    'The Community chat has taken as many pictures as it takes in one day. It takes pictures again after 00:00 UTC.',
+  /** The store refused the file. The turn and the counts stay spent. */
+  'social.roomPictureRefusalStorage': `Prix could not store the picture because of a fault on its side, so the picture was not posted. ${PIC_COUNTED} Add it again in a minute.`,
+  /** A writer cannot take a picture back, so the sentence says where to ask. */
+  'social.roomPictureRefusalReportOwn': `This is your own picture, and a wallet cannot report its own. To ask for it to be removed, write to ${links.supportEmail}.`,
+  'social.roomPictureRefusalReportNewWriter': `Reporting a picture takes a wallet whose first message in the Community chat is at least ${PIC_REPORTER_HOURS} hours old, and this wallet has none that old yet.`,
+  'social.roomPictureRefusalReportWalletDay':
+    'This wallet has sent as many reports as a wallet sends in one day. It can report again after 00:00 UTC.',
 } as const satisfies Record<string, string>;
 
 /** Exported after the strings, so that a reader of this module that takes its first record finds them. */

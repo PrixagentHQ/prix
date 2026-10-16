@@ -1,0 +1,194 @@
+---
+// "Open to holders now" as a table (docs/contracts/phase-6-holders.md section 2, revision 4, HB3-7). One
+// row a perk of `holderPerksShown(picturesOn, ownerHoldsOn)`, in the contract's order; one column for a
+// wallet below the first amount and one for each tier, headed by its amount in whole tokens from the
+// API's tier table. A row of whole tokens (`chat`, `pictures`) or of another product (`forehead`) is one
+// sentence across the amount columns. Never a share of the supply in percent, a price or a value.
+//
+// /token (web-site) and /account/token (web-account) both render it. The account page marks the
+// wallet's own column with `markTier` and names it for assistive technology with `markLabel`, its own
+// words.
+import { holderPerksShown, type TokenInfoResponse } from '@prix/contracts';
+import { text } from '../../content/index.ts';
+import Table from '../../design/Table.astro';
+import {
+  amountColumnLabels,
+  amountColumns,
+  holderAmounts,
+  openColumn,
+  perkCells,
+  perkIsFigure,
+  perkLabel,
+} from './holders.ts';
+
+interface Props {
+  /** GET /api/token's `tiers`, as the API returned them. */
+  tiers: TokenInfoResponse['tiers'];
+  /** GET /api/token's `feedDelaySeconds`: the `realtime` row's `{delay}` (revision 5, D4). */
+  feedDelaySeconds: TokenInfoResponse['feedDelaySeconds'];
+  /** The room's public read answers `pictures: "on"`. */
+  picturesOn: boolean;
+  /** GET /api/token/me/owner-holds answers 200 or 401 (`ownerHoldsRouteOn`). */
+  ownerHoldsOn: boolean;
+  /** The column of the signed-in wallet's tier, 0 to 3, on /account/token. */
+  markTier?: 0 | 1 | 2 | 3 | null;
+  /** Words that name the marked column for assistive technology, from the account page's own keys. */
+  markLabel?: string;
+  id?: string;
+}
+
+const {
+  tiers,
+  feedDelaySeconds,
+  picturesOn,
+  ownerHoldsOn,
+  markTier = null,
+  markLabel,
+  id = 'holders-table',
+} = Astro.props;
+const amounts = holderAmounts(tiers);
+const perks = holderPerksShown(picturesOn, ownerHoldsOn);
+const labels = amounts ? amountColumnLabels(amounts) : null;
+const amountKeys = ['t0', 't1', 't2', 't3'] as const;
+const columns = labels
+  ? [
+      { key: 'perk', label: text('token.holdersColPerk', 'Feature') },
+      // "Tier {tier}" with the amount on the note line; the marked column's header stays as short as the
+      // others (revision 5, D1; HB-DC-1).
+      ...amountColumns(labels, markTier, markLabel),
+    ]
+  : [];
+// On a screen narrower than the table it opens with the wallet's own column (tiers 1 to 3) beside the sticky
+// Feature column, at once, and the cue shows while more columns follow (revision 5, D2). At tier 0 that column
+// is already there; signed out the table opens at its start. The primitive's layout step reads nothing else.
+const openAt = openColumn(markTier);
+---
+
+{
+  labels && (
+    <div class="holders-table" data-mark-tier={markTier ?? undefined}>
+      <Table
+        id={id}
+        caption={text('token.holdersTitle', 'Open to holders now')}
+        columns={columns}
+        scroll
+        minWidth="40rem"
+        openAt={openAt}
+        cue={text('token.holdersSwipe', 'Swipe to see every tier')}
+      >
+        <tbody>
+          {perks.map((perk) => {
+            const cells = perkCells(perk);
+            return cells ? (
+              <tr data-perk={perk.key}>
+                <th scope="row">{perkLabel(perk, feedDelaySeconds)}</th>
+                {cells.map((cell, index) => (
+                  <td
+                    class:list={[
+                      `c-${amountKeys[index]}`,
+                      'num',
+                      perkIsFigure(perk) && 'figures',
+                      markTier === index && 'holders-marked',
+                    ]}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ) : (
+              <tr data-perk={perk.key} class="holders-sentence">
+                <th scope="row" colspan={5}>
+                  <span class="holders-sentence-text">{perkLabel(perk, feedDelaySeconds)}</span>
+                </th>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </div>
+  )
+}
+
+<style>
+  /*
+    The amount cells keep the column gap as padding at their end too, so that a marked column's wash holds
+    its figures with room on both sides (revision 5, D3).
+  */
+  .holders-table :global(:is(th, td):is(.c-t0, .c-t1, .c-t2, .c-t3)) {
+    padding-inline-end: var(--space-16);
+  }
+
+  /* A row that is one sentence reads as text, not as a header in bold. */
+  .holders-table :global(.holders-sentence th) {
+    font-weight: 400;
+  }
+
+  /*
+    Under 40em the table scrolls inside its own container. The perk's name then stays at the left edge
+    while the amounts scroll beside it, on the page's own surface, and a sentence row wraps inside the
+    scroller instead of running across the hidden columns.
+  */
+  @media (max-width: 40em) {
+    /*
+      The wrapper is the box the scroller fills, the cue's line above it aside, so a sentence row can be
+      sized to it (`cqi`) and never to the window: inside the account card the window is wider than the
+      scroller, and a sticky sentence wider than its scroller is pushed past the scroller's start edge when
+      the table opens scrolled (revision 6, DC6-1).
+    */
+    .holders-table {
+      container-type: inline-size;
+    }
+
+    /*
+      The names keep --space-12 at their end, so their longest words stand clear of whatever scrolls beside
+      them, the marked column's wash among it (revision 6, DC6-4).
+    */
+    .holders-table :global(thead th.c-perk),
+    .holders-table :global(tbody th[scope='row']:not([colspan])) {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      min-width: 9rem;
+      max-width: 11rem;
+      padding-inline-end: var(--space-12);
+      background: var(--surface);
+    }
+
+    /*
+      The amount columns are narrow and of one width (HB-DC-1), so that the first of them, the column a wallet
+      below the first amount has marked, stands beside the sticky names with its figures in view.
+    */
+    .holders-table :global(table) {
+      --table-min: 33rem;
+    }
+
+    /* 6rem, so that the end padding of D3 leaves the figures the room 5.5rem gave them. */
+    .holders-table :global(:is(th, td):is(.c-t0, .c-t1, .c-t2, .c-t3)) {
+      width: 6rem;
+      min-width: 6rem;
+    }
+
+    /*
+      The sentence's cell has no inline padding of its own here (it is the row's first cell, and none of the
+      amount columns' classes), so the sentence's largest width is the wrapper's, which is the scroller's:
+      100cqi less that padding, which is 0 (revision 6, DC6-1).
+    */
+    .holders-table :global(.holders-sentence th) {
+      padding-inline: 0;
+    }
+
+    .holders-sentence-text {
+      display: block;
+      position: sticky;
+      left: 0;
+      max-width: 100cqi;
+    }
+  }
+
+  /* The wallet's own column on /account/token: a wash behind it, and its header in ink. */
+  .holders-table :global(td.holders-marked) {
+    background: var(--wash);
+    color: var(--ink);
+    font-weight: 600;
+  }
+</style>
