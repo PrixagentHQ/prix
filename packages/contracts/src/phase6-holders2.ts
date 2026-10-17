@@ -239,6 +239,41 @@ export const LOUNGE_GROUP_REQUESTS_DAY_MAX = 10_000;
 export const LOUNGE_SWEEP_JOBS_AHEAD = 6;
 export const SOCIAL_IDLE_READS_PER_JOB = 2;
 export const SOCIAL_STEP_SUBREQUESTS_MAX = 50;
+/**
+ * Revision 4 of this document (revision 7 of docs/contracts/phase-6-holders.md, R4, HB1F2-SEC-1): the jobs ahead
+ * of `poll_tally` in the entry's list (model_war, rank_tape, rivalry_match, strategy_dna, manager_value), each
+ * idle when `poll_tally` runs, booked at SOCIAL_IDLE_READS_PER_JOB each. A run of `poll_tally` that reached its
+ * reads answers `done` (`pollTallyStepAnswer`), so nothing behind it runs in that invocation, the sweep
+ * included; section 8 books its worst runs against SOCIAL_STEP_SUBREQUESTS_MAX.
+ */
+export const POLL_TALLY_JOBS_AHEAD = 5;
+/**
+ * Revision 5 of this document (revision 8 of docs/contracts/phase-6-holders.md, R8-3): the Durable Object calls
+ * of a `poll_tally` run. None: the run reads D1, its chain reader fetches, and nothing it calls is a Durable
+ * Object (the step itself runs inside the Clock object's alarm, which is not a call). Booked in section 8's one
+ * sum so that a build that adds one shows in it; perf counts them.
+ */
+export const POLL_TALLY_RUN_DO_CALLS = 0;
+/**
+ * Revision 5b of this document (R8-SEC-2): the invocation's own Durable Object calls ahead of the step. The Clock
+ * alarm (apps/api/src/index.ts) awaited start() on the four other clocks before runCron; platform stops that
+ * fan-out on the social clock (the social clock's alarm calls start() on no other clock; every other clock's alarm
+ * keeps its fan-out as it is, so the league clock is still restarted by four alarms; revision 8c, R8C-3), with a
+ * test pinning that the social alarm makes no Durable Object call, so the figure is 0. Without that change it
+ * would be 4, and the one sum alone would settle the cap one POLL_TALLY_PAGE lower (2,800); since revision 8c the
+ * keyless endpoints' block window binds the cap below either (1,600).
+ */
+export const CLOCK_ALARM_FANOUT_CALLS = 0;
+/**
+ * Cloudflare's limits pages, printed beside section 8's one sum for information only: the Workers limits page
+ * (https://developers.cloudflare.com/workers/platform/limits/, read 2026-10-16) "Subrequests per invocation |
+ * 50" (Free) for the run's external fetches, and the D1 limits page "Queries per Worker invocation" 50 on the
+ * Free plan (read 2026-10-16 at 21:12 UTC by the security reader, R8-SEC-2). Prix counts D1 statements,
+ * Durable Object calls and fetches of the whole alarm invocation in one sum against 50, and reads no figure of
+ * 1,000 for them. Gate 5 reads the one sum against SOCIAL_STEP_SUBREQUESTS_MAX.
+ */
+export const WORKERS_FREE_SUBREQUESTS_PER_INVOCATION = 50;
+export const D1_FREE_QUERIES_PER_INVOCATION = 50;
 /** D1 rows a member's row writes: its row and its two indexes. The daily mark rewrites the row and the due index. */
 export const LOUNGE_JOIN_WRITE_ROWS = 3;
 export const LOUNGE_MARK_WRITE_ROWS_PER_MEMBER = 3;
@@ -321,7 +356,9 @@ export type TelegramUpdateWithJoin = z.infer<typeof telegramUpdateWithJoinSchema
  * is neither changed nor run by this wave: the token and the secret are never typed on a command line. It is
  * no environment variable. HOLDERS_LOUNGE stays off until both waves have merged. Since revision 6 of
  * docs/contracts/phase-6-holders.md (R1, HB1F-SEC-1) `TelegramPort.setWebhook` takes
- * `allowedUpdates: readonly TelegramUpdateKind[]`, and the first wave's admin route sends this constant itself.
+ * `allowedUpdates: readonly TelegramUpdateKind[]`, and the first wave's admin route sends this constant itself;
+ * since its revision 7 (HB1F2-SEC-2) the list is a non-empty tuple, `readonly [TelegramUpdateKind,
+ * ...TelegramUpdateKind[]]`, which this constant satisfies.
  */
 export const TELEGRAM_ALLOWED_UPDATES = ['message', 'chat_join_request'] as const;
 /** One kind of update Telegram may deliver to the webhook: an item of TELEGRAM_ALLOWED_UPDATES (revision 6, R1). */

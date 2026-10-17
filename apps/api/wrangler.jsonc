@@ -95,9 +95,17 @@
     "ROOM_PICTURE_VIEWS_PER_DAY": "20000",
     // Phase 6.7, the holders' poll (docs/contracts/phase-6-holders.md section 4.6). The vote, /api/polls,
     // /api/polls/me and /api/polls/status are mounted only while this reads exactly "true". Off, they answer
-    // the generic 404; the admin's tally route and the poll_tally job run either way. It stays "false" until
-    // the gates of that contract's section 12 hold and the founder says go. infra/README.md section 19.
-    "POLLS_ENABLED": "false",
+    // the generic 404; the admin's tally route and the poll_tally job run either way (while it is not "true",
+    // a closed poll with no voter is not counted). It stays "false" until the gates of that contract's
+    // section 12 hold and the founder says go, and goes "true" only while the poll it is switched on for is open.
+    // infra/README.md section 19.
+    "POLLS_ENABLED": "true",
+    // Phase 6.7 (holders contract revision 8b, R8-SEC-1): "on" keeps poll_tally in the social step; anything
+    // else takes it out of the step's list alone (step_not_configured, poll_tally_job_off), and the admin's
+    // tally route stays as it is. The pair (POLLS_ENABLED, POLL_TALLY_JOB) is always one of the runbook's three
+    // states: ("false","on"), ("true","on"), ("false","off"). "off" always goes with POLLS_ENABLED "false" in
+    // the same edit and the same deploy, never ("true","off"). infra/README.md section 19.
+    "POLL_TALLY_JOB": "on",
     // Phase 6.8, the holders' second wave (docs/contracts/phase-6-holders-2.md section 5). Each stays off
     // until its gates of section 11 hold and the founder says go; infra/README.md section 21 is the order.
     // "true", with the room's own switches: the room's Holder mark and its caps of a day by tier (30, 60,

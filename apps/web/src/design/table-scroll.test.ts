@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cueShown, hiddenEdges, moreFollows, openScrollLeft, overflows } from './table-scroll.ts';
+import { cueShown, hiddenEdges, lengthPixels, moreFollows, openScrollLeft, overflows } from './table-scroll.ts';
 
 // The holders table at 360 pixels (docs/contracts/phase-6-holders.md section 2, revision 5, D2): a box of 328,
 // a table of 31rem (496), a sticky Feature column of 9rem (144) and four amount columns of 5.5rem (88).
@@ -70,6 +70,24 @@ describe('hiddenEdges and cueShown', () => {
   });
 });
 
+// The fade's width is read from `--table-fade`, whose computed value keeps its unit (`var(--space-16)` gives
+// "1rem"): the page passes the root's and the box's font sizes.
+describe('lengthPixels', () => {
+  it('reads pixels, rem and em', () => {
+    expect(lengthPixels('16px', 16, 16)).toBe(16);
+    expect(lengthPixels(' 1rem ', 16, 14)).toBe(16);
+    expect(lengthPixels('1rem', 20, 14)).toBe(20);
+    expect(lengthPixels('1.5em', 16, 14)).toBe(21);
+    expect(lengthPixels('0', 16, 16)).toBe(0);
+  });
+
+  it('reads anything else as no fade', () => {
+    for (const value of ['', 'var(--space-16)', 'calc(1rem + 2px)', '10%', 'auto', '-4px', 'NaNpx']) {
+      expect(lengthPixels(value, 16, 16)).toBe(0);
+    }
+  });
+});
+
 describe('openScrollLeft', () => {
   const max = TABLE - BOX;
 
@@ -101,6 +119,28 @@ describe('openScrollLeft', () => {
 
   it('puts the column at the box start when the first column is not sticky', () => {
     expect(openScrollLeft({ scrollLeft: 0, maxScroll: 400, columnStart: 300, stickyEnd: 0 })).toBe(300);
+  });
+
+  // R22 (DC7-2 of the holders round): /account/token at 390, tier 2, opened at 192 of 202. Tier 3 stood all
+  // but 10 pixels in view and the end fade dimmed its last glyphs. When less than the fade's width would be
+  // left to scroll, the box opens at its end, so an almost whole column is never dimmed.
+  it('opens at the end when less than the fade would be left to scroll', () => {
+    const near = { scrollLeft: 0, maxScroll: 202, columnStart: STICKY + 192, stickyEnd: STICKY };
+    expect(openScrollLeft({ ...near, fade: 16 })).toBe(202);
+    // 15.5 left after rounding to the pixel: still under the fade.
+    expect(openScrollLeft({ ...near, columnStart: STICKY + 186.5, fade: 16 })).toBe(202);
+    // Exactly the fade's width or more left: the column stands against the sticky column as before.
+    expect(openScrollLeft({ ...near, columnStart: STICKY + 186, fade: 16 })).toBe(186);
+    expect(openScrollLeft({ ...near, columnStart: STICKY + 100, fade: 16 })).toBe(100);
+    // With no fade width (`--table-fade` unreadable, or a caller that passes none) nothing changes.
+    expect(openScrollLeft({ ...near, fade: 0 })).toBe(192);
+    expect(openScrollLeft(near)).toBe(192);
+  });
+
+  it('never opens a box that cannot scroll, nor one left at its start, at its end for the fade', () => {
+    expect(openScrollLeft({ scrollLeft: 0, maxScroll: 0, columnStart: STICKY, stickyEnd: STICKY, fade: 16 })).toBe(0);
+    // A box that can scroll less than the fade, opened at its first column, stays at its start.
+    expect(openScrollLeft({ scrollLeft: 0, maxScroll: 10, columnStart: STICKY, stickyEnd: STICKY, fade: 16 })).toBe(0);
   });
 
   it('never scrolls below zero or when nothing overflows, and rounds to a whole pixel', () => {

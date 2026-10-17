@@ -1,5 +1,5 @@
 // The operator's check of the holders' second wave (phase6-holders2.ts, docs/contracts/phase-6-holders-2.md),
-// revision 3 (Phase 6.8). It pins every pure rule of the file with its cases, computes every figure of the document's
+// revision 5 (Phase 6.8). It pins every pure rule of the file with its cases, computes every figure of the document's
 // section 8 from the constants and fails when the table prints a value it did not compute, and runs every
 // sentence of the wave (the page words, the direct messages, the lounge's description) through
 // `isSocialSafeText` and the wave's own word rules. One line a case; exit 1 on any surprise.
@@ -8,6 +8,29 @@
 import { TIER_RULES } from './entitlements.ts';
 import { TOKEN_CACHE_SECONDS, TOKEN_STALE_GRACE_SECONDS, type TokenService } from './phase4-token.ts';
 import {
+  POLL_MAX_VOTERS,
+  POLL_MAX_VOTERS_FLOOR,
+  POLL_PRUNE_AT,
+  POLL_PRUNE_RUN_STATEMENTS_BEHIND_WAITING_MAX,
+  POLL_PRUNE_RUN_STATEMENTS_MAX,
+  POLL_PURGE_MAX_POLLS,
+  POLL_TALLY_FETCH_LATENCY_MS,
+  POLL_TALLY_IDLE_STATEMENTS_MAX,
+  POLL_TALLY_MAX_CHAIN_READS,
+  POLL_TALLY_MAX_FETCHES,
+  POLL_TALLY_MAX_RUN_SECONDS,
+  POLL_TALLY_PAGE,
+  POLL_TALLY_RUN_CONFIG_READS,
+  POLL_TALLY_RUN_STATEMENTS_BEHIND_WAITING_MAX,
+  POLL_TALLY_RUN_STATEMENTS_MAX,
+  POLL_TALLY_WAITING_POLL_STATEMENTS,
+  POLL_TALLY_WAITING_STATEMENTS,
+  pollTallyStepAnswer,
+  pollTallyWorstReadMs,
+} from './phase6-holders.ts';
+import {
+  CLOCK_ALARM_FANOUT_CALLS,
+  D1_FREE_QUERIES_PER_INVOCATION,
   HOLDERS2_MIN_TIER,
   HOLDERS2_PAGE_WORDS,
   type HoldersGate,
@@ -43,6 +66,8 @@ import {
   loungeSweepHour,
   loungeSweepMarks,
   loungeSweepVerdict,
+  POLL_TALLY_JOBS_AHEAD,
+  POLL_TALLY_RUN_DO_CALLS,
   ROOM_WALLET_DAY_CAP_BY_TIER,
   type RoomHoldingWithTier,
   roomHolderMark,
@@ -60,6 +85,7 @@ import {
   tapeResponseSchema,
   tapeViewOf,
   telegramUpdateWithJoinSchema,
+  WORKERS_FREE_SUBREQUESTS_PER_INVOCATION,
 } from './phase6-holders2.ts';
 import {
   ROOM_MESSAGES_PER_DAY_DEFAULT,
@@ -539,7 +565,221 @@ check(
   stepSubrequests <= SOCIAL_STEP_SUBREQUESTS_MAX && SOCIAL_STEP_SUBREQUESTS_MAX === 50,
   true,
 );
+// Revision 5f (with revision 8f of phase-6-holders.md, R8E-SEC-4): a run of poll_tally that answers idle from a
+// waiting tally (F3) made POLL_TALLY_WAITING_STATEMENTS statements, which the sweep's sum books in place of two.
+// Revision 5g (with revision 8g of phase-6-holders.md, H3, R8F-SEC-2): since the fall-through, the worst idle run
+// passes up to POLL_PURGE_MAX_POLLS waiting polls (two statements each, the configuration's read once a run), the
+// purge's empty tries taking a waiting poll's place, and castCounts: POLL_TALLY_IDLE_STATEMENTS_MAX, booked in
+// place of two.
+const idleRunMax = 1 + 1 + POLL_TALLY_RUN_CONFIG_READS + 2 * POLL_PURGE_MAX_POLLS + 1;
+const stepSubrequestsBehindWaiting =
+  sweepSubrequests + (LOUNGE_SWEEP_JOBS_AHEAD - 1) * SOCIAL_IDLE_READS_PER_JOB + POLL_TALLY_IDLE_STATEMENTS_MAX;
+check(
+  "a waiting poll_tally run's statements: the job's results read, the skip gate, the tally's results read, the configuration's read and the first listVoters page (R8E-SEC-4)",
+  POLL_TALLY_WAITING_STATEMENTS === 1 + 1 + 1 + POLL_TALLY_RUN_CONFIG_READS + 1 && POLL_TALLY_WAITING_STATEMENTS === 5,
+  true,
+);
+check(
+  "the worst idle poll_tally run once a waiting answer falls through: the job's results read, the skip gate, the configuration's read, two for each waiting poll of at most POLL_PURGE_MAX_POLLS, castCounts (R8F-SEC-2)",
+  [POLL_TALLY_IDLE_STATEMENTS_MAX, idleRunMax, POLL_TALLY_WAITING_POLL_STATEMENTS],
+  [10, 10, 2],
+);
+check(
+  'the step subrequests when the sweep runs behind the worst idle poll_tally, 48 within 50 (R8F-SEC-2, PF5-SEC-3)',
+  [stepSubrequestsBehindWaiting, stepSubrequestsBehindWaiting <= SOCIAL_STEP_SUBREQUESTS_MAX],
+  [48, true],
+);
 check('job name is the last of the schema', socialJobNameSchema.options.at(-1), 'holders_lounge_sweep');
+// Revision 4 (with revision 7 of phase-6-holders.md, R4, HB1F2-SEC-1): poll_tally's worst non-idle runs. A run
+// that reached its reads answers done, so the step ends with it and nothing behind it runs in that invocation.
+// Revision 5 (revision 8 of phase-6-holders.md, R8-2 and R8-3): ONE sum for each worst run with one endpoint down,
+// D1 statements (the idle jobs ahead and the run's own), Durable Object calls and fetches; nothing for the jobs
+// behind, which do not run in that invocation. The sums are computed at any cap of voters, so that the step down
+// from revision 7's 4,000 is the check's and not a hand sum.
+const pollIdleAhead = POLL_TALLY_JOBS_AHEAD * SOCIAL_IDLE_READS_PER_JOB;
+const pollJobsBehind = 0;
+// Revision 5b (R8-SEC-2, R8B-1): the whole alarm invocation, from the entry of Clock.alarm(): the clock fan-out's
+// Durable Object calls ahead of the step and the token configuration's read inside the run's statements.
+const pollSumsAt = (maxVoters: number, fanout: number = CLOCK_ALARM_FANOUT_CALLS) => {
+  const pages = maxVoters / POLL_TALLY_PAGE + 1;
+  const reads = maxVoters / POLL_TALLY_PAGE + 1;
+  // R8-2: two fetches a read, and one for the fetch that found the endpoint down.
+  const fetches = 2 * reads + 1;
+  // The job's results read, the skip gate, tallyPoll's results read, the config read, the pages, 4 result rows,
+  // the clear.
+  const tallyStatements = 1 + 1 + 1 + POLL_TALLY_RUN_CONFIG_READS + pages + 4 + 1;
+  // The job's results read, the skip gate, the purge's tries, the config read, castCounts, the pages, the batch
+  // of 2, the clear.
+  const pruneStatements = 1 + 1 + POLL_PURGE_MAX_POLLS + POLL_TALLY_RUN_CONFIG_READS + 1 + pages + 2 + 1;
+  const tally = fanout + pollIdleAhead + tallyStatements + POLL_TALLY_RUN_DO_CALLS + fetches + pollJobsBehind;
+  const prune = fanout + pollIdleAhead + pruneStatements + POLL_TALLY_RUN_DO_CALLS + fetches + pollJobsBehind;
+  // Revision 5g (revision 8g of phase-6-holders.md, H3, R8F-SEC-2, F8F-B3 (iii)): the same runs behind the waiting
+  // polls a run may pass first. No POLL_WATCH_DAYS window holds more than POLL_PURGE_MAX_POLLS closes, so a tally
+  // passes at most POLL_PURGE_MAX_POLLS - 1 waiting polls (two statements each), and a prune passes w waiting polls
+  // and tries at most POLL_PURGE_MAX_POLLS - w counted ones (worst at w = POLL_PURGE_MAX_POLLS).
+  let tallyStatementsBehindWaiting = 0;
+  for (let w = 0; w <= POLL_PURGE_MAX_POLLS - 1; w += 1) {
+    tallyStatementsBehindWaiting = Math.max(tallyStatementsBehindWaiting, tallyStatements + 2 * w);
+  }
+  let pruneStatementsBehindWaiting = 0;
+  for (let w = 0; w <= POLL_PURGE_MAX_POLLS; w += 1) {
+    const counted = POLL_PURGE_MAX_POLLS - w;
+    pruneStatementsBehindWaiting = Math.max(
+      pruneStatementsBehindWaiting,
+      pruneStatements - POLL_PURGE_MAX_POLLS + counted + 2 * w,
+    );
+  }
+  const tallyBehindWaiting =
+    fanout + pollIdleAhead + tallyStatementsBehindWaiting + POLL_TALLY_RUN_DO_CALLS + fetches + pollJobsBehind;
+  const pruneBehindWaiting =
+    fanout + pollIdleAhead + pruneStatementsBehindWaiting + POLL_TALLY_RUN_DO_CALLS + fetches + pollJobsBehind;
+  return {
+    tally,
+    prune,
+    fetches,
+    tallyStatements,
+    pruneStatements,
+    tallyStatementsBehindWaiting,
+    pruneStatementsBehindWaiting,
+    tallyBehindWaiting,
+    pruneBehindWaiting,
+  };
+};
+const atCap = pollSumsAt(POLL_MAX_VOTERS);
+const atRevision7 = pollSumsAt(4_000);
+const atRevision8 = pollSumsAt(3_600);
+// R8-3: from 4,000, POLL_MAX_VOTERS and POLL_PRUNE_AT come down by POLL_TALLY_PAGE until both sums fit.
+// Revision 8c (CR8B-1, C1): and until the 429 case and the never-answering case fit the run's seconds.
+const sumsFit = (cap: number, fanout: number) =>
+  pollSumsAt(cap, fanout).tally <= SOCIAL_STEP_SUBREQUESTS_MAX &&
+  pollSumsAt(cap, fanout).prune <= SOCIAL_STEP_SUBREQUESTS_MAX;
+// Revision 5d (revision 8d of phase-6-holders.md, D4, R8C-SEC-3): and the slow-answering case; the latency is the
+// constant unless the operator's measured mean is passed (D5, R8C-SEC-2).
+const timeFits = (cap: number, latencyMs: number = POLL_TALLY_FETCH_LATENCY_MS) =>
+  pollTallyWorstReadMs(cap, latencyMs).rateLimited <= POLL_TALLY_MAX_RUN_SECONDS * 1_000 &&
+  pollTallyWorstReadMs(cap, latencyMs).neverAnswering <= POLL_TALLY_MAX_RUN_SECONDS * 1_000 &&
+  pollTallyWorstReadMs(cap, latencyMs).slowAnswering <= POLL_TALLY_MAX_RUN_SECONDS * 1_000 &&
+  // Revision 5e (revision 8e of phase-6-holders.md, F1, CR8D-1): and a third party's slow tail.
+  pollTallyWorstReadMs(cap, latencyMs).thirdPartyTail <= POLL_TALLY_MAX_RUN_SECONDS * 1_000;
+// Revision 5d (D5, R8C-SEC-5): the step down never settles below POLL_MAX_VOTERS_FLOOR; null when no step at or
+// above it fits, which holds the switch.
+// Revision 5g (H3, R8F-SEC-2): the cap that decides also needs the runs behind waiting polls to fit 50.
+const waitingFits = (cap: number, fanout: number) =>
+  pollSumsAt(cap, fanout).tallyBehindWaiting <= SOCIAL_STEP_SUBREQUESTS_MAX &&
+  pollSumsAt(cap, fanout).pruneBehindWaiting <= SOCIAL_STEP_SUBREQUESTS_MAX;
+const fitFrom = (fanout: number, withTime: boolean, latencyMs: number = POLL_TALLY_FETCH_LATENCY_MS): number => {
+  let cap = 4_000;
+  while (cap > 0 && (!sumsFit(cap, fanout) || (withTime && (!timeFits(cap, latencyMs) || !waitingFits(cap, fanout))))) {
+    cap -= POLL_TALLY_PAGE;
+  }
+  return cap;
+};
+const fitAtFloor = (latencyMs: number = POLL_TALLY_FETCH_LATENCY_MS): number | null => {
+  const cap = fitFrom(CLOCK_ALARM_FANOUT_CALLS, true, latencyMs);
+  return cap >= POLL_MAX_VOTERS_FLOOR ? cap : null;
+};
+const fitted = fitAtFloor();
+const fittedBySumAlone = fitFrom(CLOCK_ALARM_FANOUT_CALLS, false);
+const fittedWithFanout = fitFrom(4, false);
+check(
+  'a step at or above POLL_MAX_VOTERS_FLOOR fits (D5, R8C-SEC-5)',
+  fitted !== null && fitted >= POLL_MAX_VOTERS_FLOOR,
+  true,
+);
+check(
+  'at a measured mean of 450 ms a fetch no step at or above the floor fits, so the switch holds (D5, R8C-SEC-5)',
+  [fitAtFloor(450), fitFrom(CLOCK_ALARM_FANOUT_CALLS, true, 450), fitAtFloor(437)],
+  [null, 800, 1_200],
+);
+check(
+  'the slow-answering case fits at the cap and binds no lower than the never-answering case (D4, R8C-SEC-3)',
+  [
+    pollTallyWorstReadMs(POLL_MAX_VOTERS).slowAnswering,
+    pollTallyWorstReadMs(POLL_MAX_VOTERS).slowAnswering <= pollTallyWorstReadMs(POLL_MAX_VOTERS).neverAnswering,
+  ],
+  [3_900, true],
+);
+check(
+  "a third party's slow tail fits at the cap, 4,500 of 5,000, and the step down fits it (F1, CR8D-1)",
+  [
+    pollTallyWorstReadMs(POLL_MAX_VOTERS).thirdPartyTail,
+    POLL_TALLY_MAX_RUN_SECONDS * 1_000,
+    timeFits(POLL_MAX_VOTERS),
+    // The sum is the never-answering case's at every latency, so it binds no lower than that case.
+    [300, 350, 437, 450].every(
+      (latencyMs) =>
+        pollTallyWorstReadMs(POLL_MAX_VOTERS, latencyMs).thirdPartyTail ===
+        pollTallyWorstReadMs(POLL_MAX_VOTERS, latencyMs).neverAnswering,
+    ),
+  ],
+  [4_500, 5_000, true, true],
+);
+check('the social alarm makes no Durable Object call ahead of the step (R8-SEC-2)', CLOCK_ALARM_FANOUT_CALLS, 0);
+check(
+  'the cap by the one sum alone if the social alarm still started the four other clocks (R8-SEC-2)',
+  fittedWithFanout,
+  2_800,
+);
+check('the cap by the one sum alone (CR8B-1: the window binds below it)', fittedBySumAlone, 3_200);
+check(
+  'the worst reads at the cap: the 429 case and the never-answering case, of the run milliseconds (CR8B-1)',
+  [
+    pollTallyWorstReadMs(POLL_MAX_VOTERS).rateLimited,
+    pollTallyWorstReadMs(POLL_MAX_VOTERS).neverAnswering,
+    POLL_TALLY_MAX_RUN_SECONDS * 1_000,
+  ],
+  [3_300, 4_500, 5_000],
+);
+check(
+  'poll_tally sits behind five jobs, the sweep behind those five and poll_tally',
+  POLL_TALLY_JOBS_AHEAD === LOUNGE_SWEEP_JOBS_AHEAD - 1,
+  true,
+);
+check('a poll_tally run that reached its reads ends the step', pollTallyStepAnswer('idle', true), 'done');
+check('a poll_tally run that failed after its reads ends the step', pollTallyStepAnswer('failed', true), 'done');
+check('a poll_tally run before its reads keeps idle', pollTallyStepAnswer('idle', false), 'idle');
+check(
+  'the one sum uses the exported statements and fetch cap (R8-2, R8-3)',
+  atCap.tallyStatements === POLL_TALLY_RUN_STATEMENTS_MAX &&
+    atCap.pruneStatements === POLL_PRUNE_RUN_STATEMENTS_MAX &&
+    atCap.fetches === POLL_TALLY_MAX_FETCHES &&
+    atCap.fetches === 2 * POLL_TALLY_MAX_CHAIN_READS + 1,
+  true,
+);
+check('the worst tally step with one endpoint down', atCap.tally, 35);
+check('the worst prune step with one endpoint down', atCap.prune, 36);
+check(
+  'the worst tally and prune runs behind waiting polls, their statements from the exported constants and their one sums, 39 and 39 within 50 (R8F-SEC-2, F8F-B3)',
+  [
+    atCap.tallyStatementsBehindWaiting,
+    POLL_TALLY_RUN_STATEMENTS_BEHIND_WAITING_MAX,
+    atCap.pruneStatementsBehindWaiting,
+    POLL_PRUNE_RUN_STATEMENTS_BEHIND_WAITING_MAX,
+    atCap.tallyBehindWaiting,
+    atCap.pruneBehindWaiting,
+    waitingFits(POLL_MAX_VOTERS, CLOCK_ALARM_FANOUT_CALLS),
+  ],
+  [18, 18, 18, 18, 39, 39, true],
+);
+check(
+  'both within the step 50',
+  atCap.tally <= SOCIAL_STEP_SUBREQUESTS_MAX && atCap.prune <= SOCIAL_STEP_SUBREQUESTS_MAX,
+  true,
+);
+check('at revision 7 4,000 voters the sums are over 50', [atRevision7.tally, atRevision7.prune], [53, 54]);
+check('at revision 8 3,600 voters the sums are 50 and 51 (R8B-1)', [atRevision8.tally, atRevision8.prune], [50, 51]);
+check(
+  'R8-3, CR8B-1, CR8B-2: the cap is the first step down from 4,000 at which both sums and both worst reads fit, and the prune one page below it',
+  [fitted, POLL_MAX_VOTERS, POLL_PRUNE_AT, POLL_MAX_VOTERS - POLL_TALLY_PAGE],
+  [1_600, 1_600, 1_200, 1_200],
+);
+check('the run calls no Durable Object', POLL_TALLY_RUN_DO_CALLS, 0);
+const d1Statements = pollIdleAhead + Math.max(POLL_TALLY_RUN_STATEMENTS_MAX, POLL_PRUNE_RUN_STATEMENTS_MAX);
+check(
+  'for information: fetches against Workers "Subrequests per invocation" (50, Free), D1 statements against D1 "Queries per Worker invocation" (50, Free)',
+  [atCap.fetches <= WORKERS_FREE_SUBREQUESTS_PER_INVOCATION, d1Statements <= D1_FREE_QUERIES_PER_INVOCATION],
+  [true, true],
+);
 const figures: Record<string, string> = {
   'Messages a day by tier': ROOM_WALLET_DAY_CAP_BY_TIER.join(', '),
   "The room's cap of a day, unchanged": grouped(ROOM_MESSAGES_PER_DAY_DEFAULT),
@@ -553,6 +793,22 @@ const figures: Record<string, string> = {
   'Subrequests of a sweep run at most': String(sweepSubrequests),
   'Idle reads of the jobs ahead of the sweep, booked': String(idleReadsAhead),
   'Subrequests of the social step when the sweep runs, at most': String(stepSubrequests),
+  'Statements of a poll_tally run that answers idle from a waiting tally': String(POLL_TALLY_WAITING_STATEMENTS),
+  'Statements of a poll_tally run that answers idle once a waiting answer falls through, at most': String(idleRunMax),
+  'Subrequests of the social step when the sweep runs behind a waiting poll_tally, at most':
+    String(stepSubrequestsBehindWaiting),
+  "Statements of poll_tally's worst tally run behind waiting polls with the guard's clear": String(
+    atCap.tallyStatementsBehindWaiting,
+  ),
+  "Statements of poll_tally's worst prune run behind waiting polls with the guard's clear": String(
+    atCap.pruneStatementsBehindWaiting,
+  ),
+  'Subrequests of the social step when poll_tally tallies behind waiting polls with one endpoint down, at most': String(
+    atCap.tallyBehindWaiting,
+  ),
+  'Subrequests of the social step when poll_tally prunes behind waiting polls with one endpoint down, at most': String(
+    atCap.pruneBehindWaiting,
+  ),
   'Sweep runs for a full lounge': String(runsForFullLounge),
   'D1 rows a join writes': String(LOUNGE_JOIN_WRITE_ROWS),
   "D1 rows of a day's marks at the cap": grouped(markRowsADay),
@@ -565,6 +821,33 @@ const figures: Record<string, string> = {
   LOUNGE_FULL_MARKED_DAYS: String(LOUNGE_FULL_MARKED_DAYS),
   'Slow Mode in the Community group, seconds': String(LOUNGE_SLOW_MODE_SECONDS),
   "The group's requests of prix-api a day before the switch goes back off": grouped(LOUNGE_GROUP_REQUESTS_DAY_MAX),
+  'Jobs ahead of poll_tally, each idle': String(POLL_TALLY_JOBS_AHEAD),
+  'Idle reads of the jobs ahead of poll_tally, booked': String(pollIdleAhead),
+  "Statements of poll_tally's worst tally run with the guard's clear": String(POLL_TALLY_RUN_STATEMENTS_MAX),
+  "Statements of poll_tally's worst prune run with the guard's clear": String(POLL_PRUNE_RUN_STATEMENTS_MAX),
+  'Durable Object calls of a poll_tally run': String(POLL_TALLY_RUN_DO_CALLS),
+  "Durable Object calls of the social clock's alarm ahead of the step": String(CLOCK_ALARM_FANOUT_CALLS),
+  'Token configuration reads of a poll_tally run, in its statements': String(POLL_TALLY_RUN_CONFIG_READS),
+  'Fetches of the chain in a poll_tally run with one endpoint down, at most': String(atCap.fetches),
+  'Subrequests of the social step when poll_tally tallies with one endpoint down, at most': String(atCap.tally),
+  'Subrequests of the social step when poll_tally prunes with one endpoint down, at most': String(atCap.prune),
+  "Subrequests left to room_picture_sweep and room_prune after poll_tally's worst tally run, unused": String(
+    SOCIAL_STEP_SUBREQUESTS_MAX - atCap.tally,
+  ),
+  "Subrequests left to room_picture_sweep and room_prune after poll_tally's worst prune run, unused": String(
+    SOCIAL_STEP_SUBREQUESTS_MAX - atCap.prune,
+  ),
+  "The same two sums at revision 7's 4,000 voters, tally and prune": `${atRevision7.tally}, ${atRevision7.prune}`,
+  "The same two sums at revision 8's 3,600 voters, tally and prune": `${atRevision8.tally}, ${atRevision8.prune}`,
+  'The cap of voters by the one sum alone if the social alarm still started the four other clocks':
+    grouped(fittedWithFanout),
+  'The cap of voters by the one sum alone': grouped(fittedBySumAlone),
+  "Milliseconds of reads of poll_tally's worst run at the cap, the 429 case and never answering, of the run's": `${grouped(pollTallyWorstReadMs(POLL_MAX_VOTERS).rateLimited)}, ${grouped(pollTallyWorstReadMs(POLL_MAX_VOTERS).neverAnswering)} of ${grouped(POLL_TALLY_MAX_RUN_SECONDS * 1_000)}`,
+  "Milliseconds of reads of poll_tally's worst run at the cap with one endpoint answering slowly, of the run's": `${grouped(pollTallyWorstReadMs(POLL_MAX_VOTERS).slowAnswering)} of ${grouped(POLL_TALLY_MAX_RUN_SECONDS * 1_000)}`,
+  "Milliseconds of reads of poll_tally's worst run at the cap with one third party's answer just under the timeout, of the run's": `${grouped(pollTallyWorstReadMs(POLL_MAX_VOTERS).thirdPartyTail)} of ${grouped(POLL_TALLY_MAX_RUN_SECONDS * 1_000)}`,
+  'The cap of voters, never settled below': grouped(POLL_MAX_VOTERS_FLOOR),
+  'Fetches of poll_tally\'s worst run against the Workers limit "Subrequests per invocation" (Free), for information': `${atCap.fetches} of ${WORKERS_FREE_SUBREQUESTS_PER_INVOCATION}`,
+  'D1 statements of the invocation with poll_tally\'s worst run against the D1 limit "Queries per Worker invocation" (Free), for information': `${d1Statements} of ${D1_FREE_QUERIES_PER_INVOCATION}`,
 };
 /** Node's own process and file reader, reached without Node's types (the package has none), as phase6-coach.check.mts does. */
 const runtime = (
@@ -589,6 +872,44 @@ for (const [name, value] of Object.entries(figures)) {
 for (const [key, text] of Object.entries(HOLDERS2_PAGE_WORDS)) {
   check(`document prints ${key}`, doc.includes(`\`${key}\``) && doc.includes(text), true);
 }
+// Revision 5: the booking prints the one sum of each worst run, says they fit, and holds POLLS_ENABLED until
+// perf's figures stand inside it; revision 4's figures at the old fetch cap are gone; gate 4 holds the lounge's
+// two conditions.
+check(
+  'the document prints the one sum of each worst run and holds POLLS_ENABLED on it (R8-3)',
+  doc.includes(
+    `**The worst tally run is then ${atCap.tally} and the worst prune run ${atCap.prune}, inside the step's 50.**`,
+  ) &&
+    doc.includes(
+      '**The one sum (revision 5, with revision 8 of docs/contracts/phase-6-holders.md, R8-2 and R8-3, PT-FETCH-1).**',
+    ) &&
+    doc.includes('`POLLS_ENABLED` stays "false" until perf\'s figures') &&
+    !doc.includes('at the fetch cap, at most |') &&
+    !doc.includes('and the endpoints answer, at most |'),
+  true,
+);
+check(
+  "gate 4 holds the lounge's two conditions (R4, HB1F-SEC-3), and the document is at revision 5",
+  doc.includes('**Before `HOLDERS_LOUNGE` is "on" (revision 4,') &&
+    doc.includes('compares `allowed_updates` with `TELEGRAM_ALLOWED_UPDATES`, not only the url') &&
+    doc.includes('## 14. Revision 4') &&
+    doc.includes('## 15. Revision 5') &&
+    doc.startsWith("# Phase 6.8: the holders' second wave (contract, revision 5)"),
+  true,
+);
+check(
+  "section 8 books the worst idle poll_tally run at POLL_TALLY_IDLE_STATEMENTS_MAX in the sweep's sum, 48 of 50, in place of revision 5f's sentence, and the header names revisions 5f and 5g (R8F-SEC-2)",
+  doc.includes(
+    "and when it answers `idle` from a `waiting` tally (phase-6-holders.md section 5 step 2, revision 8e F3) at `POLL_TALLY_IDLE_STATEMENTS_MAX` (10), the worst idle run once a `waiting` answer falls through (revision 8f, R8E-SEC-3) and the purge's empty tries and `castCounts` follow it, which the sweep's sum books in place of two: 48 of 50",
+  ) &&
+    !doc.includes(
+      "at `POLL_TALLY_WAITING_STATEMENTS` (the job's results read, the skip gate, the tally's results read, the configuration's read and the first `listVoters` page: 5), which the sweep's sum books in place of two",
+    ) &&
+    doc.includes('**Revision 5g (with revision 8g of phase-6-holders.md, H3: R8F-SEC-2, PF5-SEC-3, F8F-B3 (iii))') &&
+    doc.includes('revision 5f on 2026-10-17, with revision 8f of docs/contracts/phase-6-holders.md') &&
+    doc.includes('revision 5g on 2026-10-17, with revision 8g of docs/contracts/phase-6-holders.md'),
+  true,
+);
 
 console.log(failures === 0 ? 'ALL OK' : `${failures} FAILED`);
 runtime?.exit(failures === 0 ? 0 : 1);

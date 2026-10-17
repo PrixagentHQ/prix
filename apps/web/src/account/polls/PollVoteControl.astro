@@ -6,7 +6,9 @@
 // the current choice and `polls.changeNote`; `polls.needTokens`; `polls.gateOff`; `polls.signIn`. Until the
 // answer is there, the buttons are hidden and nothing claims a state.
 //
-// The page grants nothing: the server decides every vote (section 4.3), and a refusal shows its own sentence.
+// The page grants nothing: the server decides every vote (section 4.3), and a refusal shows its own sentence,
+// under the row of the option that was pressed (POLL-DC-1): the templates below are copied there by vote.ts.
+// The state line beneath the options keeps the steady sentences, and the outlet says "Vote saved.".
 import { formatCount } from '../../content/format.ts';
 import { text } from '../../content/index.ts';
 import Button from '../../design/Button.astro';

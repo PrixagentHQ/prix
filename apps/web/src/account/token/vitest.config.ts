@@ -20,6 +20,8 @@ export default getViteConfig(
     test: {
       root,
       include: ['token/**/*.test.ts', 'polls/**/*.test.ts', 'admin/holders/**/*.test.ts'],
+      // The vote control in a browser has its own config (polls/vitest.browser.config.ts): fixtures on.
+      exclude: ['polls/browser.test.ts', '**/node_modules/**'],
       environment: 'node',
       testTimeout: 60_000,
     },

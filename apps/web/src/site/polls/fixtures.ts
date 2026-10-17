@@ -89,8 +89,13 @@ export function pollsFixtureSwitch(url: URL): PollsSwitch {
   return 'on';
 }
 
+/**
+ * The read in a fixture build. On /polls it follows `?state=`; on any other page (/token's own `?state=` is the
+ * token's) it follows `?pollstate=`, open by default, so /token can show the poll open, closed or none open.
+ */
 export function pollsFixtureRead(url: URL): PollsRead {
-  const state = url.searchParams.get('state') ?? 'open';
+  const onPolls = /^\/polls\/?$/.test(url.pathname);
+  const state = url.searchParams.get(onPolls ? 'state' : 'pollstate') ?? 'open';
   if (state === 'error') return { ok: false, status: 502 };
   const data = Object.hasOwn(states, state) ? states[state] : states.open;
   return data ? { ok: true, data } : { ok: false, status: 502 };

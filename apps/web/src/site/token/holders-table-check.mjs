@@ -14,6 +14,9 @@
 //   - DC6-4: the sticky row names keep at least --space-12 between their last letter and their cell's end
 //     edge, where whatever scrolls beside them (the marked column's wash among it) begins;
 //   - the page does not scroll sideways.
+// And at 360, 390, 768, 1024 and 1440 pixels (POLL-DC-4, after DC7-1), on the same pages: every column's note
+// keeps "From {amount}" (or "Below {amount}") whole on one line, and on /account/token the marked column's
+// note is two lines, the amount and then the wallet's words on a line of their own, with no middle dot.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
@@ -26,13 +29,16 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(origin).hostname)) {
   throw new Error('This check reads a local sample build only.');
 }
 
-const WIDTHS = [360, 390];
+const WIDTHS = [360, 390, 768, 1024, 1440];
+/** The widths where the table scrolls inside its own box, which the DC6 checks are about. */
+const NARROW = [360, 390];
 /** The sample build's answers (apps/web/src/site/token/fixtures.ts, apps/web/src/account/token/fixtures.ts). */
 const PAGES = [
   { name: '/token signed out', path: '/token?state=flagOn' },
   ...[0, 1, 2, 3].map((tier) => ({
     name: `/account/token at tier ${tier}`,
     path: `/account/token?fixture=signed-in&tokenfixture=tier${tier}`,
+    marked: true,
   })),
 ];
 /** Half a pixel for sub-pixel layout. */
@@ -92,10 +98,40 @@ function read(position) {
       };
     });
 
+  // POLL-DC-4: each column's header note, line by line as laid out: each character's line is the top of its own
+  // box, and a space joins the words of a line. White space at a line's end has no box worth reading.
+  const linesOf = (note) => {
+    const node = note.firstChild;
+    const chars = node?.textContent ?? '';
+    const rows = new Map();
+    for (let index = 0; index < chars.length; index += 1) {
+      const char = chars[index];
+      if (char === '\n') continue;
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + 1);
+      const box = range.getClientRects()[0];
+      if (!box || (/\s/.test(char) && box.width === 0)) continue;
+      const top = Math.round(box.top);
+      rows.set(top, `${rows.get(top) ?? ''}${char}`);
+    }
+    return [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line.trim());
+  };
+  const markTier = region.closest('.holders-table')?.getAttribute('data-mark-tier') ?? null;
+  const notes = [...region.querySelectorAll('thead th')]
+    .filter((cell) => cell.querySelector('.table-note'))
+    .map((cell) => ({
+      column: [...cell.classList].find((name) => /^c-t\d$/.test(name)) ?? '',
+      lines: linesOf(cell.querySelector('.table-note')),
+    }));
+  const markedLines = markTier === null ? null : (notes.find((note) => note.column === `c-t${markTier}`)?.lines ?? []);
+
   return {
     left,
     right,
     width: region.clientWidth,
+    notes,
+    markedLines,
     scrollLeft: region.scrollLeft,
     sentences,
     names,
@@ -128,6 +164,28 @@ try {
         const label = `${target.name} at ${width}, ${position}`;
         check(seen !== null, `${label}: the table is there`);
         if (!seen) continue;
+        if (position === 'opened') {
+          // POLL-DC-4 at every width.
+          check(seen.notes.length === 4, `${label}: four amount columns carry a note`, String(seen.notes.length));
+          for (const note of seen.notes) {
+            check(
+              /^(From|Below) [\d,]+$/.test(note.lines[0] ?? ''),
+              `${label}: ${note.column}'s "From {amount}" stays whole on its first line (POLL-DC-4)`,
+              note.lines.join(' / '),
+            );
+          }
+          if (target.marked) {
+            const lines = seen.markedLines ?? [];
+            check(
+              lines.length === 2 && /^(From|Below) [\d,]+$/.test(lines[0] ?? '') && lines[1] === 'your wallet',
+              `${label}: the wallet's words stand whole on a line of their own beneath the amount (POLL-DC-4)`,
+              lines.join(' / '),
+            );
+            check(!lines.join('').includes('·'), `${label}: the marked note has no middle dot (POLL-DC-4)`);
+          }
+          check(!seen.pageScrolls, `${label}: the page does not scroll sideways`);
+        }
+        if (!NARROW.includes(width)) continue;
         check(seen.sentences.length >= 2, `${label}: the sentence rows are there`, String(seen.sentences.length));
         for (const s of seen.sentences) {
           const inside =

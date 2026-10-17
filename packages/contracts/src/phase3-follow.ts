@@ -380,12 +380,14 @@ export interface TelegramPort {
   /**
    * Telegram's `setWebhook`; true when Telegram answered ok. Never throws. Revision 6 of the holders contract
    * (R1, HB1F-SEC-1): `allowedUpdates` is any list of `TelegramUpdateKind`, passed through as `allowed_updates`;
-   * the admin route sends `TELEGRAM_ALLOWED_UPDATES` (phase6-holders2.ts) and nothing else.
+   * the admin route sends `TELEGRAM_ALLOWED_UPDATES` (phase6-holders2.ts) and nothing else. Revision 7
+   * (HB1F2-SEC-2): the list is a non-empty tuple, because Telegram reads `allowed_updates: []` as almost every
+   * update type; an empty list does not compile.
    */
   setWebhook(input: {
     url: string;
     secretToken: string;
-    allowedUpdates: readonly TelegramUpdateKind[];
+    allowedUpdates: readonly [TelegramUpdateKind, ...TelegramUpdateKind[]];
     dropPendingUpdates: true;
   }): Promise<boolean>;
   /** Telegram's `getWebhookInfo`, reduced to the three fields the founder pastes back; null on any failure. Never throws. */

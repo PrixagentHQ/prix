@@ -203,6 +203,11 @@ export const links = {
    * this site, and the footer links it in the same tab. Added on 2026-10-14 (D-146).
    */
   forehead: 'https://forehead.prixagent.com',
+  /**
+   * The Prix Community group on Telegram: an invite link, public on purpose, given by the founder on
+   * 2026-10-16. The header links it beside X and GitHub, and the footer names it before X.
+   */
+  telegram: 'https://t.me/+Ic9RKLzDMiE1NGFl',
   supportEmail: 'support@prixagent.com',
   supportMailto: 'mailto:support@prixagent.com',
 } as const;

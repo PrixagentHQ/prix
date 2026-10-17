@@ -136,6 +136,12 @@ const strings = {
   'nav.forehead': 'Play FOREHEAD',
   'nav.github': 'GitHub',
   'nav.githubLabel': 'Prix on GitHub',
+  /**
+   * The link to the Prix Community group at links.telegram: an icon in the header after GitHub, and an
+   * item in the footer before X. The label is what a screen reader says for the header's icon.
+   */
+  'nav.telegram': 'Telegram',
+  'nav.telegramLabel': 'The Prix Community on Telegram',
   'nav.signIn': 'Sign in',
   'nav.signOut': 'Sign out',
   /** The label of "Sign out" while the request runs. It names the wait with the action's own verb. */
@@ -412,7 +418,8 @@ const strings = {
   'admin.holdersTallyRunning': 'Counting the poll',
   'admin.holdersTallyDone': 'Counted. The result is saved and shows on the poll’s page.',
   'admin.holdersTallyAlready': 'This poll was counted before. Its result stays as it was.',
-  'admin.holdersTallyWaiting': 'Not counted: $PRIX tiers are off. Nothing was saved.',
+  'admin.holdersTallyWaiting':
+    'Not counted: $PRIX tiers are off, or the poll has no vote while polls are switched off. Nothing was saved.',
   'admin.holdersTallyOpen':
     'Too soon to count. A poll is counted from a minute to about an hour after its close. Try again later.',
   'admin.holdersTallyFailed':
@@ -1424,6 +1431,10 @@ const strings = {
     "The day's trades of an agent linked to Prix Live show at 20:00 UTC to everyone, holders included; only its owner sees them sooner.",
   'token.holdersLiveNothing': 'Holding $PRIX changes nothing in Prix Live.',
   'token.holdersAccess': 'What $PRIX gives is access to features, never a return.',
+  // The heading the holders' poll stands under on /token while a poll is open (POLL-DC-3); the poll's own
+  // line, token.holdersNextPoll, keeps its words. Only the Strategy Coach stays under token.holdersNextTitle.
+  // Revision 8g (H6, POLL5-DC-2): it names the poll, so it no longer differs from token.holdersTitle by one word.
+  'token.holdersNowTitle': "The holders' poll is open",
   'token.holdersNextTitle': 'Next for holders',
   'token.holdersNextCoach': "The Strategy Coach: help with writing and sharpening your agent's strategy. Not open yet.",
   'token.holdersNextPoll':

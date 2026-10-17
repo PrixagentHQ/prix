@@ -12,7 +12,13 @@
 //   - at 720, 768, 800, 820 and 840 pixels, each loaded fresh: no part of the footer that holds more than
 //     twenty characters is narrower than 120 pixels, no part is narrower than what stands in it, the page
 //     does not scroll sideways, and the footer is not taller than at 360;
-//   - the same at every eighth pixel from 320 to 1920, the window resized in place (the height from 360 up).
+//   - the same at every eighth pixel from 320 to 1920, the window resized in place (the height from 360 up);
+//   - CR8C-7: at every one of those widths from 1280 to 1920, no line of the link row holds a single link;
+//   - every page is read with the holders' poll linked (`polls=on`, the status probe's fixture answering on);
+//     on `/` the CR8C-7 rule is also read with the poll off and with Social off, each set of links the
+//     switches can give (twelve, ten and nine links);
+//   - R22: at most thirteen links, ending Terms, Privacy, Telegram and X, Telegram's address exactly the
+//     group's with `rel="noopener noreferrer"`, and no link that opens another tab.
 //
 // The footer's band takes the rest of a short window (R8), so the height that counts is that of what
 // stands in the band, not of the band. The layout keeps its read of the token for 60 seconds, so the
@@ -80,7 +86,53 @@ function read() {
     scroll: root.scrollWidth,
     client: root.clientWidth,
     token: footer.querySelector('.token-line') !== null,
+    // The link row's lines, top to bottom: the names of the links that stand on each.
+    lines: [...footer.querySelectorAll('.foot-list > li')]
+      .filter((item) => item.getClientRects().length > 0)
+      .reduce((lines, item) => {
+        // The link itself: an item set inline can begin on the line before its link (R25's break).
+        const top = Math.round((item.querySelector('a') ?? item).getBoundingClientRect().top);
+        const line = lines.find((l) => Math.abs(l.top - top) <= 2);
+        const name = (item.textContent ?? '').trim();
+        if (line) line.names.push(name);
+        else lines.push({ top, names: [name] });
+        return lines;
+      }, [])
+      .sort((a, b) => a.top - b.top)
+      .map((l) => l.names),
+    links: [...footer.querySelectorAll('.foot-list a')].map((a) => ({
+      text: (a.textContent ?? '').trim(),
+      href: a.getAttribute('href'),
+      rel: a.getAttribute('rel'),
+      target: a.getAttribute('target'),
+    })),
   };
+}
+
+/** R22: the address of the Prix Community group on Telegram, exactly (content/facts.ts, `links.telegram`). */
+const TELEGRAM = 'https://t.me/+Ic9RKLzDMiE1NGFl';
+/**
+ * Section 5.2: the footer's links, thirteen at most (with the holders' poll, the three of Social and
+ * Developers all on), end with Terms, Privacy, Telegram (R22) and X.
+ */
+const MOST_LINKS = 13;
+const LAST = ['Terms', 'Privacy', 'Telegram', 'X'];
+
+/** What is wrong with the footer's list of links; nothing when it is right. */
+function linkFaults(facts) {
+  if (!facts) return ['the page has no footer'];
+  const found = [];
+  const names = facts.links.map((l) => l.text);
+  if (names.length > MOST_LINKS) found.push(`${names.length} links`);
+  if (names.slice(-LAST.length).join(', ') !== LAST.join(', ')) found.push(`it ends ${names.slice(-4).join(', ')}`);
+  const telegram = facts.links.filter((l) => l.text === 'Telegram');
+  if (telegram.length !== 1) found.push(`${telegram.length} Telegram links`);
+  else {
+    if (telegram[0].href !== TELEGRAM) found.push(`Telegram's address ${telegram[0].href}`);
+    if (telegram[0].rel !== 'noopener noreferrer') found.push(`Telegram's rel ${telegram[0].rel}`);
+  }
+  if (facts.links.some((l) => l.target !== null)) found.push('a link opens another tab');
+  return found;
 }
 
 /** What is wrong with the footer at one width; nothing when it is right. */
@@ -94,7 +146,44 @@ function faults(facts, width, phoneHeight) {
   return found;
 }
 
-const urlOf = (path, state, theme = 'dark') => `${origin}${path}?state=${state}&theme=${theme}`;
+/**
+ * CR8C-7: on a wide window no link of the row stands alone on a line, with the holders' poll linked
+ * (the status probe's fixture answers on for `polls=on`, apps/web/src/site/polls/fixtures.ts).
+ */
+const ALONE_FROM = 1280;
+
+/** The lines of the link row that hold one link only; nothing when none does. */
+function aloneLines(facts) {
+  if (!facts) return ['the page has no footer'];
+  return facts.lines.filter((names) => names.length === 1).map((names) => `"${names[0]}" alone`);
+}
+
+/**
+ * The other sets of links the switches give, read for the same rule on the first page: production
+ * with the poll's switch off (twelve links), and both with Social off (the fixtures' `social-off`).
+ */
+const OTHER_SETS = [
+  { name: 'the poll off', query: '' },
+  { name: 'the poll on, Social off', query: '&polls=on&fixture=social-off' },
+  { name: 'the poll off, Social off', query: '&fixture=social-off' },
+];
+
+/** Every width from ALONE_FROM to 1920 at which a line of the link row holds one link. */
+async function aloneSweep(page) {
+  const alone = [];
+  let wideLines = '';
+  for (const width of SWEEP.filter((w) => w >= ALONE_FROM)) {
+    await page.setViewportSize({ width, height: 900 });
+    const facts = await page.evaluate(read);
+    const single = aloneLines(facts);
+    if (single.length > 0) alone.push(`${width}: ${single.join(', ')}`);
+    if (width === 1440) wideLines = (facts?.lines ?? []).map((names) => names.length).join(' + ');
+  }
+  return { alone, wideLines };
+}
+
+// Every page is read with the holders' poll linked: the footer's longest row of links.
+const urlOf = (path, state, theme = 'dark') => `${origin}${path}?state=${state}&theme=${theme}&polls=on`;
 
 /** Loads a page at a width and reads its footer once its faces are there. */
 async function load(page, url, width) {
@@ -134,6 +223,14 @@ try {
       const phone = await load(page, url, PHONE);
       const phoneHeight = phone?.height ?? 0;
       check(
+        linkFaults(phone).length === 0,
+        `${path}, ${footer.name}: ${phone?.links.length} links, the last ${phone?.links
+          .slice(-2)
+          .map((l) => l.text)
+          .join(' and ')}`,
+        linkFaults(phone).join('; '),
+      );
+      check(
         faults(phone, PHONE, phoneHeight).length === 0,
         `${path}, ${footer.name}, ${PHONE}: ${phoneHeight} high`,
         faults(phone, PHONE, phoneHeight).join('; '),
@@ -151,12 +248,19 @@ try {
 
       // The sweep resizes the window in place: the footer's layout is CSS and nothing else.
       const wrong = [];
+      const alone = [];
+      let wideLines = '';
       const heights = [];
       for (const width of SWEEP) {
         await page.setViewportSize({ width, height: 900 });
         const facts = await page.evaluate(read);
         const found = faults(facts, width, phoneHeight);
         if (found.length > 0) wrong.push(`${width}: ${found.join('; ')}`);
+        if (width >= ALONE_FROM) {
+          const single = aloneLines(facts);
+          if (single.length > 0) alone.push(`${width}: ${single.join(', ')}`);
+          if (width === 1440) wideLines = (facts?.lines ?? []).map((names) => names.length).join(' + ');
+        }
         if ([320, 360, 480, 600, 704, 720, 768, 840, 904, 1024, 1112, 1120, 1280, 1440, 1920].includes(width)) {
           heights.push(`${width} ${facts?.height}`);
         }
@@ -165,6 +269,23 @@ try {
         wrong.length === 0,
         `${path}, ${footer.name}, 320 to 1920 by 8: heights ${heights.join(', ')}`,
         wrong.length > 0 ? `${wrong.length} of ${SWEEP.length} widths; ${wrong.slice(0, 3).join(' | ')}` : '',
+      );
+      const wide = SWEEP.filter((width) => width >= ALONE_FROM).length;
+      check(
+        alone.length === 0,
+        `${path}, ${footer.name}, ${ALONE_FROM} to 1920 by 8: no link alone on a line (at 1440 the lines hold ${wideLines})`,
+        alone.length > 0 ? `${alone.length} of ${wide} widths; ${alone.slice(0, 3).join(' | ')}` : '',
+      );
+    }
+
+    for (const set of OTHER_SETS) {
+      await load(page, `${origin}${paths[0]}?state=${footer.state}&theme=dark${set.query}`, ALONE_FROM);
+      const { alone, wideLines } = await aloneSweep(page);
+      const wide = SWEEP.filter((width) => width >= ALONE_FROM).length;
+      check(
+        alone.length === 0,
+        `${paths[0]}, ${footer.name}, ${set.name}, ${ALONE_FROM} to 1920 by 8: no link alone on a line (at 1440 the lines hold ${wideLines})`,
+        alone.length > 0 ? `${alone.length} of ${wide} widths; ${alone.slice(0, 3).join(' | ')}` : '',
       );
     }
 

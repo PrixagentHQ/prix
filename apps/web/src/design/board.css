@@ -1658,9 +1658,15 @@
 
 /* ---------- Meter: a share of a whole as a bar ---------- */
 
+/*
+  R25 (POLL-DC-2): the ends are the svg's own clip, never an `rx` in the stretched viewBox. A radius
+  larger than the box is cut to half its height, so the bar is a pill at any width and any height a
+  page gives it (`meter-check.mjs`).
+*/
 .meter {
   width: 100%;
   height: 0.375rem;
+  clip-path: inset(0 round 99rem);
 }
 
 .meter .meter-track {

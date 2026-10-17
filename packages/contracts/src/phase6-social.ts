@@ -52,7 +52,13 @@ export function socialEnabled(value: string | undefined): boolean {
 /** Every Phase 6 route lives under this prefix. While the switch is off the public routes are not mounted. */
 export const SOCIAL_API_PREFIX = '/api/social';
 
-/** The fifth clock schedule: minutes 3, 8, ..., 58. Its own Durable Object, its own 10 ms and 50 subrequests. */
+/**
+ * The fifth clock schedule: minutes 3, 8, ..., 58. Its own Clock Durable Object, whose alarm runs the step with
+ * 50 subrequests. Its CPU is the alarm's, which Cloudflare's Durable Objects limits page sets by the Workers plan
+ * (Free: 10 ms; the page's 30 seconds is a default it does not set against the Free plan). Prix sets the step a
+ * ceiling of its own, SOCIAL_STEP_CPU_MS (1,000 ms, phase6-holders.ts, revision 8b of
+ * docs/contracts/phase-6-holders.md, R8-1 and R8-SEC-1), on observed leniency, not on a promise.
+ */
 export const SOCIAL_CRON = '3-58/5 * * * *';
 
 /** What one job may do in one run of the social step. */

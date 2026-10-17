@@ -18,6 +18,7 @@ import {
   CLOSES,
   HOUSE,
   INSIDE,
+  OPENS,
   POLL,
   pollTables,
   seedVotes,
@@ -40,6 +41,53 @@ const ADDRESS = /0x[0-9a-f]{40}/i;
 
 beforeEach(async () => {
   await resetDb();
+});
+
+describe("the first poll's dates are read, never typed (revision 8f, R8E-B1, qa row (8))", () => {
+  it('support.ts takes the id, opensAt and closesAt from HOLDER_POLLS[0]', () => {
+    expect(POLL).toBe(poll.id);
+    expect(OPENS).toBe(poll.opensAt);
+    expect(CLOSES).toBe(poll.closesAt);
+  });
+});
+
+describe('F3 on the real poll store (revision 8e, R8D-SEC-5; qa row (6))', () => {
+  it('polls off, no voter: no result, no chain read, the tally answers waiting and logs it with the poll only', async () => {
+    const chain = blockChain(HEAD);
+    const { deps, lines } = tallyDeps(chain.reader, { now: () => at(61), pollsEnabled: false });
+    expect(await tallyPoll(deps, poll)).toEqual({ outcome: 'waiting', step: null });
+    expect(chain.calls).toEqual([]);
+    expect((await pollTables()).results).toEqual([]);
+    expect(lines).toEqual([{ event: 'poll_tally_waiting', data: { poll: POLL } }]);
+  });
+
+  it('polls off, only a vote written at the close: still no voter, so waiting', async () => {
+    const chain = blockChain(HEAD);
+    chain.set(wallet(0x300), AT_TIER[3]);
+    const { deps } = tallyDeps(chain.reader, { now: () => at(61), pollsEnabled: false });
+    await seedVotes(deps.polls, [{ wallet: wallet(0x300), option: 'index-core', at: CLOSES }]);
+    expect(await tallyPoll(deps, poll)).toEqual({ outcome: 'waiting', step: null });
+    expect(chain.calls).toEqual([]);
+  });
+
+  it('polls on, no voter: the zero result is written', async () => {
+    const chain = blockChain(HEAD);
+    const { deps } = tallyDeps(chain.reader, { now: () => at(61), pollsEnabled: true });
+    expect(await tallyPoll(deps, poll)).toEqual({ outcome: 'done', step: null });
+    const t = await pollTables();
+    expect(t.results).toHaveLength(poll.options.length);
+    expect(t.results.every((row) => row.cast_votes === 0 && row.counted === 0)).toBe(true);
+  });
+
+  it('polls off, a voter: tallied whatever pollsEnabled says', async () => {
+    const chain = blockChain(HEAD);
+    chain.set(wallet(0x301), AT_TIER[1]);
+    const { deps } = tallyDeps(chain.reader, { now: () => at(61), pollsEnabled: false });
+    await seedVotes(deps.polls, [{ wallet: wallet(0x301), option: 'dip-buyer' }]);
+    expect(await tallyPoll(deps, poll)).toEqual({ outcome: 'done', step: null });
+    const [result] = await deps.polls.getResults([POLL]);
+    expect(result?.counted['dip-buyer']).toBe(1);
+  });
 });
 
 describe('who counts', () => {
@@ -237,22 +285,21 @@ describe('the job', () => {
     expect(chain.calls).toEqual([]);
   });
 
-  it('throws PollTallyFailed for a failed tally, inside the guard', async () => {
+  it('throws PollTallyFailed for a failed tally inside the guard, and answers done to the step (revision 7)', async () => {
     const chain = blockChain(HEAD);
     chain.state.fail = () => new Error('down');
     const now = at(120);
-    const { deps } = tallyDeps(chain.reader, { now: () => now });
+    const { deps, lines } = tallyDeps(chain.reader, { now: () => now });
     await seedVotes(deps.polls, [{ wallet: wallet(1), option: 'index-core' }]);
     const job = createPollTallyJob(deps);
-    let thrown: unknown = null;
-    try {
-      const outcome = await job.run(now);
-      thrown = outcome;
-    } catch (error) {
-      thrown = error;
-    }
-    // The guard may catch and answer for it; when it throws, the error is named PollTallyFailed.
-    if (thrown instanceof Error) expect(thrown.name).toBe(POLL_TALLY_FAILED_ERROR);
+    // The guard catches the throw, logs it by the error's name and counts it; the run reached its reads, so
+    // the job answers `done` to the step (R4, HB1F2-SEC-1).
+    expect(await job.run(now)).toBe('done');
+    expect(lines.find((line) => line.event === 'social_job_failed')?.data).toMatchObject({
+      job: 'poll_tally',
+      error: POLL_TALLY_FAILED_ERROR,
+    });
+    expect(lines.find((line) => line.event === 'poll_tally_failed')?.data).toMatchObject({ step: 'read' });
     expect((await pollTables()).results).toEqual([]);
   });
 

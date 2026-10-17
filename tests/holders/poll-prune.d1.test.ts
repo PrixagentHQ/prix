@@ -1,4 +1,4 @@
-import { POLL_MAX_VOTERS, POLL_PRUNE_AT } from '@prix/contracts';
+import { POLL_MAX_VOTERS, POLL_PRUNE_AT, POLL_TALLY_FAILED_ERROR } from '@prix/contracts';
 import { createPollTallyJob } from '@prix/runtime/social/poll-tally';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, resetDb } from '../social/support/d1.ts';
@@ -95,9 +95,16 @@ describe('the prune of the open poll', () => {
     await fill(POLL_MAX_VOTERS);
     const chain = blockChain(HEAD);
     chain.state.answerBlock = (call, asked) => (call === 4 ? asked - 1 : asked);
-    const { deps } = tallyDeps(chain.reader, { now: () => PRUNE_AT });
+    const { deps, lines } = tallyDeps(chain.reader, { now: () => PRUNE_AT });
     const outcome = await runJob(createPollTallyJob(deps), PRUNE_AT);
-    expect(outcome).not.toBe('done');
+    // Revision 7 (R4, HB1F2-SEC-1): the run reached its reads, so the step sees `done`; the failure is still
+    // logged with its step and counted by the guard as PollTallyFailed.
+    expect(outcome).toBe('done');
+    expect(lines.find((line) => line.event === 'poll_tally_failed')?.data).toMatchObject({ poll: POLL, step: 'block' });
+    expect(lines.find((line) => line.event === 'social_job_failed')?.data).toMatchObject({
+      job: 'poll_tally',
+      error: POLL_TALLY_FAILED_ERROR,
+    });
     const t = await pollTables();
     expect(t.votes).toHaveLength(POLL_MAX_VOTERS);
     expect(t.sum).toBe(POLL_MAX_VOTERS);

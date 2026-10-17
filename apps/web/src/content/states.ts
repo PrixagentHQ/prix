@@ -59,7 +59,7 @@ const NO_DECISION_OWNER: Record<NoDecisionCode, string> = {
   unknown_symbol: 'Check that your prompt names only symbols that are in the league.',
   weight_out_of_range: 'Check that your prompt asks for weights from 0% to 100% with at most two decimal places.',
   weights_exceed_100: 'Check that the weights your prompt asks for add up to 100% or less.',
-  weights_look_like_fractions: `${ASKED_AGAIN} Check that your prompt asks for each weight as a percent: 60 means sixty percent, not 0.6.`,
+  weights_look_like_fractions: `${ASKED_AGAIN} Check that your prompt asks for each weight as a percent: 60 means sixty percent, not 0.6. An answer in which every weight is 1% or less is never accepted, even when your prompt asks for it. The one exception is every weight at 0%, which moves the whole portfolio to cash.`,
   reason_invalid: `${ASKED_AGAIN} ${IF_IT_REPEATS}`,
   provider_rejected: `Check the model key and the model name on your account page. Until your provider accepts both, every turn ends this way. ${PAUSE_WARNING}`,
   provider_error: `${ASKED_AGAIN} If this keeps happening, check your account with the provider.`,

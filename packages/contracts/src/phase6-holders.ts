@@ -2,7 +2,7 @@ import type { ApiDeps } from './api.ts';
 import { API_WRITE_ROWS_PER_DAY } from './constants.ts';
 import { type Entitlements, type EntitlementsPort, TIER_RULES, type Tier } from './entitlements.ts';
 import type { TokenChainReader } from './phase4-token.ts';
-import { MANAGER_SLOTS_BY_TIER, type SocialJob } from './phase6-social.ts';
+import { MANAGER_SLOTS_BY_TIER, type SocialJob, type SocialJobOutcome } from './phase6-social.ts';
 import type { Address, IsoTime, TickId, UtcDay } from './primitives.ts';
 import { isoTimeSchema } from './primitives.ts';
 import { z } from './zod.ts';
@@ -26,7 +26,59 @@ import { z } from './zod.ts';
  * the owners' asks): the admin route sends TELEGRAM_ALLOWED_UPDATES and `TelegramPort.setWebhook` takes
  * `readonly TelegramUpdateKind[]`, `token.perkRealtime` reads "... not {delay} later", the delay's prop and the
  * phone clamp are named, and two conditions are added to POLLS_ENABLED and HOLDERS_LOUNGE; the document's
- * section 18 "Revision 6" lists each and where it went.
+ * section 19 "Revision 6" lists each and where it went. Revision 7 (2026-10-16) takes the security look's
+ * HB1F2-SEC-1 and HB1F2-SEC-2 on holders1b-fix-3: R4's conditions stand in sections 4.6, 5 and 12 gate 5
+ * (`pollTallyStepAnswer`), the job's worst non-idle runs are booked in phase-6-holders-2.md section 8
+ * (`POLL_TALLY_RUN_STATEMENTS_MAX`, `POLL_PRUNE_RUN_STATEMENTS_MAX`), the lounge's condition stands in that
+ * document's gate 4, and `TelegramPort.setWebhook` takes a non-empty tuple; section 20 lists each. Revision 8
+ * (2026-10-16) takes the operator's decisions R8-1 to R8-4 on the looks of holders-polls-1 (PT-G3-CPU, PT-FETCH-1,
+ * PT-PURGE-1): the social step's CPU is booked against its Durable Object alarm (SOCIAL_STEP_CPU_MS 1,000,
+ * POLL_TALLY_RUN_CPU_MS 500, the 0.7 ms a page rule gone), an endpoint that failed once in a run is not asked
+ * again, the worst tally and prune runs with one endpoint down are one sum against the step's 50, which took
+ * POLL_MAX_VOTERS to 3,600, POLL_PRUNE_AT to 3,200 and POLL_TALLY_MAX_FETCHES to 21, and the purge tries at
+ * most POLL_PURGE_MAX_POLLS polls a run; section 21 lists each. Revision 8b (2026-10-16) takes the two readers'
+ * findings on revision 8: the Free plan's CPU read as 10 ms with Prix's ceilings observed and not promised, and
+ * POLL_TALLY_JOB as the remedy (R8-SEC-1); the clock fan-out and the token configuration's read in the one sum,
+ * which took POLL_MAX_VOTERS to 3,200, POLL_PRUNE_AT to 2,800 and POLL_TALLY_MAX_FETCHES to 19 (R8-SEC-2,
+ * R8B-1); the meter's timeout and answer cap (R8-SEC-3, R8-SEC-4); section 21 "Revision 8b" lists each.
+ * Revision 8c (2026-10-16) takes the operator's decisions C1 to C3 on the confirming looks of revision 8b: the run's
+ * seconds computed from the keyless endpoints' block window (POLL_TALLY_KEYLESS_STATE_BLOCKS,
+ * POLL_TALLY_CHAIN_BLOCKS_PER_SECOND) at the kept margin of 50, which with the 429 case and the never-answering
+ * case in the check's step down took POLL_MAX_VOTERS to 1,600, POLL_PRUNE_AT to 1,200 and POLL_TALLY_MAX_FETCHES
+ * to 11 (CR8B-1); POLL_MAX_VOTERS as the remedy's lever (CR8B-2); the slow tail of a page's read in gate 3
+ * (POLL_TALLY_TAIL_READS_MIN, POLL_TALLY_TAIL_P95_MAX_MS, C2); section 21 "Revision 8c" lists each.
+ * Revision 8d (2026-10-16) takes the operator's decisions D1 to D6 on the confirming looks of revision 8c (R8C-SEC-1
+ * to R8C-SEC-5, CR8C-1 to CR8C-8): POLL_TALLY_JOB "off" always brings POLLS_ENABLED "false" in the same deploy,
+ * and the runbook has exactly three states (POLL_RUNBOOK_STATES, D1); a poll whose closesAt is 48 hours away while
+ * POLLS_ENABLED is not "true" has its closesAt moved by a revision (pollCloseMoveDue, D2); the tail rule bounds the
+ * largest read too (pollTallyTailHolds(p95Ms, maxMs), D3); an answer later than POLL_TALLY_SLOW_ANSWER_MS marks its
+ * endpoint (D4); the step down never settles below POLL_MAX_VOTERS_FLOOR, and the count of tier-1 wallets stands
+ * under half the cap (D5); section 23 "Revision 8d" lists each.
+ * Revision 8e (2026-10-16) takes the operator's decisions F1 to F5 on the confirming looks of revision 8d (R8D-SEC-1 to
+ * R8D-SEC-5, CR8D-1 to CR8D-6): the slow-answer mark applies only to an endpoint whose answer is taken alone, never
+ * to a third party (pollTallySlowAnswerMarks(elapsedMs, takenAlone), F1), and the step down also fits the third
+ * party's tail (pollTallyWorstReadMs thirdPartyTail); qa's window case with a head from an endpoint publicnode leads
+ * (F2); while POLLS_ENABLED is not "true" a run that finds no voter for a closed poll writes no result
+ * (PollTallyJobDeps.pollsEnabled, F3); the tier-1 count, the tail sample, the latency's revision
+ * (pollTallyLatencyFromMeans), the close move's tree and moment (pollCloseMoveDue's pollsEnabledAtMoveTime) and the
+ * three config states (F4); section 24 "Revision 8e" lists each.
+ * Revision 8f (2026-10-17) takes every finding of revision 8e's two readers as worded (R8E-SEC-1 to R8E-SEC-4,
+ * R8E-B1 to R8E-B5): the close move stays the rule whichever code production runs, and POLLS_ENABLED goes "true"
+ * only while openPollAt(now) names the poll (R8E-SEC-1, R8E-B3); the move is one commit on main that also brings
+ * every pin of the old date that the full check list runs (R8E-B1, R8E-SEC-2); a waiting answer of the job's choice
+ * falls through to the next poll, the purge and the prune (R8E-SEC-3); a waiting run is booked at
+ * POLL_TALLY_WAITING_STATEMENTS (R8E-SEC-4); isThirdPartyEndpoint from @prix/market/chain on the input URL
+ * (R8E-B2); F3's waiting told from gating's by the run's chain read (R8E-B4); section 9's slow-mark row (R8E-B5);
+ * section 25 "Revision 8f" lists each.
+ * Revision 8g (2026-10-17) takes the operator's decisions H1 to H6 on revision 8f's readers (R8F-SEC-1 to R8F-SEC-3,
+ * F8F-B1 to F8F-B3) and on the looks of holders-polls-integrated-5 (PF5-SEC-1 to PF5-SEC-3, POLL5-DC-1, POLL5-DC-2):
+ * the close move's list of pins is the readers' whole list, with Model War 2's start named for a move past 2026-10-22
+ * (H1); an answer outside 2xx has its body cancelled unread and the fetch rejects with the carry-nothing error (H2);
+ * POLL_TALLY_IDLE_STATEMENTS_MAX (10) booked in the sweep's sum, 48 of 50, and the tally and prune runs behind
+ * waiting polls (POLL_TALLY_RUN_STATEMENTS_BEHIND_WAITING_MAX, POLL_PRUNE_RUN_STATEMENTS_BEHIND_WAITING_MAX) (H3);
+ * the fall-through takes the next poll of pollsToTallyAt(now) and only an F3 waiting made with no chain read falls
+ * through (H4); qa's never-answering case at POLL_TALLY_QA_NEVER_ANSWERING_LATENCY_MS (250) a fetch (H5);
+ * token.holdersNowTitle reads "The holders' poll is open" (H6); section 26 "Revision 8g" lists each.
  *
  * What $PRIX gives is access to features, never a return. Nothing here reads a price, shows a value of
  * the token, ranks or orders by a holding, or touches Prix Live.
@@ -255,18 +307,45 @@ export const HOLDER_POLLS: readonly HolderPoll[] = [
   },
 ];
 
+/** Wallets one page of the tally reads, and one chain read of `PollHoldingReader.tiersNow` takes (one Multicall3 call). */
+export const POLL_TALLY_PAGE = 400;
 /**
  * A guard against a runaway table, not a seat count (revision 2, H-SEC-1): a new wallet is refused
  * `poll_full` only while the poll's votes are at this figure after the last prune (revision 3, H2-SEC-1); a
- * voter may still change its vote. At 4,000 the tally is 10 reads of 400 wallets after one read at the head.
+ * voter may still change its vote. Revision 8 (R8-3, PT-FETCH-1): 4,000 less one POLL_TALLY_PAGE, because at
+ * 4,000 the worst tally run and the worst prune run with one endpoint down passed the social step's 50
+ * subrequests (docs/contracts/phase-6-holders-2.md section 8, whose check computes the step down). Revision 8b
+ * (R8B-1, R8-SEC-2): one POLL_TALLY_PAGE more, because the sum also books the token configuration's read, and
+ * at 3,600 it was 50 and 51. Revision 8c (CR8B-1, CR8B-2, C1): a literal, the first step down from 4,000 by
+ * POLL_TALLY_PAGE at which the step's one sum (docs/contracts/phase-6-holders-2.md section 8), the 429 case and
+ * the never-answering case (`pollTallyWorstReadMs`) all fit, which the check computes and pins; so no later change
+ * of POLL_TALLY_PAGE moves the cap by formula. At 1,600 the tally is 4 reads of 400 wallets after one read at the
+ * head. The window of the keyless endpoints binds it: the one sum alone would allow 3,200.
  */
-export const POLL_MAX_VOTERS = 4_000;
+export const POLL_MAX_VOTERS = 1_600;
+/**
+ * Revision 8d (D5, R8C-SEC-5): the check's step down never settles below this. When the operator's measured mean
+ * latency (gate 3) needs a lower cap, the switch holds until a revision lowers POLL_TALLY_PAGE or
+ * POLL_TALLY_FETCH_TIMEOUT_MS; a cap this low could be within reach of real tier-1 holders, and the prune deletes
+ * only non-holders, so the vote would quietly become first come, first served.
+ */
+export const POLL_MAX_VOTERS_FLOOR = 1_200;
+/**
+ * Revision 8d (D5, R8C-SEC-5): before POLLS_ENABLED is "true" the operator reads the number of wallets at tier 1 or above
+ * in `token_holders`; it must stand under half of POLL_MAX_VOTERS. True when that count holds the switch (a count at
+ * or above half the cap, or one that is not a whole number of wallets).
+ */
+export function pollHolderCountHolds(tierOneWallets: number): boolean {
+  return !(Number.isInteger(tierOneWallets) && tierOneWallets >= 0 && tierOneWallets < POLL_MAX_VOTERS / 2);
+}
 /**
  * Prune while open (revision 3, H2-SEC-1): while a poll is open and its votes are at least this many, the
  * job's run, at most once every POLL_PRUNE_EVERY_SECONDS, reads every voter at one block by the tally's own
- * path and deletes the votes of the voters below tier 1 or named by `pollWalletExcluded`.
+ * path and deletes the votes of the voters below tier 1 or named by `pollWalletExcluded`. Revision 8 (R8-3):
+ * it came down with POLL_MAX_VOTERS by one POLL_TALLY_PAGE, from 3,600 to 3,200; revision 8b (R8B-1) by one more,
+ * to 2,800; revision 8c (CR8B-1, C1) with the cap to 1,200, one POLL_TALLY_PAGE under it, a literal the check pins.
  */
-export const POLL_PRUNE_AT = 3_600;
+export const POLL_PRUNE_AT = 1_200;
 export const POLL_PRUNE_EVERY_SECONDS = 3_600;
 /**
  * "At most once every POLL_PRUNE_EVERY_SECONDS" with no state kept: only the run whose clock reads the first
@@ -288,8 +367,6 @@ export const POLL_VOTE_WRITE_ROWS = 3;
  */
 export const POLL_PRUNE_MAX_VOTE_ROWS_PER_DAY = Math.floor(API_WRITE_ROWS_PER_DAY / POLL_VOTE_WRITE_ROWS);
 export const POLL_PRUNE_MAX_COUNT_ROWS_PER_DAY = 4 * 24;
-/** Wallets one page of the tally reads, and one chain read of `PollHoldingReader.tiersNow` takes (one Multicall3 call). */
-export const POLL_TALLY_PAGE = 400;
 /** Pages of the tally's one run: POLL_MAX_VOTERS / POLL_TALLY_PAGE, and one more page that finds the end. */
 export const POLL_TALLY_MAX_PAGES = POLL_MAX_VOTERS / POLL_TALLY_PAGE + 1;
 /**
@@ -304,26 +381,251 @@ export const POLL_TALLY_MAX_CHAIN_READS = POLL_MAX_VOTERS / POLL_TALLY_PAGE + 1;
  */
 export const POLL_TALLY_BLOCK_MARGIN = 50;
 /**
- * A tally or prune run whose reads pass this many seconds from its first read fails at `read` (revision 4,
- * HB3-5), so that the pinned block stays inside a keyless endpoint's window of about 100 blocks.
+ * Revision 8c (CR8B-1): publicnode refuses eth_call for a block about this many behind its head, with HTTP 403
+ * (read 2026-10-10).
  */
-export const POLL_TALLY_MAX_RUN_SECONDS = 8;
+export const POLL_TALLY_KEYLESS_STATE_BLOCKS = 100;
+/** Revision 8c (CR8B-1): D-098, about 10 blocks a second. */
+export const POLL_TALLY_CHAIN_BLOCKS_PER_SECOND = 10;
+/**
+ * A tally or prune run whose reads pass this many seconds from its first read fails at `read` (revision 4,
+ * HB3-5). Revision 8c (CR8B-1, C1): computed, (POLL_TALLY_KEYLESS_STATE_BLOCKS - POLL_TALLY_BLOCK_MARGIN) /
+ * POLL_TALLY_CHAIN_BLOCKS_PER_SECOND, rounded down, so that the pinned block is still served by publicnode at the
+ * run's last read: 5. It was 8, which let the pinned block age to about 130 blocks. The run's seconds are fixed by
+ * the block window and are not raised.
+ */
+export const POLL_TALLY_MAX_RUN_SECONDS = Math.floor(
+  (POLL_TALLY_KEYLESS_STATE_BLOCKS - POLL_TALLY_BLOCK_MARGIN) / POLL_TALLY_CHAIN_BLOCKS_PER_SECOND,
+);
 /**
  * `tallyPoll` counts its own outbound fetches, retries and fallbacks included, and fails at `read` before it
- * would pass this many (revision 3, H2-SEC-4), so that the jobs after it in the same social step keep their
- * share of the 50 subrequests.
+ * would pass this many (revision 3, H2-SEC-4). Revision 8 (R8-2, R8-3, PT-FETCH-1): within one run an endpoint
+ * that failed or refused once is not asked again (`createPollFetchMeter`, packages/runtime/src/token/
+ * poll-holding.ts), so with one endpoint down every read costs at most two fetches and the run pays one more
+ * for the fetch that found the endpoint down: 2 x POLL_TALLY_MAX_CHAIN_READS + 1. The cap is that figure, so
+ * that the meter itself holds the run to the one sum docs/contracts/phase-6-holders-2.md section 8 books
+ * against the step's 50 whatever fails.
  */
-export const POLL_TALLY_MAX_FETCHES = 30;
+export const POLL_TALLY_MAX_FETCHES = 2 * POLL_TALLY_MAX_CHAIN_READS + 1;
 /**
- * CPU of one `tiersNow` of POLL_TALLY_PAGE wallets on the fake chain, at most (revision 3, HB-1): perf
- * measures it before engine-runtime builds poll-tally.ts; above it, a contract revision lowers POLL_TALLY_PAGE
- * and POLL_MAX_VOTERS until the worst run stays inside POLL_TALLY_RUN_CPU_MS.
+ * Revision 8b (R8-SEC-3): the run's fetch meter aborts each fetch after this many milliseconds, joining
+ * AbortSignal.timeout to the caller's signal, and an aborted fetch marks its endpoint. Revision 8c (R8C-2): the
+ * milliseconds run from the call to the end of the clone's read; an answer whose headers came in time but whose
+ * body is not read whole by then marks its endpoint, and the fetch rejects with the carry-nothing error. One endpoint that never
+ * answers costs a run this once, where data-market's own TOKEN_RPC_TIMEOUT_MS (8,000) would cost the whole of
+ * POLL_TALLY_MAX_RUN_SECONDS at the head read.
  */
-export const POLL_TALLY_PAGE_CPU_MS = 0.7;
-/** CPU of the tally's worst run, at most (revision 3, HB-1 and HB-12), inside SOCIAL_CRON's own 10 ms. */
-export const POLL_TALLY_RUN_CPU_MS = 8;
-/** SOCIAL_CRON's CPU budget of one step, as phase-6-social.md has it; the tally's run stays inside it. */
-export const SOCIAL_STEP_CPU_MS = 10;
+export const POLL_TALLY_FETCH_TIMEOUT_MS = 1_500;
+/**
+ * Revision 8b (R8-SEC-3, R8B-5): the latency of each answered fetch on perf's fake chain for gate 3's wall-time
+ * figure. 300 ms is the security reader's figure; the operator replaces it, before gate 3 is read, with a read of
+ * publicnode and dRPC answering a 400-wallet tryBlockAndAggregate from a Worker. Revision 8c (CR8B-1): both worst
+ * runs, the 429 case (POLL_TALLY_MAX_FETCHES x this) and the never-answering case (POLL_TALLY_FETCH_TIMEOUT_MS +
+ * (POLL_TALLY_MAX_FETCHES - 1) x this), stay inside POLL_TALLY_MAX_RUN_SECONDS (`pollTallyWorstReadMs`); the
+ * check computes them and steps POLL_MAX_VOTERS down until they fit. Revision 8e (CR8D-4, R8D-SEC-3): gate 3's read
+ * gives one mean for publicnode and one for dRPC (a sample read that fails, is refused or is aborted counts as a read
+ * of POLL_TALLY_FETCH_TIMEOUT_MS and is never dropped); the larger of the two, rounded up to the next 10 ms
+ * (`pollTallyLatencyFromMeans`), becomes this constant in a revision of this file, whose checks then compute the step
+ * down again and pin POLL_MAX_VOTERS, POLL_PRUNE_AT and the worst reads at that figure.
+ */
+export const POLL_TALLY_FETCH_LATENCY_MS = 300;
+/**
+ * Revision 8g (H5): the latency a fetch of qa's fake chain answers after in qa's never-answering case only
+ * (tests/holders/poll-chain.test.ts), so that the full suite's CPU load cannot eat the case's margin: at
+ * POLL_TALLY_FETCH_LATENCY_MS the case's pure waiting is 4,500 ms of the run's 5,000 and took 5,036 and 5,065 ms
+ * under the suite's load at holders-polls-integrated-5; at this figure it is 4,000 ms. POLL_TALLY_FETCH_LATENCY_MS
+ * stays 300 for the contract's figures, which the check computes, and gate 3's script keeps measuring at 300.
+ */
+export const POLL_TALLY_QA_NEVER_ANSWERING_LATENCY_MS = 250;
+/**
+ * Revision 8e (CR8D-4, R8D-SEC-3): the figure the revision writes as POLL_TALLY_FETCH_LATENCY_MS from gate 3's two
+ * means: the larger, rounded up to the next 10 ms. NaN when either mean is not a finite number above 0.
+ */
+export function pollTallyLatencyFromMeans(publicnodeMeanMs: number, drpcMeanMs: number): number {
+  if (!(Number.isFinite(publicnodeMeanMs) && publicnodeMeanMs > 0 && Number.isFinite(drpcMeanMs) && drpcMeanMs > 0)) {
+    return Number.NaN;
+  }
+  return Math.ceil(Math.max(publicnodeMeanMs, drpcMeanMs) / 10) * 10;
+}
+/** Fetches of the chain in a tally or prune run at `maxVoters` with one endpoint down (R8-2): two a read and one more. */
+export function pollTallyFetchesAt(maxVoters: number): number {
+  return 2 * (maxVoters / POLL_TALLY_PAGE + 1) + 1;
+}
+/**
+ * Revision 8d (D4, R8C-SEC-3): an answer that comes later than this many milliseconds after its call is used, and
+ * marks its endpoint for the rest of the run (section 5, rule 2). Without it an endpoint that answers every call
+ * just under POLL_TALLY_FETCH_TIMEOUT_MS is never marked, and its POLL_TALLY_MAX_CHAIN_READS answers alone pass
+ * POLL_TALLY_MAX_RUN_SECONDS (5 x 1,499 ms against 5,000). Revision 8e (F1, R8D-SEC-1, CR8D-1, CR8D-3): only an
+ * answer of an endpoint whose answer is taken alone (not `isThirdPartyEndpoint` of packages/market: the official
+ * endpoint, or a set RPC_URL), measured like the timeout from the call to the end of the clone's read; a third
+ * party's answer is never marked for its time alone, since its read needs the other third party to agree, and with
+ * the official endpoint refusing Cloudflare (D-131) a mark would leave the run one endpoint and fail it at `read`;
+ * its time is bounded by POLL_TALLY_FETCH_TIMEOUT_MS and the run's seconds. Revision 8f (R8E-B2):
+ * `isThirdPartyEndpoint` is imported from `@prix/market/chain` (the root index does not export it) and called on
+ * the input URL (the string, a URL's href or a Request's url), never on `endpointHost`'s host.
+ */
+export const POLL_TALLY_SLOW_ANSWER_MS = 750;
+/**
+ * Revision 8d (D4); revision 8e (F1, R8D-SEC-1, CR8D-1, CR8D-3): true when an answer that came `elapsedMs` after its
+ * call marks its endpoint (a slow answer). `elapsedMs` runs from the call to the end of the clone's read. `takenAlone`
+ * is true for an endpoint whose answer is taken alone (not `isThirdPartyEndpoint` of @prix/market: the official
+ * endpoint, or a set RPC_URL) and false for a third party, which is never marked for its time alone.
+ */
+export function pollTallySlowAnswerMarks(elapsedMs: number, takenAlone: boolean): boolean {
+  return takenAlone && !(elapsedMs <= POLL_TALLY_SLOW_ANSWER_MS);
+}
+/**
+ * Revision 8c (CR8B-1, C1): the worst run's milliseconds of reads at `maxVoters`, at `latencyMs` a fetch
+ * (POLL_TALLY_FETCH_LATENCY_MS unless the operator's measured mean is passed, revision 8d, D5). `rateLimited`: every
+ * fetch answered, one endpoint refusing with 429 once (the fetches times the latency). `neverAnswering`: one endpoint
+ * never answering, so the meter's timeout once, then every other fetch. `slowAnswering` (revision 8d, D4,
+ * R8C-SEC-3): one endpoint answering correctly but later than POLL_TALLY_SLOW_ANSWER_MS; its answer, which comes
+ * before POLL_TALLY_FETCH_TIMEOUT_MS or not at all, is used alone for its read and marks it, and every later read
+ * costs two fetches of the others. The writer bounds that answer by the timeout, not by POLL_TALLY_SLOW_ANSWER_MS,
+ * since an answer at 1,499 ms is the worst one that is still used. `thirdPartyTail` (revision 8e, F1, CR8D-1): every
+ * fetch answered, with one third party's answer, never marked for its time, coming just under the timeout:
+ * fetches x latencyMs + (POLL_TALLY_FETCH_TIMEOUT_MS - latencyMs), 4,500 ms at 1,600. More than one such answer in a
+ * run is bounded by gate 3's tail read, and a run that passes POLL_TALLY_MAX_RUN_SECONDS fails at `read` and is
+ * tried again by the next run.
+ */
+export function pollTallyWorstReadMs(
+  maxVoters: number,
+  latencyMs: number = POLL_TALLY_FETCH_LATENCY_MS,
+): { rateLimited: number; neverAnswering: number; slowAnswering: number; thirdPartyTail: number } {
+  const fetches = pollTallyFetchesAt(maxVoters);
+  const reads = maxVoters / POLL_TALLY_PAGE + 1;
+  return {
+    rateLimited: fetches * latencyMs,
+    neverAnswering: POLL_TALLY_FETCH_TIMEOUT_MS + (fetches - 1) * latencyMs,
+    slowAnswering: POLL_TALLY_FETCH_TIMEOUT_MS + 2 * (reads - 1) * latencyMs,
+    thirdPartyTail: fetches * latencyMs + (POLL_TALLY_FETCH_TIMEOUT_MS - latencyMs),
+  };
+}
+/** Revision 8c (C2, CR8B-7): gate 3 reads at least this many full pages from each of publicnode and dRPC. */
+export const POLL_TALLY_TAIL_READS_MIN = 20;
+/**
+ * Revision 8c (C2, CR8B-7): two thirds of POLL_TALLY_FETCH_TIMEOUT_MS, 1,000 ms. A 95th percentile (nearest rank,
+ * revision 8d) of one page's read on publicnode or dRPC above it holds the switch until a revision lowers
+ * POLL_TALLY_PAGE.
+ */
+export const POLL_TALLY_TAIL_P95_MAX_MS = Math.floor((2 * POLL_TALLY_FETCH_TIMEOUT_MS) / 3);
+/**
+ * True when gate 3's tail read holds the switch (C2; revision 8d, D3, CR8C-3, R8C-SEC-2): a 95th percentile
+ * (nearest rank) above POLL_TALLY_TAIL_P95_MAX_MS, or a largest read at or above POLL_TALLY_FETCH_TIMEOUT_MS, which
+ * the meter would have aborted.
+ */
+export function pollTallyTailHolds(p95Ms: number, maxMs: number): boolean {
+  return !(p95Ms <= POLL_TALLY_TAIL_P95_MAX_MS && maxMs < POLL_TALLY_FETCH_TIMEOUT_MS);
+}
+/** Revision 8d (D3, CR8C-3): the nearest-rank percentile of `samples` (p in (0, 100]); NaN for no sample. */
+export function pollTallyNearestRank(samples: readonly number[], p: number): number {
+  if (samples.length === 0 || !(p > 0 && p <= 100)) return Number.NaN;
+  const sorted = [...samples].sort((a, b) => a - b);
+  return sorted[Math.ceil((p / 100) * sorted.length) - 1] ?? Number.NaN;
+}
+/**
+ * Revision 8b (R8-SEC-4): the meter reads a 2xx answer's clone up to this many bytes and no further; a longer
+ * body, or a Content-Length above it, marks its endpoint and the fetch rejects with an error that carries
+ * nothing. About twice the largest real answer (400 tryBlockAndAggregate results are roughly 130 KB of hex).
+ */
+export const POLL_TALLY_ANSWER_MAX_BYTES = 262_144;
+/**
+ * Revision 8b (R8B-1, R8-SEC-2): the token configuration read of a run. PollHoldingReader's config is the token
+ * service's getConfig, one D1 statement whenever its TOKEN_CONFIG_CACHE_SECONDS (30) memory is cold, which it
+ * is at every social run (the alarms are five minutes apart): at most one in a run of POLL_TALLY_MAX_RUN_SECONDS. Booked in both
+ * statement bounds below.
+ */
+export const POLL_TALLY_RUN_CONFIG_READS = 1;
+/**
+ * CPU of the worst tally run and of the worst prune run, at most (revision 8, R8-1, PT-G3-CPU; it replaces
+ * revision 3's 8 ms and its 0.7 ms a page): a ceiling Prix sets itself inside SOCIAL_STEP_CPU_MS, with no
+ * documented headroom on the Free plan (revision 8b, R8-SEC-1). perf's figures (estimates from the laptop, the
+ * method named) stand inside it for gate 3. At the first production run of poll_tally that reaches its reads,
+ * an outcome other than ok, or a CPU time above it, takes poll_tally out of the social step (POLL_TALLY_JOB
+ * "off" and a deploy) until a revision that lowers POLL_MAX_VOTERS (and POLL_PRUNE_AT with it), since a run reads
+ * every voter (revision 8c, CR8B-2).
+ */
+export const POLL_TALLY_RUN_CPU_MS = 500;
+/**
+ * The social step's CPU, at most (revision 8, R8-1, PT-G3-CPU; revision 8b, R8-SEC-1). The step runs in the
+ * alarm of its own Clock Durable Object (apps/api/src/index.ts, `runStep` "social", the fifth clock schedule).
+ * Cloudflare's Durable Objects limits page (read 2026-10-16 at 21:12 UTC by the security reader) says that
+ * Workers limits apply according to the Workers plan and that Durable Objects "have the same per invocation CPU
+ * limits as any Workers do"; the Workers Free plan's CPU time is 10 ms. Its 30 seconds is a default the page
+ * does not set against the Free plan's figure. On this account, alarms of 72 ms and 148 ms (another
+ * Worker, 2026-10-15) and API requests of 23 ms have completed: observed, not promised. SOCIAL_STEP_CPU_MS (1,000) and
+ * POLL_TALLY_RUN_CPU_MS (500) are Prix's own ceilings, with no documented headroom on the Free plan.
+ */
+export const SOCIAL_STEP_CPU_MS = 1_000;
+/**
+ * Revision 8b (R8-SEC-1): the Worker variable that keeps poll_tally in the social step, off unless exactly
+ * "on" (`pollTallyJobOn`). Revision 8c (CR8B-3): off, only the social step's list changes: `poll_tally` is not in
+ * it and `step_not_configured` is logged with what `poll_tally_job_off`; `PollApiDeps.tally` and the admin route
+ * are unchanged. POLLS_ENABLED "false" alone does not stop the job. It is the remedy of the first production run
+ * (section 5, "The CPU bound"). Revision 8c (R8C-1): POLLS_ENABLED "true" needs this "on"; platform's config test
+ * fails any state of the runbook in which POLLS_ENABLED is "true" and this is not "on" (`pollsConfigConsistent`).
+ */
+export const POLL_TALLY_JOB_OFF_WHAT = 'poll_tally_job_off';
+/** Revision 8c (R8C-1): the one state the config test refuses, POLLS_ENABLED "true" with POLL_TALLY_JOB not "on". */
+export function pollsConfigConsistent(pollsEnabled: string | undefined, pollTallyJob: string | undefined): boolean {
+  return !(pollsEnabled === 'true' && !pollTallyJobOn(pollTallyJob));
+}
+export const POLL_TALLY_JOB_VARIABLE = 'POLL_TALLY_JOB';
+export function pollTallyJobOn(value: string | undefined): boolean {
+  return value === 'on';
+}
+/**
+ * Revision 8d (D1, CR8C-1): the runbook's three states of (POLLS_ENABLED, POLL_TALLY_JOB), exactly. Whenever
+ * POLL_TALLY_JOB goes "off", the same deploy sets POLLS_ENABLED "false", whether a poll is open or closed and not
+ * yet counted; no step passes through ("true", "off"), and the remedy goes from ("true", "on") to ("false", "off")
+ * in one edit of apps/api/wrangler.jsonc. platform's config test runs the real file in exactly these.
+ */
+export const POLL_RUNBOOK_STATES = [
+  ['false', 'on'],
+  ['true', 'on'],
+  ['false', 'off'],
+] as const satisfies readonly (readonly [string, string])[];
+/** Revision 8d (D1): true when the pair is one of POLL_RUNBOOK_STATES, exactly as written. */
+export function pollRunbookState(pollsEnabled: string | undefined, pollTallyJob: string | undefined): boolean {
+  return POLL_RUNBOOK_STATES.some(([polls, job]) => polls === pollsEnabled && job === pollTallyJob);
+}
+/**
+ * Revision 8d (D2, R8C-SEC-1): production's poll_tally tallies a closed poll that has no voter and freezes its zero
+ * result for good, whatever POLLS_ENABLED says. So if POLLS_ENABLED is not "true" in production this many hours
+ * before a poll's closesAt, the operator writes a revision that moves that closesAt, deploys it before the old close,
+ * and tells the founder the new date. Revision 8f (R8E-B1, R8E-SEC-2): the move is one commit on main, the tree production
+ * runs: the edit of that poll's closesAt in HOLDER_POLLS and, in the same commit, every pin of the old date that
+ * the full check list runs on main (CLOSES in tests/holders/support.ts), and nothing else of the
+ * contract; the operator makes it on a branch of main and runs the full check list on it before the move's moment,
+ * then deploys it chained to the whole list outside 14:30 to 16:15 UTC on a trading day. Revision 8e (F3,
+ * R8D-SEC-5): the build writes no zero result while POLLS_ENABLED is not "true" (PollTallyJobDeps.pollsEnabled).
+ * Revision 8f (R8E-SEC-1, R8E-B3): D2's move stays the rule whichever code production runs: F3 keeps a closed poll
+ * with no voter uncounted only while the switch is off, and the first run after POLLS_ENABLED goes "true" freezes its
+ * zero result, so a poll whose window would pass with the switch off is moved before its close, and POLLS_ENABLED
+ * goes "true" only while openPollAt(now) names the poll it is switched on for.
+ * Revision 8g (H1: F8F-B1, R8F-SEC-1, PF5-SEC-2; F8F-B2): a pin is any literal moment a test chose from the old
+ * close, each moved by the same whole days as closesAt: at 821b1a11, CLOSES in tests/holders/support.ts and the
+ * moments typed in tests/holders/poll-vote.d1.test.ts:93 and apps/api/src/http/holders-polls.test.ts:234, 236 and
+ * 303; on the build's branch, the check's and the build branch's tests' pins too; for a move past 2026-10-22 the
+ * rule that the poll closes before Model War 1 ends becomes the rule that it closes before Model War 2's start,
+ * which the operator names in the same edit and tells the founder with the new date.
+ */
+export const POLL_CLOSE_MOVE_HOURS = 48;
+/**
+ * Revision 8d (D2): true when `poll`'s closesAt must be moved: POLLS_ENABLED not "true" in production at the moment of
+ * the move and the close within 48 hours. Revision 8e (CR8D-5): `pollsEnabledAtMoveTime` is POLLS_ENABLED as it stood
+ * in production at closesAt - POLL_CLOSE_MOVE_HOURS, not now; a switch turned on later, inside the 48 hours, does not
+ * undo a move that was due.
+ */
+export function pollCloseMoveDue(
+  poll: Pick<HolderPoll, 'closesAt'>,
+  now: Date,
+  pollsEnabledAtMoveTime: string | undefined,
+): boolean {
+  const closes = Date.parse(poll.closesAt);
+  const at = now.getTime();
+  return pollsEnabledAtMoveTime !== 'true' && at >= closes - POLL_CLOSE_MOVE_HOURS * 3_600_000 && at < closes;
+}
 /** The tally starts no earlier than this after the close, so that no vote read on the clock before the close is still being written. */
 export const POLL_TALLY_SETTLE_SECONDS = 60;
 /**
@@ -355,6 +657,14 @@ export const POLL_TALLY_LOOKBACK_DAYS = 7;
 export const POLL_WATCH_DAYS = 30;
 /** `poll_votes` rows the job deletes in one run once a poll's result is frozen (revision 2, H-SEC-7). */
 export const POLL_PURGE_PER_RUN = 100;
+/**
+ * Revision 8 (R8-4, PT-PURGE-1): the counted polls a run's purge tries, at most, oldest first, one
+ * `deleteVotes` statement each. The first that deletes a row ends the run with `more`; one that deletes nothing
+ * hands the run to the next; after this many tries the purge stops and the run goes on to the prune. The check
+ * pins that no POLL_WATCH_DAYS window of HOLDER_POLLS holds more closes than this, so that no counted poll's
+ * votes wait behind emptied ones.
+ */
+export const POLL_PURGE_MAX_POLLS = 3;
 /** The public read is cached like every public read. */
 export const POLL_READ_CACHE_SECONDS = 30;
 
@@ -621,7 +931,8 @@ export type PollTallyFailStep = (typeof POLL_TALLY_FAIL_STEPS)[number];
 /**
  * What one tally of one poll answers, from the job or from the admin route, which take the same path
  * (`tallyPoll` of poll-tally.ts): `done` (the result is frozen now), `already` (a result was there),
- * `waiting` (gating is off: nothing written), `open` (the poll has not closed POLL_TALLY_SETTLE_SECONDS
+ * `waiting` (gating is off, or since revision 8e POLLS_ENABLED is not "true" and the poll has no voter: nothing
+ * written), `open` (the poll has not closed POLL_TALLY_SETTLE_SECONDS
  * ago yet), `failed` (nothing written; `step` says where).
  */
 export const pollTallyOutcomeSchema = z.strictObject({
@@ -648,6 +959,80 @@ export const POLL_TALLY_JOB_OUTCOMES = {
 /** The name of the error the job throws for a failed tally or prune (revision 3, HB-5). */
 export const POLL_TALLY_FAILED_ERROR = 'PollTallyFailed';
 
+/**
+ * Revision 7 (R4, HB1F-SEC-2, HB1F2-SEC-1): a precondition of POLLS_ENABLED "true". The social step returns
+ * after the first job that answers `more` or `done` (runSocialStep), and a job that answers `idle` or
+ * `failed` hands the same invocation's subrequests on to the jobs behind it. So a run of `poll_tally` that
+ * has spent its reads must end the step. A run "has reached its reads" from the moment it calls
+ * `PollStore.listVoters` for the first time: the tally's step 3 (`tallyPoll` past its own results read) or
+ * the prune once `castCounts`' sum is at least POLL_PRUNE_AT. Such a run answers `done` to the step whatever
+ * follows: the tally's `done`, an `already` from a `putResult` that answered false, `waiting`, a failure at
+ * `list`, `read`, `block` or `write`; the prune's deleted rows, a prune that deleted none, `waiting`, a
+ * failure at `list`, `read`, `block` or `write`. A failure is still logged `poll_tally_failed` and still
+ * throws POLL_TALLY_FAILED_ERROR inside `guardSocialJob`, so the guard logs `social_job_failed` and counts
+ * it as before; only the job's answer to the step is `done` in place of the guard's `failed`. Every other
+ * run keeps its answer: `idle` with no read, `open`, an `already` at step 2, a failure at `results` or at
+ * the delay's read (step 1), the expired line, the purge, a prune whose sum is below POLL_PRUNE_AT or whose
+ * `castCounts` failed, and a run the guard's skip gate stopped. engine-runtime builds it in
+ * `createPollTallyJob` (a flag set before the first `listVoters`, read after the guard answers). Revision 8e (F3,
+ * R8D-SEC-5): one exception, a tally that answers `waiting` because `PollTallyJobDeps.pollsEnabled` is not true and
+ * its first `listVoters` page held no voter has not reached its reads: the job passes false here, so the step goes on
+ * to the jobs behind it. Revision 8g (H4: F8F-B3, R8F-SEC-3): only an F3 `waiting` made with no chain read falls
+ * through, to the next poll of pollsToTallyAt(now) (within the lookback; a poll past it is never tallied by the job),
+ * then the purge and the prune; gating's `waiting`, after a chain read, ends the run with `done` as before. The job
+ * clears its flag at that F3 moment only: a later `listVoters` of the same run (the next poll's tally or the prune)
+ * sets it again, and the run then answers `done` to the step.
+ */
+export const pollTallyStepAnswer = (guarded: SocialJobOutcome, reachedReads: boolean): SocialJobOutcome =>
+  reachedReads && (guarded === 'idle' || guarded === 'failed') ? 'done' : guarded;
+
+/**
+ * The statements of the job's worst runs (sections 5 and 9, revision 3, HB-4 and H2-SEC-1), exported in
+ * revision 7 so that docs/contracts/phase-6-holders-2.md section 8 books them: a tally run is the job's
+ * results read, the skip gate, `tallyPoll`'s own results read, POLL_TALLY_MAX_PAGES pages and the result's 4
+ * rows, with the guard's clear; a prune run is the skip gate, `castCounts`, the pages, the batch of 2 and the
+ * clear. Revision 8 (R8-3, R8-4): computed from the constants, and the prune's worst run also books the job's
+ * results read and POLL_PURGE_MAX_POLLS purge tries that deleted nothing ahead of it in the same run (a counted
+ * poll watched while the open poll is pruned). Revision 8b (R8B-1): both also book the token configuration's
+ * read (POLL_TALLY_RUN_CONFIG_READS). At POLL_MAX_VOTERS 1,600 (revision 8c) they are 14 and 15. The check computes both again.
+ */
+export const POLL_TALLY_RUN_STATEMENTS_MAX = 1 + 1 + 1 + POLL_TALLY_RUN_CONFIG_READS + POLL_TALLY_MAX_PAGES + 4 + 1;
+export const POLL_PRUNE_RUN_STATEMENTS_MAX =
+  1 + 1 + POLL_PURGE_MAX_POLLS + POLL_TALLY_RUN_CONFIG_READS + 1 + POLL_TALLY_MAX_PAGES + 2 + 1;
+/**
+ * Revision 8f (R8E-SEC-4): the D1 statements of a run of `poll_tally` that answers `idle` to the step from a
+ * `waiting` tally (section 5 step 2, revision 8e F3): the job's results read, the skip gate, the tally's results
+ * read, the configuration's read and the first `listVoters` page: 5. docs/contracts/phase-6-holders-2.md section 8
+ * books the sweep's sum with it in place of SOCIAL_IDLE_READS_PER_JOB; perf counts a waiting run in its
+ * Clock.alarm() drive.
+ */
+export const POLL_TALLY_WAITING_STATEMENTS = 1 + 1 + 1 + POLL_TALLY_RUN_CONFIG_READS + 1;
+/**
+ * Revision 8g (H3: R8F-SEC-2, PF5-SEC-3, F8F-B3 (iii)): each further waiting poll a run passes after the first costs
+ * two statements, its own results read and its first `listVoters` page; the configuration's read happens once a run.
+ */
+export const POLL_TALLY_WAITING_POLL_STATEMENTS = 2;
+/**
+ * Revision 8g (H3, R8F-SEC-2): the worst run of `poll_tally` that answers `idle` to the step once a `waiting` answer
+ * falls through (revision 8f, R8E-SEC-3) and the purge's empty tries and `castCounts` follow it: the job's results
+ * read, the skip gate, the configuration's read, two statements for each waiting poll of at most POLL_PURGE_MAX_POLLS,
+ * and castCounts (a counted poll's empty purge try takes a waiting poll's place under the check's three-closes rule):
+ * 10. docs/contracts/phase-6-holders-2.md section 8 books the sweep's sum with it in place of two: 48 of 50.
+ */
+export const POLL_TALLY_IDLE_STATEMENTS_MAX =
+  1 + 1 + POLL_TALLY_RUN_CONFIG_READS + POLL_TALLY_WAITING_POLL_STATEMENTS * POLL_PURGE_MAX_POLLS + 1;
+/**
+ * Revision 8g (H3, R8F-SEC-2, F8F-B3 (iii)): the worst tally run and the worst prune run with the waiting polls a run
+ * may pass first. No POLL_WATCH_DAYS window holds more than POLL_PURGE_MAX_POLLS closes (the check pins it), so a
+ * tally passes at most POLL_PURGE_MAX_POLLS - 1 waiting polls (two statements each), and a prune passes w waiting
+ * polls and tries at most POLL_PURGE_MAX_POLLS - w counted ones (one more statement for each waiting poll): 18 and 18
+ * at revision 8c's cap, which the one sum of docs/contracts/phase-6-holders-2.md section 8 books at 39 and 39 of 50.
+ */
+export const POLL_TALLY_RUN_STATEMENTS_BEHIND_WAITING_MAX =
+  POLL_TALLY_RUN_STATEMENTS_MAX + POLL_TALLY_WAITING_POLL_STATEMENTS * (POLL_PURGE_MAX_POLLS - 1);
+export const POLL_PRUNE_RUN_STATEMENTS_BEHIND_WAITING_MAX =
+  POLL_PRUNE_RUN_STATEMENTS_MAX + (POLL_TALLY_WAITING_POLL_STATEMENTS - 1) * POLL_PURGE_MAX_POLLS;
+
 /** What `createPollTallyJob(deps): SocialJob` of `packages/runtime/src/social/poll-tally.ts` takes. Its name is `poll_tally`. */
 export interface PollTallyJobDeps {
   polls: PollStore;
@@ -662,6 +1047,14 @@ export interface PollTallyJobDeps {
    * until `pollTallyDueAt(poll, now, d)`.
    */
   tallyDelaySeconds(pollId: string): Promise<number>;
+  /**
+   * Revision 8e (F3, R8D-SEC-5): `pollsSwitchOn(env.POLLS_ENABLED)` of the entry; absent counts as off. While it is
+   * not true, a tally whose first `listVoters` page holds no voter writes no result, makes no chain read and answers
+   * `waiting` (`poll_tally_waiting` logged with the poll's id), and the job answers `idle` to the social step: such a
+   * run has not reached its reads (`pollTallyStepAnswer(guarded, false)`). The admin route's tally takes the same path.
+   * A poll with voters is tallied as before whatever this says.
+   */
+  pollsEnabled?: boolean;
   /**
    * For `guardSocialJob`: the failure row and its upsert. Revision 4 (HB3-4): engine-runtime narrows
    * `guardSocialJob`'s first parameter in common.ts to `{ log; social: Pick<SocialStore, 'putCursor'>;
@@ -682,6 +1075,13 @@ export interface PollTallyJobDeps {
  * packages/runtime/src/social/poll-tally.ts, `createPollHoldingReader` in packages/runtime/src/token/poll-holding.ts.
  */
 export type CreatePollTallyJob = (deps: PollTallyJobDeps) => SocialJob;
+/**
+ * Revision 8b (R8B-8): poll-tally.ts exports `createPollTallyJobFor(deps, polls)` for its own test of the purge's
+ * POLL_PURGE_MAX_POLLS tries, and `createPollTallyJob = (deps) => createPollTallyJobFor(deps, HOLDER_POLLS)`. The
+ * helper is not re-exported from packages/runtime/src/social/index.ts or packages/runtime/src/index.ts,
+ * PollTallyJobDeps does not change, and only poll-tally.test.ts calls it.
+ */
+export type CreatePollTallyJobFor = (deps: PollTallyJobDeps, polls: readonly HolderPoll[]) => SocialJob;
 export type TallyPoll = (deps: PollTallyJobDeps, poll: HolderPoll) => Promise<PollTallyOutcome>;
 export type CreatePollHoldingReader = (deps: {
   chain: TokenChainReader;
@@ -901,6 +1301,9 @@ export const HOLDERS_COPY = {
   'token.holdersNextPoll':
     "The holders' poll: wallets holding at least {amount} $PRIX choose between options Prix writes for its paper league.",
   'token.holdersNextPollLink': "See the holders' poll",
+  // Revision 8 (POLL-DC-3): while the poll's switch is on, its line stands under this heading, not under
+  // "Next for holders", which then names only what is not open yet.
+  'token.holdersNowTitle': "The holders' poll is open",
   // B. the agent's own page
   'agent.ownerHolds': 'Owner holds $PRIX',
   'agent.ownerHoldsNote': "The wallet that owns this agent held at least {amount} $PRIX at Prix's last check.",

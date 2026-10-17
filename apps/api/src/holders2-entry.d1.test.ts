@@ -314,7 +314,9 @@ describe('the lounge: HOLDERS_LOUNGE, its two variables, the bot and the two fac
 describe('the sweep in the social step', () => {
   it('stands after manager_value and poll_tally and before room_picture_sweep, with room_prune last', async () => {
     runtime.factories = true;
-    await runCron(SOCIAL_CRON, envWith({ ...BOT, ...LOUNGE_ON }) as never);
+    // POLL_TALLY_JOB "on", as the build's apps/api/wrangler.jsonc has it (holders contract revision 8b, R8-SEC-1):
+    // off unless exactly "on", so a test env without it has no poll_tally in the step.
+    await runCron(SOCIAL_CRON, envWith({ ...BOT, ...LOUNGE_ON, POLL_TALLY_JOB: 'on' }) as never);
     expect(runtime.names).toEqual([
       'model_war',
       'rank_tape',

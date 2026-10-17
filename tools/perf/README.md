@@ -16,6 +16,7 @@ Run everything from the repository root, after `pnpm install --frozen-lockfile`.
 | `bundle.mjs` | The API Worker bundle against the free plan; compressed JavaScript of the landing page | Measured from the builds |
 | `capacity.mjs` | D1 rows, neurons, requests, round length and per-step limits of a trading day | D1 statements and rows measured on a local D1; models, chain and traffic are stand-ins or assumptions; CPU is an estimate |
 | `siwe-cpu.mjs` | CPU time of one sign-in verification | Measured on this machine; an estimate for a Worker |
+| `polls-tally.mjs` | Gate 3 of docs/contracts/phase-6-holders.md section 12 as revision 8f words it, at `POLL_MAX_VOTERS`: (1) the invocation's D1 statements, fetches and Durable Object calls by driving the entry's `Clock.alarm()` for SOCIAL_CRON in local workerd (`polls-tally-worker/`), for the worst tally and prune runs with the official endpoint answering 429 and for a waiting run (F3); (2) the CPU of the poll_tally run and of the step; (3) the run's wall time in four endpoint cases against `POLL_TALLY_MAX_RUN_SECONDS`; (4) the tail of one full page's read on the real publicnode and dRPC endpoints | (1) and (3) on the local D1 with the real stores and the fake chain of `polls-fake-chain.mjs` (300 ms a fetch, a moving head, publicnode's 403 past its window); (2) a Node replay, an estimate for a Worker; (4) real endpoints from this machine, not from a Worker |
 
 ## Against a local build (before the gate)
 

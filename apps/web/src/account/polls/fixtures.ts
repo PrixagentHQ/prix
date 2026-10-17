@@ -12,7 +12,8 @@ import type { PollCall, PollTransport } from './poll-client.ts';
  *   signed-out     every call answers 401
  *   closed         GET /api/polls/me names no open poll
  *   refused-closed a holder; the vote answers poll_closed
- *   full           a holder; the vote answers poll_full
+ *   refused-not-open a holder; the vote answers poll_not_open
+ *   full          a holder; the vote answers poll_full
  *   rate-limited   a holder; the vote answers 429
  *   fail           every call answers 500
  *
@@ -27,6 +28,7 @@ const NAMES = [
   'signed-out',
   'closed',
   'refused-closed',
+  'refused-not-open',
   'full',
   'rate-limited',
   'fail',
@@ -59,6 +61,7 @@ function meFor(name: Name): PollMeResponse {
 
 function vote(name: Name, call: PollCall): Response {
   if (name === 'refused-closed') return failure('invalid_input', 'Closed.', 'poll_closed', 409);
+  if (name === 'refused-not-open') return failure('invalid_input', 'Not open.', 'poll_not_open', 409);
   if (name === 'full') return failure('invalid_input', 'Full.', 'poll_full', 409);
   if (name === 'rate-limited') return failure('rate_limited', 'Too many requests.');
   const option = (call.body as { option?: unknown } | undefined)?.option;

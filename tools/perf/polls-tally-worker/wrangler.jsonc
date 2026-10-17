@@ -1,0 +1,20 @@
+// Local only. tools/perf/polls-tally.mjs starts this Worker on this machine, in workerd, to drive the API's own
+// `Clock.alarm()` for SOCIAL_CRON and count every fetch, D1 statement and Durable Object call of that invocation
+// (docs/contracts/phase-6-holders.md gate 3, revision 8c CR8B-5). It is never deployed: it has no route and its
+// database id names no database (`remote: false`).
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "prix-perf-polls-tally",
+  "main": "worker.mjs",
+  // The same date as apps/api/wrangler.jsonc, so that the runtime behaves as the API's does.
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prix-perf-polls",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

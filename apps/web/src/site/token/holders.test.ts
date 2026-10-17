@@ -20,6 +20,7 @@ import {
   openColumn,
   perkCells,
   perkLabel,
+  pollOpenNow,
 } from './holders.ts';
 import { keptAnswer } from './holders-reads.ts';
 
@@ -187,8 +188,42 @@ describe('the token page', () => {
       page.indexOf('id="token-next-title"'),
       page.indexOf('aria-labelledby="token-forehead-title"'),
     );
-    expect(next).toMatch(/\{pollLink && \(\s*<>\s*\{' '\}\s*<a href="\/polls">\{text\('token\.holdersNextPollLink'/);
+    expect(next).toMatch(/\{pollLink && \(\s*<>\s*\{' '\}\s*<a href="\/polls">\{pollLinkLabel\}<\/a>/);
     expect(next.match(/href="\/polls"/g)?.length).toBe(1);
+    expect(page).toMatch(/const pollLinkLabel = text\('token\.holdersNextPollLink', "See the holders' poll"\);/);
+  });
+
+  it('stands the open poll under "The holders\' poll is open" and keeps the Coach alone under "Next" (POLL-DC-3, H6)', () => {
+    const now = page.indexOf('id="token-now-title"');
+    const next = page.indexOf('id="token-next-title"');
+    expect(now).toBeGreaterThan(page.indexOf('id="token-holders-title"'));
+    expect(next).toBeGreaterThan(now);
+    const nowBlock = page.slice(now, page.indexOf('</section>', now));
+    expect(nowBlock).toContain("text('token.holdersNowTitle', \"The holders' poll is open\")");
+    expect(nowBlock).toContain('{pollLine}');
+    expect(nowBlock.match(/href="\/polls"/g)?.length).toBe(1);
+    expect(nowBlock).not.toContain('holdersNextCoach');
+    // The section stands only while the API lists an open poll; upcoming or none, the page is as before.
+    expect(page).toMatch(
+      /\{\s*showHolders && amounts && pollNow && \(\s*<section[^>]*aria-labelledby="token-now-title"/,
+    );
+    expect(page).toMatch(/const pollNow = pollOpenNow\(pollsSwitch, pollsRead\);/);
+    const nextBlock = page.slice(next, page.indexOf('</section>', next));
+    expect(nextBlock).toContain("'token.holdersNextCoach'");
+    expect(nextBlock).toMatch(/\{\s*!pollNow && \(\s*<li>\s*\{pollLine\}/);
+  });
+
+  it('reads the poll as open only from the API’s own state, and never while the switch is off', () => {
+    const open = { ok: true as const, data: { minTokens: 10_000, polls: [{ state: 'open' }] } };
+    const closed = { ok: true as const, data: { minTokens: 10_000, polls: [{ state: 'closed' }] } };
+    const none = { ok: true as const, data: { minTokens: 10_000, polls: [] } };
+    expect(pollOpenNow('on', open as never)).toBe(true);
+    expect(pollOpenNow('on', closed as never)).toBe(false);
+    expect(pollOpenNow('on', none as never)).toBe(false);
+    expect(pollOpenNow('on', { ok: false, status: 502 })).toBe(false);
+    expect(pollOpenNow('on', null)).toBe(false);
+    expect(pollOpenNow('off', open as never)).toBe(false);
+    expect(pollOpenNow('failed', open as never)).toBe(false);
   });
 
   it('shows the holders’ blocks only while the tiers are on and the API names all three amounts', () => {
@@ -302,6 +337,26 @@ describe('the rows on a phone (revision 6, DC6-1, DC6-4)', () => {
     expect(narrow).toMatch(
       /tbody th\[scope='row'\]:not\(\[colspan\]\)\)\s*\{[^}]*position: sticky;[^}]*padding-inline-end: var\(--space-12\);[^}]*\}/,
     );
+  });
+});
+
+describe('the column notes at every width (POLL-DC-4)', () => {
+  const labels = amountColumnLabels([10_000, 100_000, 1_000_000]);
+
+  it('puts the wallet’s words on a line of their own beneath the amount, with no middle dot', () => {
+    for (const tier of [0, 1, 2, 3] as const) {
+      const note = amountColumns(labels, tier, 'your wallet')[tier]?.note ?? '';
+      expect(note).toBe(`${labels[tier]}\nyour wallet`);
+      expect(note).not.toContain('·');
+    }
+    // The columns that are not marked carry their amount alone.
+    expect(amountColumns(labels, 2, 'your wallet')[1]?.note).toBe(labels[1]);
+  });
+
+  it('never wraps a note line, at any width: "From {amount}" and the wallet’s words each stay whole', () => {
+    // One rule for every width, outside any media query: the note keeps its line feed and wraps nowhere else.
+    expect(table).toMatch(/\n {2}\.holders-table :global\(th \.table-note\)\s*\{\s*white-space: pre;\s*\}/);
+    expect(table).not.toMatch(/pre-line/);
   });
 });
 

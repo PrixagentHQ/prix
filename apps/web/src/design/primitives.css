@@ -289,7 +289,8 @@
 
 /*
   The link to Prix on X: an icon link beside the theme control, drawn as that control is, with
-  the X mark filled instead of stroked. The footer carries the same link as text.
+  the X mark filled instead of stroked. The footer carries the same link as text. The links to
+  GitHub (`.top-gh`) and to the Telegram group (`.top-tg`, R22) are drawn by the same rules.
 */
 .top-x {
   display: inline-grid;
@@ -319,12 +320,21 @@
 }
 
 /*
-  Under 720 px the header keeps X only; GitHub stays in the footer. Under 375 px X stays there
-  too: the row has no room for it beside the wallet. These rules stand after `.top-x` on purpose:
-  they have the same weight as it, so the later one decides `display`.
+  R23: from 840 px the header shows X, GitHub and Telegram; from 720 to 839 it shows X and
+  Telegram, so the search field keeps the width it had with two icons (the community lives on
+  Telegram, and GitHub is the one the row gives up); under 720 it keeps X only. The footer keeps
+  every link. Under 375 px X goes too: the row has no room for it beside the wallet. These rules
+  stand after `.top-x` on purpose: they have the same weight as it, so the later one decides
+  `display`.
 */
-@media (max-width: 44.9375em) {
+@media (max-width: 52.4375em) {
   .top-gh {
+    display: none;
+  }
+}
+
+@media (max-width: 44.9375em) {
+  .top-tg {
     display: none;
   }
 }
@@ -411,6 +421,40 @@
   .foot {
     grid-template-columns: minmax(min(22rem, 50%), 1fr) auto;
     align-items: start;
+  }
+}
+
+/*
+  R25 (CR8C-7): from 1280 the links stand in two groups, one line each: Prix's own pages, then the
+  code, the rules and the two networks, from GitHub (`.foot-house`) to X. With every switch on the
+  row held eleven links and two, and with the poll off X stood alone at 1312 to 1328; each group now
+  holds at least three links whatever the switches say. The row is set as words here, not as a flex
+  row: a forced line break before GitHub then counts in the row's widest line, so the links' column
+  is as wide as its longer line and the words keep the rest (a flex row counts every link on one line
+  and left about 200 pixels of the column empty). The markup's order is the reading order.
+*/
+@media (min-width: 80em) {
+  .foot-list {
+    display: block;
+  }
+
+  .foot-list > li {
+    display: inline;
+    margin-inline-end: var(--space-16);
+  }
+
+  .foot-list > li:last-child,
+  .foot-list > li:has(+ .foot-house) {
+    margin-inline-end: 0;
+  }
+
+  .foot-list a {
+    display: inline-block;
+  }
+
+  .foot-house::before {
+    content: "\A";
+    white-space: pre;
   }
 }
 

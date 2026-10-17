@@ -124,6 +124,10 @@ const theme = chosenTheme();
 // The colour a browser gives its own bar: the header's surface in each theme (tokens.css).
 const themeColours = { dark: '#000000', light: '#ffffff' } as const;
 
+// The Prix Community group on Telegram: an invite link, public on purpose. Its address is the
+// editor's, `links.telegram` in content/facts.ts, pinned by content/telegram.test.ts.
+const telegramHref = links.telegram;
+
 const path = Astro.url.pathname;
 const canonical = new URL(path, Astro.site ?? Astro.url);
 const printedAddress = `${canonical.host}${canonical.pathname === '/' ? '' : canonical.pathname}`;
@@ -299,6 +303,18 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
               <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
             </svg>
           </a>
+          {/* The Prix Community group on Telegram, beside X and GitHub. Its glyph is Prix's own: a
+              folded paper plane in two filled facets with the crease between them, not a brand file. */}
+          <a
+            class="top-x top-tg"
+            href={telegramHref}
+            rel="noopener noreferrer"
+            aria-label={text('nav.telegramLabel', 'The Prix Community on Telegram')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M22.25 1.75 1.75 10.25l7.97 2.97zm0 0-11.47 12.53 3.22 7.97z" />
+            </svg>
+          </a>
           {
             account ? (
               <>
@@ -406,9 +422,6 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
                 </li>
               )
             }
-            <li>
-              <a href="https://github.com/PrixagentHQ/prix" rel="noopener noreferrer">{text('nav.github', 'GitHub')}</a>
-            </li>
             {
               socialOn && (
                 <>
@@ -431,8 +444,14 @@ const tabs: Array<{ key: Props['current']; href: string; label: string; shown: b
                 </li>
               )
             }
+            {/* R25: the second group opens here, the code, the rules and the two networks. From 1280 it
+                starts a line of its own (primitives.css), so no link of the row ever stands alone. */}
+            <li class="foot-house">
+              <a href="https://github.com/PrixagentHQ/prix" rel="noopener noreferrer">{text('nav.github', 'GitHub')}</a>
+            </li>
             <li><a href="/terms">{text('nav.terms', 'Terms')}</a></li>
             <li><a href="/privacy">{text('nav.privacy', 'Privacy')}</a></li>
+            <li><a href={telegramHref} rel="noopener noreferrer">{text('nav.telegram', 'Telegram')}</a></li>
             <li><a href="https://x.com/PrixagentHQ" rel="me noopener noreferrer">{text('nav.x', 'X')}</a></li>
           </ul>
         </nav>

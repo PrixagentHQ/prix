@@ -86,6 +86,38 @@ async function scrollTo(page, id, where) {
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 }
 
+/**
+ * Sizes the box of `id` so that opening at its `openAt` column would leave `remain` pixels to scroll (null: the
+ * box's own width back), fires the window's resize, which opens the box again while the reader has not moved
+ * it, and reads the box with where the opened column's head cell and its text start.
+ */
+async function opensWithRemaining(page, id, remain) {
+  await page.evaluate(
+    ([tableId, left]) => {
+      const region = document.getElementById(tableId).closest('[data-table-scroll]');
+      if (left === null) {
+        region.style.removeProperty('width');
+      } else {
+        const head = region.querySelector(`thead th.c-${region.dataset.openAt}`);
+        const sticky = region.querySelector('thead th:first-child');
+        const wanted = region.scrollLeft + head.getBoundingClientRect().left - sticky.getBoundingClientRect().right;
+        region.style.width = `${region.scrollWidth - wanted - left}px`;
+      }
+      window.dispatchEvent(new Event('resize'));
+    },
+    [id, remain],
+  );
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const r = await read(page, id);
+  const mark = await page.evaluate((tableId) => {
+    const region = document.getElementById(tableId).closest('[data-table-scroll]');
+    const head = region.querySelector(`thead th.c-${region.dataset.openAt}`);
+    const box = head.getBoundingClientRect();
+    return { markStart: box.left, markFiguresStart: box.left + Number.parseFloat(getComputedStyle(head).paddingLeft) };
+  }, id);
+  return { ...r, ...mark };
+}
+
 const shown = (p) => p.content !== 'none' && p.content !== 'normal';
 
 function stickyChecks(label, r) {
@@ -156,6 +188,39 @@ try {
         openEnd.hiddenStart && !openEnd.hiddenEnd,
       );
       stickyChecks(`${at} t-open-end as opened`, openEnd);
+
+      // R22 (DC7-2): the box is narrowed or widened so that opening at Tier 2 would leave `remain` pixels to
+      // scroll, and the page's own resize step opens it again. Under the fade's 16 it opens at its end; at 16
+      // it keeps Tier 2 against the sticky column. Then the box gets its own width back and opens as before.
+      for (const remain of [10, 16]) {
+        const near = await opensWithRemaining(page, 't-open-at', remain);
+        if (remain < 16) {
+          check(
+            `${at} t-open-at with ${remain} pixels left to scroll opens at its end`,
+            near.max - near.scrollLeft <= 1 && near.hiddenStart && !near.hiddenEnd && !shown(near.after),
+            `${near.scrollLeft} of ${near.max}`,
+          );
+          check(
+            `${at} t-open-at opened at its end keeps Tier 2's figures in view`,
+            near.markStart >= near.stickyRight - 0.5 - 16 && near.markFiguresStart >= near.stickyRight - 0.5,
+            `Tier 2 from ${near.markStart.toFixed(1)}, its text from ${near.markFiguresStart.toFixed(1)}, sticky end ${near.stickyRight.toFixed(1)}`,
+          );
+        } else {
+          check(
+            `${at} t-open-at with ${remain} pixels left to scroll keeps Tier 2 against the sticky column`,
+            Math.abs(near.markStart - near.stickyRight) <= 1 && near.max - near.scrollLeft >= remain - 1,
+            `${near.scrollLeft} of ${near.max}`,
+          );
+        }
+        stickyChecks(`${at} t-open-at with ${remain} pixels left`, near);
+      }
+      const restored = await opensWithRemaining(page, 't-open-at', null);
+      check(
+        `${at} t-open-at opens as before once its box has its own width back`,
+        Math.abs(restored.scrollLeft - openAt.scrollLeft) <= 1,
+        `${restored.scrollLeft} against ${openAt.scrollLeft}`,
+      );
+
       if (shots) {
         await mkdir(shots, { recursive: true });
         await page

@@ -31,6 +31,23 @@
   font-weight: var(--weight-medium);
 }
 
+/*
+  A refused vote, said under the row of the option that was pressed (POLL-DC-1). The script places one
+  empty line per row when the control opens; an empty line takes no room, so the row's gap stays as drawn.
+*/
+.poll-vote-said:empty {
+  display: none;
+}
+
+/* When a refusal is scrolled into view (POLL5-DC-1), it stops one step above the window's edge, not on it. */
+.poll-vote-said {
+  scroll-margin-block: var(--space-16);
+}
+
+.poll-vote-said:focus {
+  outline-offset: var(--space-4);
+}
+
 .poll-vote-yours[hidden],
 .poll-vote-option [hidden] {
   display: none;

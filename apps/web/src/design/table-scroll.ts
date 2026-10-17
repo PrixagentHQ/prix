@@ -4,7 +4,8 @@
 //   - makes that box a tab stop only while it overflows;
 //   - with `openAt`, opens the box scrolled so that the named column's start sits against the end of the
 //     sticky first column (or against the box's start when the first column is not sticky), at once, with
-//     no smooth scroll, and again after a resize or a font load until the reader has moved the box;
+//     no smooth scroll, and again after a resize or a font load until the reader has moved the box; and opens
+//     it at its end instead when that position would leave less than the edge fade's width to scroll (R22);
 //   - marks the box `data-hidden-start` while columns lie out of view before its start edge (beside the sticky
 //     column when there is one) and `data-hidden-end` while more columns follow beyond its end edge, and
 //     `data-sticky-first` while its first column is sticky, with `--table-end-at`, the box's end edge measured
@@ -56,16 +57,41 @@ export interface OpenGeometry {
   columnStart: number;
   /** Where the sticky first column ends, measured from the box's visible start edge; 0 when it is not sticky. */
   stickyEnd: number;
+  /** The edge fade's width in pixels (`--table-fade`); 0 or left out where no fade stands. */
+  fade?: number;
 }
 
 /**
  * The scroll position at which the named column's start edge sits against `stickyEnd`, held inside
  * 0 and `maxScroll` and rounded to a whole pixel. A column that already sits there needs no move.
+ *
+ * R22 (DC7-2): when that position is past the start but leaves less than the fade's width to scroll, the box
+ * opens at its end instead. Left there, the last column would stand all but a few pixels in view with its last
+ * figures dimmed by the end fade. The move is under the fade's width, which is the column gap (`--space-16`),
+ * so the named column slides only its start padding under the sticky column and stays whole in view.
  */
 export function openScrollLeft(g: OpenGeometry): number {
   const wanted = g.scrollLeft + g.columnStart - g.stickyEnd;
-  const max = Math.max(0, g.maxScroll);
-  return Math.round(Math.min(max, Math.max(0, wanted)));
+  const max = Math.round(Math.max(0, g.maxScroll));
+  const left = Math.round(Math.min(max, Math.max(0, wanted)));
+  const fade = g.fade ?? 0;
+  return left > 0 && max - left < fade ? max : left;
+}
+
+/**
+ * A length as `getComputedStyle` gives an unregistered custom property: its unit kept (`var(--space-16)` reads
+ * "1rem"). Pixels, rem (from `rootFontPx`) and em (from `fontPx`); anything else, or below zero, is 0: no fade.
+ */
+export function lengthPixels(value: string, rootFontPx: number, fontPx: number): number {
+  const match = /^(\d+(?:\.\d+)?|\.\d+)(px|rem|em)?$/.exec(value.trim());
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return 0;
+  if (match[2] === 'rem') return amount * rootFontPx;
+  if (match[2] === 'em') return amount * fontPx;
+  // A bare number is a length only when it is 0, and 0 is no fade either way.
+  if (match[2] === undefined) return 0;
+  return amount;
 }
 
 function cssEscape(value: string): string {
@@ -87,11 +113,20 @@ function open(region: HTMLElement, key: string): void {
   const box = region.getBoundingClientRect();
   const first = stickyFirst(region);
   const stickyEnd = first && first !== head ? first.getBoundingClientRect().right - box.left - region.clientLeft : 0;
+  // The fade's width is read in every mode, also where no fade is drawn (forced colours, more contrast): a
+  // column cut by less than it is then cut hard, and opening at the end shows it whole there too.
+  const style = getComputedStyle(region);
+  const fade = lengthPixels(
+    style.getPropertyValue('--table-fade'),
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+    Number.parseFloat(style.fontSize) || 16,
+  );
   const left = openScrollLeft({
     scrollLeft: region.scrollLeft,
     maxScroll: region.scrollWidth - region.clientWidth,
     columnStart: head.getBoundingClientRect().left - box.left - region.clientLeft,
     stickyEnd,
+    fade,
   });
   if (Math.abs(left - region.scrollLeft) >= 1) region.scrollTo({ left, behavior: 'instant' });
 }

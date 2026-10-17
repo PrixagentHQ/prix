@@ -115,6 +115,15 @@ describe('the page', () => {
     expect(page).toMatch(/text\('polls\.loadFailed'/);
   });
 
+  it('gives the empty box the column width of the polls on the page (POLL-DC-5)', () => {
+    expect(page).toMatch(
+      /<div class="poll-empty">\s*<EmptyState title=\{text\('polls\.noneOpen'[^}]*\)\} boxed \/>\s*<\/div>/,
+    );
+    // One width for both, so the box and a poll share their right edge as well as their left.
+    expect(page).toMatch(/\.poll,\s*\.poll-empty\s*\{\s*max-width: 44rem;\s*\}/);
+    expect(page.match(/max-width: 44rem/g)?.length).toBe(1);
+  });
+
   it('labels votes cast apart from votes counted, and dates the count from the result', () => {
     expect(page).toContain('countedLabel(countOf(poll.result?.counted');
     expect(page).toContain('castLabel(countOf(poll.result?.cast');

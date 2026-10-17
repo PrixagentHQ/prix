@@ -7,7 +7,8 @@
 // the one thing a visitor can do with it: read or copy the address. Under them, while the tiers
 // are on, "Open to holders now" says what each tier unlocks in whole tokens, perk by perk, with the
 // tier table folded into it, and "Next for holders" names what comes (docs/contracts/phase-6-holders.md
-// section 2, revision 5, D1). Where that table does not show, the tier table stands in its place,
+// section 2, revision 5, D1); while GET /api/polls lists the holders' poll as open, its line stands under
+// "The holders' poll is open" instead (POLL-DC-3; the heading's words since revision 8g, H6). Where that table does not show, the tier table stands in its place,
 // so a person compares what each share of the supply unlocks. After them, once the
 // token is launched, one block says what holding it unlocks in FOREHEAD, the founder's game. The
 // page ends with its risks, in the same sentences as before.
@@ -23,12 +24,12 @@ import Panel from '../../design/Panel.astro';
 import Table from '../../design/Table.astro';
 import { readAccount } from '../../lib/account.ts';
 import PageHead from '../PageHead.astro';
-import { pollsIsOn } from '../polls/read-polls.ts';
+import { pollsIsOn, readPolls } from '../polls/read-polls.ts';
 import ShareMeta from '../ShareMeta.astro';
 import { siteShareImage } from '../share.ts';
 import { formatFeedDelay } from './feed-delay.ts';
 import HoldersTable from './HoldersTable.astro';
-import { badgeValue, holderAmounts, wholeAmount } from './holders.ts';
+import { badgeValue, holderAmounts, pollOpenNow, wholeAmount } from './holders.ts';
 import { ownerHoldsOn as readOwnerHoldsOn, picturesOn as readPicturesOn } from './holders-reads.ts';
 import { readTokenResult } from './read-token.ts';
 
@@ -48,6 +49,18 @@ const [picturesOn, ownerHoldsOn, pollsSwitch] = showHolders
   ? await Promise.all([readPicturesOn(Astro), readOwnerHoldsOn(Astro), pollsIsOn(Astro)])
   : [false, false, 'off' as const];
 const pollLink = pollsSwitch === 'on';
+// While GET /api/polls lists the poll as open, its line stands under "The holders' poll is open" and "Next for
+// holders" keeps the Strategy Coach alone (POLL-DC-3). Upcoming, none open or a failed read: as before.
+const pollsRead = pollLink ? await readPolls(Astro) : null;
+const pollNow = pollOpenNow(pollsSwitch, pollsRead);
+const pollLine = amounts
+  ? text(
+      'token.holdersNextPoll',
+      "The holders' poll: wallets holding at least {amount} $PRIX choose between options Prix writes for its paper league.",
+      { amount: wholeAmount(amounts[0]) },
+    )
+  : '';
+const pollLinkLabel = text('token.holdersNextPollLink', "See the holders' poll");
 
 const title = text('token.sitePageTitle', 'The Prix token');
 const lead = text(
@@ -287,6 +300,19 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
   }
 
   {
+    showHolders && amounts && pollNow && (
+      <section class="page section" aria-labelledby="token-now-title" data-holders-now>
+        <h2 class="headline" id="token-now-title">{text('token.holdersNowTitle', "The holders' poll is open")}</h2>
+        <ul class="token-list holders-next" role="list">
+          <li>
+            {pollLine} <a href="/polls">{pollLinkLabel}</a>
+          </li>
+        </ul>
+      </section>
+    )
+  }
+
+  {
     showHolders && amounts && (
       <section class="page section" aria-labelledby="token-next-title" data-holders-next>
         <h2 class="headline" id="token-next-title">{text('token.holdersNextTitle', 'Next for holders')}</h2>
@@ -297,19 +323,17 @@ const disclosureUrl = text('common.stockTokensDisclosureUrl', 'https://docs.robi
               "The Strategy Coach: help with writing and sharpening your agent's strategy. Not open yet.",
             )}
           </li>
-          <li>
-            {text(
-              'token.holdersNextPoll',
-              "The holders' poll: wallets holding at least {amount} $PRIX choose between options Prix writes for its paper league.",
-              { amount: wholeAmount(amounts[0]) },
-            )}
-            {pollLink && (
-              <>
-                {' '}
-                <a href="/polls">{text('token.holdersNextPollLink', "See the holders' poll")}</a>
-              </>
-            )}
-          </li>
+          {!pollNow && (
+            <li>
+              {pollLine}
+              {pollLink && (
+                <>
+                  {' '}
+                  <a href="/polls">{pollLinkLabel}</a>
+                </>
+              )}
+            </li>
+          )}
         </ul>
       </section>
     )

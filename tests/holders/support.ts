@@ -14,7 +14,14 @@ import type {
   TokenHolder,
   TokenStore,
 } from '@prix/contracts';
-import { entitlementsOfTier, OPEN_PREVIEW_ENTITLEMENTS, SESSION_COOKIE, SESSION_TTL_SECONDS } from '@prix/contracts';
+import {
+  entitlementsOfTier,
+  HOLDER_POLLS,
+  OPEN_PREVIEW_ENTITLEMENTS,
+  POLL_MAX_VOTERS,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+} from '@prix/contracts';
 import { scoring } from '@prix/reputation';
 import { createPollHoldingReader } from '@prix/runtime/token/poll-holding';
 import { createTokenService, resetTokenMemory } from '@prix/runtime/token/service';
@@ -48,9 +55,18 @@ export const AT_TIER: Record<Tier, bigint> = {
   3: 1_000_000n * WHOLE,
 };
 
-export const POLL = 'model-war-2-strategy';
-export const OPENS = '2026-10-16T00:00:00.000Z';
-export const CLOSES = '2026-10-21T20:00:00.000Z';
+const FIRST: HolderPoll = (() => {
+  const first = HOLDER_POLLS[0];
+  if (first === undefined) throw new Error('HOLDER_POLLS holds no poll');
+  return first;
+})();
+/**
+ * The first poll's id and dates, read from `HOLDER_POLLS[0]` and never typed (revision 8f, R8E-B1, qa row (8)):
+ * a move of the close is then one edit of `HOLDER_POLLS` on the build's branch.
+ */
+export const POLL = FIRST.id;
+export const OPENS = FIRST.opensAt;
+export const CLOSES = FIRST.closesAt;
 /** Inside the first poll's window, a Saturday 12:10 UTC. */
 export const INSIDE = '2026-10-17T12:10:00.000Z';
 
@@ -349,7 +365,14 @@ export function blockChain(head: number) {
 /** The tally's deps on the real poll store and the real holding reader over `chain`. */
 export function tallyDeps(
   chain: TokenChainReader,
-  options: { now: () => Date; delay?: number; gatingOn?: boolean; holding?: PollTallyJobDeps['holding'] },
+  options: {
+    now: () => Date;
+    delay?: number;
+    gatingOn?: boolean;
+    holding?: PollTallyJobDeps['holding'];
+    /** `PollTallyJobDeps.pollsEnabled` (revision 8e, F3); true unless a test says otherwise. */
+    pollsEnabled?: boolean;
+  },
 ) {
   const lines: { event: string; data: Record<string, unknown> | undefined }[] = [];
   const cursors = new Map<string, string>();
@@ -378,6 +401,7 @@ export function tallyDeps(
         return cursors.get(name) ?? null;
       },
     },
+    pollsEnabled: options.pollsEnabled ?? true,
     now: options.now,
     log: (event, data) => {
       lines.push({ event, data });
@@ -389,7 +413,7 @@ export function tallyDeps(
 /** Seeds votes straight through the real store's batch, as the route stores them. */
 export async function seedVotes(store: PollStore, votes: readonly { wallet: Address; option: string; at?: string }[]) {
   for (const vote of votes) {
-    const answer = await store.putVote(POLL, vote.wallet, vote.option, vote.at ?? INSIDE, 4_000);
+    const answer = await store.putVote(POLL, vote.wallet, vote.option, vote.at ?? INSIDE, POLL_MAX_VOTERS);
     if (answer !== 'stored') throw new Error(`seedVotes: ${answer}`);
   }
 }

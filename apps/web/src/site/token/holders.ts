@@ -6,6 +6,7 @@
 import { type HolderPerk, type TokenInfoResponse, wholeTokensAtPpm } from '@prix/contracts';
 import { foreheadFacts, grouped } from '../../content/facts.ts';
 import { text } from '../../content/index.ts';
+import type { PollsRead, PollsSwitch } from '../polls/read-polls.ts';
 import { formatFeedDelay } from './feed-delay.ts';
 
 type TierRow = TokenInfoResponse['tiers'][number];
@@ -44,6 +45,26 @@ export function amountColumnLabels(amounts: readonly [number, number, number]): 
 }
 
 /**
+ * The marked column's note: its amount, then the wallet's words on a line of their own beneath it, with no
+ * middle dot (POLL-DC-4, after DC7-1). HoldersTable keeps the line feed and wraps no note line at any width
+ * (`white-space: pre`), so "From {amount}" and the wallet's words each stay whole on their line.
+ */
+export function markedNote(amount: string, markLabel: string): string {
+  return [amount, markLabel].join('\n');
+}
+
+/**
+ * Whether the holders' poll is open now, for /token's "The holders' poll is open" (POLL-DC-3, H6): the status probe
+ * answers on and GET /api/polls lists a poll in the API's own state `open`. Upcoming (never listed), none
+ * open, a failed read or the switch off: false, and the poll's line stays under "Next for holders". The page
+ * computes no state of its own.
+ */
+export function pollOpenNow(pollsSwitch: PollsSwitch, read: PollsRead | null): boolean {
+  if (pollsSwitch !== 'on' || !read?.ok) return false;
+  return read.data.polls.some((poll) => poll.state === 'open');
+}
+
+/**
  * The four amount columns of "Open to holders now" (revision 5, D1). Each header names its tier,
  * `token.holdersColTier`, and carries its amount in whole tokens on the note line beneath, a second line in
  * small text. The column a page marks as the wallet's own adds the page's words to that note line, so that
@@ -58,7 +79,7 @@ export function amountColumns(
   return amountLabels.map((amount, index) => ({
     key: keys[index] ?? 't0',
     label: text('token.holdersColTier', 'Tier {tier}', { tier: index }),
-    note: markTier === index && markLabel ? `${amount} · ${markLabel}` : amount,
+    note: markTier === index && markLabel ? markedNote(amount, markLabel) : amount,
     align: 'end' as const,
   }));
 }

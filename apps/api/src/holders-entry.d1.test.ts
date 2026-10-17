@@ -2,7 +2,13 @@ import { env as baseEnv } from 'cloudflare:workers';
 import type { HolderPoll, PollApiDeps, PollTallyJobDeps, PollTallyOutcome, SocialJobOutcome } from '@prix/contracts';
 import {
   HOLDER_POLLS,
+  POLL_RUNBOOK_STATES,
   POLL_TALLY_DELAY_LABEL,
+  POLL_TALLY_JOB_OFF_WHAT,
+  POLL_TALLY_JOB_VARIABLE,
+  pollRunbookState,
+  pollsConfigConsistent,
+  pollTallyJobOn,
   SESSION_COOKIE,
   SOCIAL_CRON,
   TELEGRAM_WEBHOOK_URL,
@@ -57,6 +63,8 @@ vi.mock('./http/index.ts', async (importOriginal) => {
 /** engine-runtime's three factories as the entry reads them by name, stood in for here (HB3-4). */
 const runtime = vi.hoisted(() => ({
   jobDeps: null as PollTallyJobDeps | null,
+  /** The deps the admin route's tally handed to `tallyPoll`, the last call's. */
+  tallyDeps: null as PollTallyJobDeps | null,
   tallied: [] as string[],
   outcome: { outcome: 'done', step: null } as PollTallyOutcome,
   stepNames: [] as string[][],
@@ -72,7 +80,8 @@ vi.mock('@prix/runtime/social/index', async (importOriginal) => {
       runtime.jobDeps = deps;
       return { name: 'poll_tally', run: async () => 'idle' };
     },
-    tallyPoll: async (_deps: PollTallyJobDeps, poll: HolderPoll): Promise<PollTallyOutcome> => {
+    tallyPoll: async (deps: PollTallyJobDeps, poll: HolderPoll): Promise<PollTallyOutcome> => {
+      runtime.tallyDeps = deps;
       runtime.tallied.push(poll.id);
       return runtime.outcome;
     },
@@ -157,13 +166,164 @@ beforeEach(async () => {
   app.answer = answerPolls;
   runtime.tallied = [];
   runtime.stepNames = [];
+  runtime.jobDeps = null;
+  runtime.tallyDeps = null;
   for (const path of [POLLS_PATH, `${POLLS_PATH}/me`, `${POLLS_PATH}/status`])
     await caches.default.delete(`${ORIGIN}${path}`);
 });
 
 describe('apps/api/wrangler.jsonc', () => {
-  it('keeps POLLS_ENABLED "false" until the gates hold', () => {
-    expect(wranglerText).toMatch(/"POLLS_ENABLED": "false"/);
+  const liveOf = (text: string): string =>
+    text
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+
+  const PROBLEMS = {
+    unreadable: 'it is not JSON once its comment lines are taken out',
+    polls: 'POLLS_ENABLED is neither "true" nor "false"',
+    job: 'POLL_TALLY_JOB is neither "on" nor "off"',
+    inconsistent: 'POLLS_ENABLED is "true" while POLL_TALLY_JOB is not "on"',
+    state: 'the pair (POLLS_ENABLED, POLL_TALLY_JOB) is none of POLL_RUNBOOK_STATES',
+  } as const;
+
+  /**
+   * What is wrong with a text of apps/api/wrangler.jsonc for the holders' poll, or null. The runbook
+   * (infra/README.md section 19) moves the pair (POLLS_ENABLED, POLL_TALLY_JOB) between exactly the three
+   * states of POLL_RUNBOOK_STATES (holders contract revision 8d, D1, CR8C-1), each in a commit with a deploy of
+   * its own, so no single state is pinned (HB1F2-SEC-3): each switch reads one of its two words, and
+   * the pair is one of the three. POLLS_ENABLED "true" with POLL_TALLY_JOB not "on" is refused by
+   * `pollsConfigConsistent` (revision 8c, R8C-1) before the three states are asked.
+   */
+  function pollsConfigProblem(text: string): string | null {
+    let read: { vars?: Record<string, unknown> };
+    try {
+      read = JSON.parse(liveOf(text));
+    } catch {
+      return PROBLEMS.unreadable;
+    }
+    const polls = read.vars?.POLLS_ENABLED;
+    if (polls !== 'true' && polls !== 'false') return PROBLEMS.polls;
+    const job = read.vars?.[POLL_TALLY_JOB_VARIABLE];
+    if (job !== 'on' && job !== 'off') return PROBLEMS.job;
+    if (!pollsConfigConsistent(polls, job)) return PROBLEMS.inconsistent;
+    if (!pollRunbookState(polls, job)) return PROBLEMS.state;
+    return null;
+  }
+
+  /** `text` with the variable `name` written as `json`. The variable stands once. */
+  function withVariable(text: string, name: string, json: string): string {
+    const value = new RegExp(`("${name}": )[^,\\r\\n]*`, 'g');
+    if ([...text.matchAll(value)].length !== 1) throw new Error(`not once in the text: the variable ${name}`);
+    return text.replace(value, (_, key: string) => `${key}${json}`);
+  }
+  const withPolls = (text: string, json: string): string => withVariable(text, 'POLLS_ENABLED', json);
+  const withJob = (text: string, json: string): string => withVariable(text, POLL_TALLY_JOB_VARIABLE, json);
+  /** One edit of the file: both switches of a state of the runbook at once (D1: the remedy is one edit). */
+  const withState = (text: string, [polls, job]: readonly [string, string]): string =>
+    withJob(withPolls(text, JSON.stringify(polls)), JSON.stringify(job));
+  const varsOf = (text: string): Record<string, unknown> =>
+    (JSON.parse(liveOf(text)) as { vars: Record<string, unknown> }).vars;
+
+  /** The real file with both switches as the build left them, ("false", "on"). The refused states are made from it. */
+  const asBuilt = (): string => withState(wranglerText, ['false', 'on']);
+
+  it('allows the real file at whichever step of the runbook it stands: one of the three states', () => {
+    expect(
+      pollsConfigProblem(wranglerText),
+      'apps/api/wrangler.jsonc is in none of the states that infra/README.md section 19 allows',
+    ).toBeNull();
+    const vars = varsOf(wranglerText);
+    expect(pollRunbookState(vars.POLLS_ENABLED as string, vars[POLL_TALLY_JOB_VARIABLE] as string)).toBe(true);
+    // The entry reads each word as its switch does: on only for exactly "true", and exactly "on".
+    expect(pollsSwitchOn(vars.POLLS_ENABLED as string)).toBe(vars.POLLS_ENABLED === 'true');
+    expect(pollTallyJobOn(vars[POLL_TALLY_JOB_VARIABLE] as string)).toBe(vars[POLL_TALLY_JOB_VARIABLE] === 'on');
+  });
+
+  it('names exactly the three states of the runbook: ("false","on"), ("true","on"), ("false","off")', () => {
+    expect(POLL_RUNBOOK_STATES.map((state) => [...state])).toEqual([
+      ['false', 'on'],
+      ['true', 'on'],
+      ['false', 'off'],
+    ]);
+  });
+
+  for (const state of POLL_RUNBOOK_STATES) {
+    it(`allows the real file set to the runbook's state (${state.join(', ')}), wherever it stands now`, () => {
+      const text = withState(wranglerText, state);
+      expect(varsOf(text).POLLS_ENABLED).toBe(state[0]);
+      expect(varsOf(text)[POLL_TALLY_JOB_VARIABLE]).toBe(state[1]);
+      expect(pollsConfigProblem(text)).toBeNull();
+      expect(pollsConfigProblem(text.replaceAll('\n', '\r\n')), 'with Windows line ends').toBeNull();
+    });
+  }
+
+  it('walks the runbook: the build, the switch, and the remedy from ("true","on") to ("false","off") in one edit', () => {
+    const built = asBuilt();
+    const on = withPolls(built, '"true"');
+    const remedy = withState(on, ['false', 'off']);
+    for (const [name, text] of Object.entries({ built, on, remedy })) {
+      expect(pollsConfigProblem(text), name).toBeNull();
+    }
+    expect(pollsSwitchOn(varsOf(built).POLLS_ENABLED as string)).toBe(false);
+    expect(pollsSwitchOn(varsOf(on).POLLS_ENABLED as string)).toBe(true);
+    expect(pollsSwitchOn(varsOf(remedy).POLLS_ENABLED as string)).toBe(false);
+    expect(pollTallyJobOn(varsOf(remedy)[POLL_TALLY_JOB_VARIABLE] as string)).toBe(false);
+  });
+
+  it('refuses ("true","off"): POLLS_ENABLED "true" needs POLL_TALLY_JOB "on" (R8C-1, D1)', () => {
+    expect(pollsConfigConsistent('true', 'off')).toBe(false);
+    expect(pollsConfigProblem(withState(wranglerText, ['true', 'off']))).toBe(PROBLEMS.inconsistent);
+    // The remedy taken in two edits, POLL_TALLY_JOB first, passes through it and is refused.
+    expect(pollsConfigProblem(withJob(withPolls(asBuilt(), '"true"'), '"off"'))).toBe(PROBLEMS.inconsistent);
+  });
+
+  /** Every state the file must never be in: the state after the build with the one change its name says. */
+  const REFUSED: [state: string, json: string][] = [
+    ['POLLS_ENABLED "TRUE"', '"TRUE"'],
+    ['POLLS_ENABLED "on"', '"on"'],
+    ['POLLS_ENABLED "1"', '"1"'],
+    ['POLLS_ENABLED ""', '""'],
+    ['POLLS_ENABLED " true"', '" true"'],
+    ['POLLS_ENABLED a boolean', 'true'],
+    ['POLLS_ENABLED a number', '1'],
+  ];
+  for (const [state, json] of REFUSED) {
+    it(`refuses ${state}`, () => {
+      expect(pollsConfigProblem(withPolls(asBuilt(), json))).toBe(PROBLEMS.polls);
+    });
+  }
+
+  it('refuses a file with no POLLS_ENABLED', () => {
+    expect(pollsConfigProblem(asBuilt().replace(/^\s*"POLLS_ENABLED": "false",\r?\n/m, ''))).toBe(PROBLEMS.polls);
+  });
+
+  const REFUSED_JOB: [state: string, json: string][] = [
+    ['POLL_TALLY_JOB "ON"', '"ON"'],
+    ['POLL_TALLY_JOB "true"', '"true"'],
+    ['POLL_TALLY_JOB " on"', '" on"'],
+    ['POLL_TALLY_JOB ""', '""'],
+    ['POLL_TALLY_JOB a boolean', 'true'],
+    ['POLL_TALLY_JOB a number', '1'],
+  ];
+  for (const [state, json] of REFUSED_JOB) {
+    it(`refuses ${state}`, () => {
+      expect(pollsConfigProblem(withJob(asBuilt(), json))).toBe(PROBLEMS.job);
+      // Read by the entry as off, as `pollTallyJobOn` reads anything but exactly "on".
+      expect(pollTallyJobOn(varsOf(withJob(asBuilt(), json))[POLL_TALLY_JOB_VARIABLE] as string)).toBe(false);
+    });
+  }
+
+  it('refuses a file with no POLL_TALLY_JOB, or with it twice', () => {
+    const line = /^[^\S\r\n]*"POLL_TALLY_JOB": "on",?\r?\n/m;
+    expect(asBuilt()).toMatch(line);
+    expect(pollsConfigProblem(asBuilt().replace(line, ''))).toBe(PROBLEMS.job);
+    expect(() =>
+      withJob(
+        asBuilt().replace(line, (found) => `${found}${found}`),
+        '"on"',
+      ),
+    ).toThrow(/not once/);
   });
 
   it('keeps traces off: logs only, because the bot token is in the path of every Telegram URL', () => {
@@ -272,7 +432,10 @@ describe('the cache of GET /api/polls', () => {
 
 describe('poll_tally in the social step', () => {
   it('stands before room_picture_sweep, with room_prune last, and is built with the admin and house lists', async () => {
-    await runCron(SOCIAL_CRON, envWith({ HOUSE_OWNERS: '0x00000000000000000000000000000000000000e1' }) as never);
+    await runCron(
+      SOCIAL_CRON,
+      envWith({ HOUSE_OWNERS: '0x00000000000000000000000000000000000000e1', POLL_TALLY_JOB: 'on' }) as never,
+    );
     const names = runtime.stepNames.at(-1) ?? [];
     expect(names.at(-1)).toBe('room_prune');
     expect(names).toContain('poll_tally');
@@ -286,6 +449,76 @@ describe('poll_tally in the social step', () => {
     expect(runtime.jobDeps?.houseOwners).toEqual(['0x00000000000000000000000000000000000000e1']);
     expect(await runtime.holdingConfig?.()).toMatchObject({ thresholdsPpm: expect.any(Array) });
   });
+
+  /** The social step's job names for one run of SOCIAL_CRON with `extra` on the env. */
+  async function stepNames(extra: Record<string, unknown>): Promise<string[]> {
+    runtime.stepNames = [];
+    await runCron(SOCIAL_CRON, envWith(extra) as never);
+    return runtime.stepNames.at(-1) ?? [];
+  }
+
+  it('POLL_TALLY_JOB off: only the step’s list changes, poll_tally_job_off logged once, the admin tally unchanged (CR8B-3)', async () => {
+    const spy = vi.spyOn(console, 'log');
+    try {
+      const on = await stepNames({ POLL_TALLY_JOB: 'on' });
+      expect(on).toContain('poll_tally');
+      // Off unless exactly "on" (`pollTallyJobOn`): absent counts as off.
+      for (const value of [undefined, 'off', 'On', 'ON', ' on', 'true', '']) {
+        runtime.jobDeps = null;
+        const names = await stepNames(value === undefined ? {} : { POLL_TALLY_JOB: value });
+        expect(names, String(value)).toEqual(on.filter((name) => name !== 'poll_tally'));
+        expect(runtime.jobDeps, `no job built while it reads ${String(value)}`).toBeNull();
+      }
+      const offLines = spy.mock.calls
+        .map(([line]) => {
+          try {
+            return JSON.parse(String(line)) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })
+        .filter((line) => line.event === 'step_not_configured' && line.what === POLL_TALLY_JOB_OFF_WHAT);
+      // Said once in an isolate, as every `step_not_configured` is.
+      expect(offLines).toEqual([{ event: 'step_not_configured', step: 'social', what: 'poll_tally_job_off' }]);
+    } finally {
+      spy.mockRestore();
+    }
+    // PollApiDeps.tally and the admin route are unchanged while the job is off.
+    for (const value of ['off', undefined]) {
+      await call(envWith(value === undefined ? {} : { POLL_TALLY_JOB: value }), '/api/health');
+      const polls = (app.extras as { polls: PollApiDeps }).polls;
+      const poll = HOLDER_POLLS[0] as HolderPoll;
+      runtime.tallied = [];
+      runtime.outcome = { outcome: 'already', step: null };
+      expect(await polls.tally(poll)).toEqual({ outcome: 'already', step: null });
+      expect(runtime.tallied).toEqual([poll.id]);
+    }
+  });
+
+  for (const [value, on] of [
+    [undefined, false],
+    ['false', false],
+    ['True', false],
+    ['true', true],
+  ] as const) {
+    it(`builds the job's deps with pollsEnabled ${on} while POLLS_ENABLED reads ${JSON.stringify(value)} (F3)`, async () => {
+      const extra: Record<string, unknown> = { POLL_TALLY_JOB: 'on' };
+      if (value !== undefined) extra.POLLS_ENABLED = value;
+      await stepNames(extra);
+      expect(runtime.jobDeps).not.toBeNull();
+      expect(runtime.jobDeps?.pollsEnabled).toBe(on);
+      expect(runtime.jobDeps?.pollsEnabled).toBe(pollsSwitchOn(value));
+    });
+
+    it(`hands the admin route's tally deps with pollsEnabled ${on} while POLLS_ENABLED reads ${JSON.stringify(value)} (F3)`, async () => {
+      await call(envWith(value === undefined ? {} : { POLLS_ENABLED: value }), '/api/health');
+      const polls = (app.extras as { polls: PollApiDeps }).polls;
+      runtime.outcome = { outcome: 'waiting', step: null };
+      expect(await polls.tally(HOLDER_POLLS[0] as HolderPoll)).toEqual({ outcome: 'waiting', step: null });
+      expect(runtime.tallyDeps).not.toBeNull();
+      expect(runtime.tallyDeps?.pollsEnabled).toBe(on);
+    });
+  }
 });
 
 describe("the tally's delay d (H3-SEC-3)", () => {

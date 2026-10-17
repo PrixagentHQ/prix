@@ -59,7 +59,9 @@ import {
   loungeConfig,
   OWN_MAX_OUTPUT_TOKENS,
   POLL_TALLY_DELAY_LABEL,
+  POLL_TALLY_JOB_OFF_WHAT,
   pollTallyDelaySeconds,
+  pollTallyJobOn,
   REPUTATION_CRON,
   ROOM_PICTURE_SWEEP_JOB,
   ROOM_PICTURES_ADMIN_PATH,
@@ -71,6 +73,7 @@ import {
   roomPicturesDailyCap,
   roomPicturesEnabled,
   roomPictureViewsCap,
+  SOCIAL_CRON,
   socialEnabled,
   stepsFor,
   TAPE_PATH,
@@ -252,9 +255,18 @@ export interface Env extends RateLimitEnv {
   /**
    * Phase 6.7, the holders' poll (docs/contracts/phase-6-holders.md section 4.6): on only while it reads
    * exactly "true" (`pollsSwitchOn`). Off, the vote and the three public reads are the generic 404; the admin's
-   * tally route and the `poll_tally` job run either way.
+   * tally route and the `poll_tally` job run either way. The job and the admin's tally carry it as
+   * `PollTallyJobDeps.pollsEnabled` (revision 8e, F3): while it is not "true" a closed poll with no voter is not
+   * counted.
    */
   POLLS_ENABLED?: string;
+  /**
+   * Phase 6.7 (holders contract revision 8b, R8-SEC-1; revision 8c, CR8B-3): `poll_tally` is in the social
+   * step's list only while this reads exactly "on" (`pollTallyJobOn`; absent counts as off). Off, only that list
+   * changes: `step_not_configured` is logged with what `poll_tally_job_off`, and `PollApiDeps.tally` and the
+   * admin route are unchanged. The runbook keeps (POLLS_ENABLED, POLL_TALLY_JOB) in POLL_RUNBOOK_STATES.
+   */
+  POLL_TALLY_JOB?: string;
   /**
    * Phase 6.8 (docs/contracts/phase-6-holders-2.md section 5). "true" (`roomHoldersOn`) turns on the room's
    * Holder mark and its caps of a day by tier, with the room's own switches. Anything else: no `holder`
@@ -795,7 +807,9 @@ function buildWiring(env: Env) {
   const tallyDelaySeconds = createTallyDelay(apiDeps.config.nonceSecret);
   // A new holding reader, with a new fetch meter, for each run (HB1-SEC-1): the social step calls this once an
   // invocation and the admin route once a request, so POLL_TALLY_MAX_FETCHES bounds each run on its own. Never
-  // kept in this cached wiring.
+  // kept in this cached wiring. Both carry POLLS_ENABLED as `pollsEnabled` (revision 8e, F3): while it is not
+  // "true", a closed poll with no voter is not counted.
+  const pollsEnabled = pollsSwitchOn(env.POLLS_ENABLED);
   const pollJobDepsFor = (): PollTallyJobDeps | null =>
     createPollHoldingReader === undefined
       ? null
@@ -805,6 +819,7 @@ function buildWiring(env: Env) {
           adminAddresses: apiDeps.config.adminAddresses,
           houseOwners: apiDeps.config.houseOwners,
           tallyDelaySeconds,
+          pollsEnabled,
           social,
           reputation,
           now: () => new Date(),
@@ -814,7 +829,7 @@ function buildWiring(env: Env) {
     ...apiDeps,
     polls,
     entitlements,
-    pollsEnabled: pollsSwitchOn(env.POLLS_ENABLED),
+    pollsEnabled,
     tierOnePpm: async () => (await tokenService.getConfig()).thresholdsPpm[0],
     tally: (poll: HolderPoll): Promise<PollTallyOutcome> => {
       const runDeps = pollJobDepsFor();
@@ -1837,15 +1852,19 @@ async function runSocialWork(env: Env, now: Date): Promise<void> {
           }),
         ];
   // Phase 6.7, the holders' poll's tally (docs/contracts/phase-6-holders.md section 5). It runs whatever
-  // POLLS_ENABLED says. While the runtime exports no such job or no holding reader, the step says so once and
-  // goes on without it (revision 4, HB3-4).
-  // One holding reader and one fetch meter for this invocation's run (HB1-SEC-1).
+  // POLLS_ENABLED says, which it carries as `pollsEnabled` (revision 8e, F3). While the runtime exports no such
+  // job or no holding reader, the step says so once and goes on without it (revision 4, HB3-4).
+  // POLL_TALLY_JOB not exactly "on" (revision 8b, R8-SEC-1; revision 8c, CR8B-3) takes it out of this list alone,
+  // said once as `poll_tally_job_off`: the admin route's tally (`PollApiDeps.tally`) is unchanged.
+  // One holding reader and one fetch meter for this invocation's run (HB1-SEC-1), built only while the job runs.
   const { createPollTallyJob } = w;
-  const pollJobDeps = w.pollJobDepsFor();
-  if (createPollTallyJob === undefined) notConfigured('social', 'poll_tally');
+  const jobOn = pollTallyJobOn(env.POLL_TALLY_JOB);
+  const pollJobDeps = jobOn ? w.pollJobDepsFor() : null;
+  if (!jobOn) notConfigured('social', POLL_TALLY_JOB_OFF_WHAT);
+  else if (createPollTallyJob === undefined) notConfigured('social', 'poll_tally');
   else if (pollJobDeps === null) notConfigured('social', 'poll_holding');
   const tally: readonly SocialJob[] =
-    createPollTallyJob === undefined || pollJobDeps === null ? [] : [createPollTallyJob(pollJobDeps)];
+    !jobOn || createPollTallyJob === undefined || pollJobDeps === null ? [] : [createPollTallyJob(pollJobDeps)];
   // Phase 6.8, the holders' lounge sweep (docs/contracts/phase-6-holders-2.md section 4.6). While either of
   // engine-runtime's two factories is missing the step says so once and goes on without it, and the lounge
   // is null everywhere. While the lounge is off the job is built with no config and no port, and is idle.
@@ -2017,6 +2036,18 @@ function nextFire(cron: string, now: number): number {
 }
 
 /**
+ * The clocks an alarm of `cron` starts: every other clock, but none from the social clock's alarm
+ * (docs/contracts/phase-6-holders.md revision 8b, R8-SEC-2; revision 8c, R8C-3). The social step books every
+ * subrequest of its invocation in docs/contracts/phase-6-holders-2.md section 8, with CLOCK_ALARM_FANOUT_CALLS
+ * at 0, so its alarm makes no Durable Object call. The league, reputation, deliver and token alarms keep their
+ * four start() calls, the social clock among them, so every clock is still kept running by the others.
+ */
+function clocksStartedBy(cron: string): readonly string[] {
+  if (cron === SOCIAL_CRON) return [];
+  return CLOCK_CRONS.filter((other) => other !== cron);
+}
+
+/**
  * The clock. The free plan of Cloudflare allows five Cron Triggers for a whole account, and an
  * account can have spent them on other Workers. A Durable Object alarm needs none: it wakes the
  * object at a set time, and the object sets the next alarm before it does its work, so the clock
@@ -2047,8 +2078,7 @@ export class Clock extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(nextFire(cron, Date.now()));
     // Keep the other clocks running: one that lost its alarm does not wait for a visitor.
     if (this.env.CLOCK !== undefined) {
-      for (const other of CLOCK_CRONS) {
-        if (other === cron) continue;
+      for (const other of clocksStartedBy(cron)) {
         try {
           await this.env.CLOCK.get(this.env.CLOCK.idFromName(other)).start(other);
         } catch (error) {

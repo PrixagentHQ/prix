@@ -1,6 +1,7 @@
 import type {
   Address,
   CreatePollTallyJob,
+  CreatePollTallyJobFor,
   HolderPoll,
   IsoTime,
   PollTallyFailStep,
@@ -12,9 +13,11 @@ import type {
   Tier,
 } from '@prix/contracts';
 import {
+  HOLDER_POLLS,
   openPollAt,
   POLL_MIN_TIER,
   POLL_PRUNE_AT,
+  POLL_PURGE_MAX_POLLS,
   POLL_PURGE_PER_RUN,
   POLL_TALLY_BLOCK_MARGIN,
   POLL_TALLY_DELAY_MODULO_SECONDS,
@@ -33,6 +36,7 @@ import {
   pollsWatchedAt,
   pollTallyDueAt,
   pollTallyExpired,
+  pollTallyStepAnswer,
   pollWalletExcluded,
 } from '@prix/contracts';
 import { guardSocialJob, logSafe } from './common.ts';
@@ -72,24 +76,57 @@ interface TieredVoter {
   tier: Tier;
 }
 
+/**
+ * What a run's reads give. `readMs` (revision 8b, R8-SEC-3; revision 8c, CR8B-4) is the whole milliseconds from
+ * the start of the run's first `tiersNow` call to the end of its last one or to the failure, null while no
+ * `tiersNow` call has started. `chainRead` is true once the run has called `tiersNow` (revision 8f, R8E-B4: the job
+ * tells F3's `waiting` from gating's by it). `noVoter` is F3's `waiting` (revision 8e, R8D-SEC-5): the first
+ * `listVoters` page held no voter while polls are switched off, and no chain read was made.
+ */
 type VoterRead =
-  | { kind: 'read'; voters: TieredVoter[]; block: number }
-  | { kind: 'waiting' }
-  | { kind: 'failed'; step: PollTallyFailStep };
+  | { kind: 'read'; voters: TieredVoter[]; block: number; readMs: number | null }
+  | { kind: 'waiting'; readMs: number | null; noVoter: boolean }
+  | { kind: 'failed'; step: PollTallyFailStep; readMs: number | null };
 
-const failedRead = (step: PollTallyFailStep): VoterRead => ({ kind: 'failed', step });
+/**
+ * Called once before a run's first `listVoters` (revision 7, R4, HB1F2-SEC-1): from then on the run has
+ * reached its reads, and the job answers `done` to the social step whatever follows (`pollTallyStepAnswer`).
+ */
+type ReachedReads = () => void;
+
+const noMark: ReachedReads = () => {};
+
+/** The log line's fields of a run's read time: `readMs` only when a `tiersNow` call has started. */
+const withReadMs = (
+  data: Record<string, string | number | boolean | null>,
+  readMs: number | null,
+): Record<string, string | number | boolean | null> => (readMs === null ? data : { ...data, readMs });
 
 /**
  * Reads every voter of a poll written before `before` and its tier, at one block (section 5 step 3). The
  * pages go by wallet order, POLL_TALLY_PAGE a page, at most POLL_TALLY_MAX_PAGES; the last page may only find
- * the end. Nothing is written here.
+ * the end. Nothing is written here. `reached` is called before the first `listVoters`, so a list that throws
+ * has reached its reads too. `waitOnNoVoter` (the tally's, revision 8e F3): a first page with no voter answers
+ * `waiting` with no chain read.
  */
-async function readVoterTiers(deps: TallyDeps, pollId: string, before: IsoTime): Promise<VoterRead> {
+async function readVoterTiers(
+  deps: TallyDeps,
+  pollId: string,
+  before: IsoTime,
+  reached: ReachedReads,
+  waitOnNoVoter: boolean,
+): Promise<VoterRead> {
+  reached();
   const voters: TieredVoter[] = [];
   let block: number | null = null;
   let reads = 0;
   let fetches = 0;
   let started: number | null = null;
+  let ended: number | null = null;
+
+  const readMs = (): number | null =>
+    started === null ? null : Math.max(0, Math.floor((ended ?? deps.now().getTime()) - started));
+  const failedRead = (step: PollTallyFailStep): VoterRead => ({ kind: 'failed', step, readMs: readMs() });
 
   /** One `tiersNow`, inside the run's bounds of reads, fetches and seconds. */
   const tiersAt = async (
@@ -99,19 +136,23 @@ async function readVoterTiers(deps: TallyDeps, pollId: string, before: IsoTime):
     if (reads >= POLL_TALLY_MAX_CHAIN_READS || fetches >= POLL_TALLY_MAX_FETCHES) {
       return { ok: false, result: failedRead('read') };
     }
-    if (started === null) started = deps.now().getTime();
+    const start = deps.now().getTime();
+    if (started === null) started = start;
     let read: PollTiersRead & { fetches?: unknown };
     try {
       read = await deps.holding.tiersNow(wallets, atBlock);
     } catch {
+      ended = deps.now().getTime();
       return { ok: false, result: failedRead('read') };
     }
+    ended = deps.now().getTime();
     reads += 1;
     if (typeof read.fetches === 'number' && Number.isFinite(read.fetches)) fetches = read.fetches;
-    if (deps.now().getTime() - started > POLL_TALLY_MAX_RUN_SECONDS * 1000) {
+    // The run fails at `read` once its reads pass POLL_TALLY_MAX_RUN_SECONDS from the start of its first call.
+    if (ended - started > POLL_TALLY_MAX_RUN_SECONDS * 1000) {
       return { ok: false, result: failedRead('read') };
     }
-    if (read.gatingOn !== true) return { ok: false, result: { kind: 'waiting' } };
+    if (read.gatingOn !== true) return { ok: false, result: { kind: 'waiting', readMs: readMs(), noVoter: false } };
     if (!Array.isArray(read.tiers) || read.tiers.length !== wallets.length) {
       return { ok: false, result: failedRead('read') };
     }
@@ -135,6 +176,10 @@ async function readVoterTiers(deps: TallyDeps, pollId: string, before: IsoTime):
       listed = await deps.polls.listVoters(pollId, after, before, POLL_TALLY_PAGE);
     } catch {
       return failedRead('list');
+    }
+    // F3 (revision 8e, R8D-SEC-5): while polls are switched off, a first page with no voter reads no chain.
+    if (listed.length === 0 && page === 1 && waitOnNoVoter && deps.pollsEnabled !== true) {
+      return { kind: 'waiting', readMs: null, noVoter: true };
     }
     if (listed.length === 0) break;
     // More voters than one run can read (the cap keeps it from happening): count nothing rather than part.
@@ -164,7 +209,7 @@ async function readVoterTiers(deps: TallyDeps, pollId: string, before: IsoTime):
     if (typeof pinned !== 'number') return pinned;
     block = pinned;
   }
-  return { kind: 'read', voters, block };
+  return { kind: 'read', voters, block, readMs: readMs() };
 }
 
 /** A vote that counts: its wallet holds tier 1 or above at the run's block and is not a wallet of Prix's own. */
@@ -178,9 +223,29 @@ const OPEN: PollTallyOutcome = { outcome: 'open', step: null };
  * One tally of one poll (section 5, steps 1 to 4). Never throws: a failure logs `poll_tally_failed` with the
  * poll's id and the step and answers `{ outcome: 'failed', step }`, having written nothing.
  */
-export const tallyPoll: TallyPoll = async (deps, poll) => {
-  const failed = (step: PollTallyFailStep): PollTallyOutcome => {
-    logSafe(deps, 'poll_tally_failed', { poll: poll.id, step });
+export const tallyPoll: TallyPoll = async (deps, poll) => (await tallyPollRun(deps, poll, noMark)).outcome;
+
+/**
+ * `tallyPoll` with the job's mark of a run that has reached its reads (revision 7). `chainRead` is false only for
+ * F3's `waiting` (revision 8e; revision 8f, R8E-B4: told from gating's `waiting` by the run's chain read), which the
+ * job answers `idle` and falls through (R8E-SEC-3).
+ */
+async function tallyPollRun(
+  deps: TallyDeps,
+  poll: HolderPoll,
+  reached: ReachedReads,
+): Promise<{ outcome: PollTallyOutcome; noVoterWait: boolean }> {
+  const run = await tallyPollSteps(deps, poll, reached);
+  return 'noVoterWait' in run ? run : { outcome: run, noVoterWait: false };
+}
+
+async function tallyPollSteps(
+  deps: TallyDeps,
+  poll: HolderPoll,
+  reached: ReachedReads,
+): Promise<PollTallyOutcome | { outcome: PollTallyOutcome; noVoterWait: true }> {
+  const failed = (step: PollTallyFailStep, readMs: number | null = null): PollTallyOutcome => {
+    logSafe(deps, 'poll_tally_failed', withReadMs({ poll: poll.id, step }, readMs));
     return { outcome: 'failed', step };
   };
   try {
@@ -206,12 +271,13 @@ export const tallyPoll: TallyPoll = async (deps, poll) => {
     if (present) return { outcome: 'already', step: null };
 
     // 3. Every voter written before the close, at one block.
-    const run = await readVoterTiers(deps, poll.id, poll.closesAt);
+    const run = await readVoterTiers(deps, poll.id, poll.closesAt, reached, true);
     if (run.kind === 'waiting') {
       logSafe(deps, 'poll_tally_waiting', { poll: poll.id });
-      return { outcome: 'waiting', step: null };
+      const waiting: PollTallyOutcome = { outcome: 'waiting', step: null };
+      return run.noVoter ? { outcome: waiting, noVoterWait: true } : waiting;
     }
-    if (run.kind === 'failed') return failed(run.step);
+    if (run.kind === 'failed') return failed(run.step, run.readMs);
 
     // 4. Cast and counted by option, every option of the poll present, zeros included.
     const cast: Record<string, number> = {};
@@ -243,26 +309,27 @@ export const tallyPoll: TallyPoll = async (deps, poll) => {
         lastBlock: run.block,
       });
     } catch {
-      return failed('write');
+      return failed('write', run.readMs);
     }
     if (!written) return { outcome: 'already', step: null };
-    logSafe(deps, 'poll_tallied', { poll: poll.id, voters, counted: total });
+    logSafe(deps, 'poll_tallied', withReadMs({ poll: poll.id, voters, counted: total }, run.readMs));
     return { outcome: 'done', step: null };
   } catch {
     // Every step above names its own failure; this only keeps the promise that nothing throws.
     return failed('read');
   }
-};
+}
 
 /**
  * Prune while open (section 5, revision 3, H2-SEC-1): from POLL_PRUNE_AT votes, in the first five minutes of
  * an hour, every voter is read at one block by the tally's own path and the votes of wallets below tier 1 or of
  * Prix's own are deleted in one `pruneVoters` after the last page. `done` when a row was deleted, `idle`
- * otherwise; a failure logs `poll_tally_failed` with its step and throws `PollTallyFailed`.
+ * otherwise; a failure logs `poll_tally_failed` with its step and throws `PollTallyFailed`. Once its reads
+ * have begun, the job turns `idle` and `failed` into `done` for the step (revision 7, `pollTallyStepAnswer`).
  */
-async function prune(deps: TallyDeps, poll: HolderPoll, now: Date): Promise<SocialJobOutcome> {
-  const fail = (step: PollTallyFailStep): never => {
-    logSafe(deps, 'poll_tally_failed', { poll: poll.id, step });
+async function prune(deps: TallyDeps, poll: HolderPoll, now: Date, reached: ReachedReads): Promise<SocialJobOutcome> {
+  const fail = (step: PollTallyFailStep, readMs: number | null = null): never => {
+    logSafe(deps, 'poll_tally_failed', withReadMs({ poll: poll.id, step }, readMs));
     throw new PollTallyFailed(step);
   };
   let sum = 0;
@@ -274,12 +341,12 @@ async function prune(deps: TallyDeps, poll: HolderPoll, now: Date): Promise<Soci
   }
   if (sum < POLL_PRUNE_AT) return 'idle';
 
-  const run = await readVoterTiers(deps, poll.id, now.toISOString());
+  const run = await readVoterTiers(deps, poll.id, now.toISOString(), reached, false);
   if (run.kind === 'waiting') {
     logSafe(deps, 'poll_tally_waiting', { poll: poll.id });
     return 'idle';
   }
-  if (run.kind === 'failed') return fail(run.step);
+  if (run.kind === 'failed') return fail(run.step, run.readMs);
 
   const gone = run.voters.filter((voter) => !counts(deps, voter)).map((voter) => voter.wallet);
   if (gone.length === 0) return 'idle';
@@ -287,10 +354,10 @@ async function prune(deps: TallyDeps, poll: HolderPoll, now: Date): Promise<Soci
   try {
     deleted = await deps.polls.pruneVoters(poll.id, gone);
   } catch {
-    return fail('write');
+    return fail('write', run.readMs);
   }
   if (!(deleted > 0)) return 'idle';
-  logSafe(deps, 'poll_pruned', { poll: poll.id, deleted });
+  logSafe(deps, 'poll_pruned', withReadMs({ poll: poll.id, deleted }, run.readMs));
   return 'done';
 }
 
@@ -310,34 +377,55 @@ const byClose = (a: HolderPoll, b: HolderPoll): number => Date.parse(a.closesAt)
  * watched polls with a result are tried oldest first, and a poll whose votes are gone hands the run on, so
  * that a counted poll's empty purge does not keep a later poll's purge, or the open poll's prune, from running
  * during its thirty days.
+ *
+ * What the step sees (revision 7, R4, HB1F2-SEC-1, section 5 "A run that has reached its reads ends the
+ * step"): a flag is set before the run's first `listVoters` (the tally's step 3, or the prune once its sum is
+ * at least POLL_PRUNE_AT) and read after the guard answers, and `pollTallyStepAnswer` turns the guard's
+ * `idle` or `failed` into `done`, so that the jobs behind it do not run on what the reads left of the
+ * invocation's subrequests. A failure is still logged and counted by the guard; every other run keeps its
+ * answer.
  */
-export const createPollTallyJob: CreatePollTallyJob = (deps) => ({
+export const createPollTallyJobFor: CreatePollTallyJobFor = (deps, polls) => ({
   name: JOB,
-  run: (now) =>
-    guardSocialJob(deps, JOB, now, async (skip) => {
-      const watched = pollsWatchedAt(now);
-      const open = openPollAt(now);
+  run: async (now) => {
+    let reachedReads = false;
+    const reached: ReachedReads = () => {
+      reachedReads = true;
+    };
+    const guarded = await guardSocialJob(deps, JOB, now, async (skip) => {
+      const watched = pollsWatchedAt(now, polls);
+      const open = openPollAt(now, polls);
       const pruneDue = open !== null && pollPruneDue(now);
       if (watched.length === 0 && !pruneDue) return 'idle';
 
       const results = watched.length === 0 ? [] : await deps.polls.getResults(watched.map((poll) => poll.id));
       const counted = new Set(results.map((result) => result.pollId));
-      const toTally = pollsToTallyAt(now)
+      const toTally = pollsToTallyAt(now, polls)
         .filter((poll) => !counted.has(poll.id))
-        .sort(byClose)[0];
+        .sort(byClose);
       const expired = pollExpiredLogDue(now)
         ? watched.filter((poll) => !counted.has(poll.id) && pollTallyExpired(poll, now))
         : [];
       const purgeable = watched.filter((poll) => counted.has(poll.id)).sort(byClose);
-      if (toTally === undefined && expired.length === 0 && purgeable.length === 0 && !pruneDue) return 'idle';
+      if (toTally.length === 0 && expired.length === 0 && purgeable.length === 0 && !pruneDue) return 'idle';
 
       if (await skip()) return 'idle';
 
-      // (a) the tally.
-      if (toTally !== undefined) {
-        const outcome = await tallyPoll(deps, toTally);
-        const answer = POLL_TALLY_JOB_OUTCOMES[outcome.outcome];
-        if (answer === 'throw') throw new PollTallyFailed(outcome.step ?? 'read');
+      // (a) the tally of the oldest poll of pollsToTallyAt(now) without a result (within the lookback; a poll past
+      // it is never tallied by the job, R8F-SEC-3). Only an F3 `waiting` answer, made with no chain read, does not
+      // end the run's choice: the run goes on to the next poll of pollsToTallyAt(now) without a result, then to (b),
+      // (c) and (d), as if (a) had not applied (revision 8f, R8E-SEC-3). Gating's `waiting`, after a chain read,
+      // ends the run with `done` as before (F8F-B3 i). The reached-reads flag is cleared for the F3 case at that
+      // moment only: a later `listVoters` of the same run (the next poll's tally or the prune) sets it again, and
+      // the run then answers `done` to the step (F8F-B3 ii).
+      for (const poll of toTally) {
+        const run = await tallyPollRun(deps, poll, reached);
+        if (run.noVoterWait) {
+          reachedReads = false;
+          continue;
+        }
+        const answer = POLL_TALLY_JOB_OUTCOMES[run.outcome.outcome];
+        if (answer === 'throw') throw new PollTallyFailed(run.outcome.step ?? 'read');
         return answer;
       }
       // (b) the expired line, once a day.
@@ -345,8 +433,8 @@ export const createPollTallyJob: CreatePollTallyJob = (deps) => ({
         for (const poll of expired) logSafe(deps, 'poll_tally_expired', { poll: poll.id });
         return 'idle';
       }
-      // (c) the purge of a counted poll's votes.
-      for (const poll of purgeable) {
+      // (c) the purge of a counted poll's votes: at most POLL_PURGE_MAX_POLLS tries, oldest first (revision 8, R8-4).
+      for (const poll of purgeable.slice(0, POLL_PURGE_MAX_POLLS)) {
         const deleted = await deps.polls.deleteVotes(poll.id, POLL_PURGE_PER_RUN);
         if (deleted > 0) {
           logSafe(deps, 'poll_votes_purged', { poll: poll.id, deleted });
@@ -354,7 +442,12 @@ export const createPollTallyJob: CreatePollTallyJob = (deps) => ({
         }
       }
       // (d) the prune of the open poll.
-      if (pruneDue && open !== null) return prune(deps, open, now);
+      if (pruneDue && open !== null) return prune(deps, open, now, reached);
       return 'idle';
-    }),
+    });
+    return pollTallyStepAnswer(guarded, reachedReads);
+  },
 });
+
+/** The `poll_tally` social job over HOLDER_POLLS (revision 8b, R8B-8). */
+export const createPollTallyJob: CreatePollTallyJob = (deps) => createPollTallyJobFor(deps, HOLDER_POLLS);

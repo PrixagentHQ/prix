@@ -84,22 +84,29 @@ describe('the vote, refused at every step, and what each refusal leaves', () => 
   });
 
   it('answers 409 poll_not_open before opensAt and 409 poll_closed at closesAt and after, with no tier read', async () => {
-    const h = createPollHarness({ now: '2026-10-15T23:59:59.999Z' });
+    const h = createPollHarness({ now: new Date(Date.parse(OPENS) - 1).toISOString() });
     h.tiers.set(HOLDER, 3);
-    const cookie = await h.signIn(HOLDER);
+    // A fresh session at each moment (revision 8g, H1): a session signed before opensAt would age out before a
+    // close moved by whole days, and the case would then test the session, not the poll's window.
+    const at = async (iso: string) => {
+      h.setNow(iso);
+      return h.signIn(HOLDER);
+    };
+    let cookie = await h.signIn(HOLDER);
     refused(await h.fetch('POST', VOTE, { cookie, body: { option: 'index-core' } }), 'poll_not_open');
-    h.setNow(CLOSES);
+    cookie = await at(CLOSES);
     refused(await h.fetch('POST', VOTE, { cookie, body: { option: 'index-core' } }), 'poll_closed');
-    h.setNow('2026-10-22T08:00:00.000Z');
+    // Twelve hours after the close, derived from it (revision 8f, F8F-B1: no moment typed from the old close).
+    cookie = await at(new Date(Date.parse(CLOSES) + 12 * 3_600_000).toISOString());
     refused(await h.fetch('POST', VOTE, { cookie, body: { option: 'index-core' } }), 'poll_closed');
     expect(h.tierReads).toEqual([]);
     expect(h.limiter.asks('write')).toBe(0);
     expect((await pollTables()).votes).toEqual([]);
     // One millisecond before the close still takes a vote.
-    h.setNow(new Date(Date.parse(CLOSES) - 1).toISOString());
+    cookie = await at(new Date(Date.parse(CLOSES) - 1).toISOString());
     expect((await h.fetch('POST', VOTE, { cookie, body: { option: 'index-core' } })).status).toBe(200);
     // And from opensAt itself.
-    h.setNow(OPENS);
+    cookie = await at(OPENS);
     expect((await h.fetch('POST', VOTE, { cookie, body: { option: 'dip-buyer' } })).status).toBe(200);
   });
 

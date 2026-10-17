@@ -185,6 +185,15 @@ const openAt = openColumn(markTier);
     }
   }
 
+  /*
+    A column's note at every width (POLL-DC-4): the line feed of `markedNote` stands, so the wallet's words are a
+    line of their own beneath the amount, and no note line wraps, so "From {amount}" never breaks between its
+    words. A column too narrow for it grows, inside the table's own scroller.
+  */
+  .holders-table :global(th .table-note) {
+    white-space: pre;
+  }
+
   /* The wallet's own column on /account/token: a wash behind it, and its header in ink. */
   .holders-table :global(td.holders-marked) {
     background: var(--wash);
